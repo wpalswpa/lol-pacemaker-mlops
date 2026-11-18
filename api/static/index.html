@@ -192,13 +192,34 @@
   .wintitle { font-weight: 700; font-size: 14px; color: var(--sub); margin-bottom: 6px; }
   .wintitle small { font-weight: 400; color: var(--dim); font-size: 12px; margin-left: 6px; }
   h1 a.tag { text-decoration: none; }
+  .sitenav { border-bottom: 1px solid var(--line); background: rgba(11, 14, 19, .92); position: sticky; top: 0; z-index: 30; backdrop-filter: blur(8px); }
+  .sitenav-in { max-width: 880px; margin: 0 auto; padding: 11px 16px; display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
+  .brand { display: inline-flex; align-items: center; gap: 8px; font-weight: 800; font-size: 15px; color: #fff; text-decoration: none; }
+  .brand-badge { padding: 2px 8px; border-radius: 6px; background: #ff5a1f; color: #fff; font-size: 11px; font-weight: 900; letter-spacing: .04em; }
+  .nav-links { display: flex; align-items: center; gap: 18px; font-size: 13px; font-weight: 600; color: var(--sub); }
+  .nav-links a { text-decoration: none; color: inherit; }
+  .nav-links a:hover, .nav-links a.active { color: #fff; }
+  .nav-cta { padding: 7px 14px; border-radius: 999px; background: #ff5a1f; color: #fff; font-size: 12.5px; font-weight: 700; text-decoration: none; }
+  .nav-cta:hover { background: #ff7340; }
 </style>
 </head>
 <body>
 <div class="edge" aria-hidden="true"></div>
+<header class="sitenav">
+  <div class="sitenav-in">
+    <a class="brand" href="/"><span class="brand-badge">FAKER</span><span>Desktop</span></a>
+    <nav class="nav-links" aria-label="주 메뉴">
+      <a href="/" class="active">웹 시뮬레이터 · 전적</a>
+      <a href="/overlay">인게임 HUD</a>
+      <a href="/slides">발표 슬라이드</a>
+      <a href="/download">다운로드</a>
+    </nav>
+    <a class="nav-cta" href="/download">다운로드</a>
+  </div>
+</header>
 <main>
   <div class="topbar">
-    <h1>LoL 페이스메이커 <span class="nick">(페이커)</span> <span class="tag">게임 중 실시간 코치</span> <a class="tag" href="/overlay">오버레이</a> <a class="tag" href="/download">데스크톱 다운로드</a> <a class="tag" href="/slides">발표 슬라이드</a></h1>
+    <h1>LoL 페이스메이커 <span class="nick">(페이커)</span> <span class="tag">게임 중 실시간 코치</span></h1>
     <div class="right">
       <button type="button" class="fx" id="fxToggle" aria-pressed="true" title="화면 가장자리 색 테두리를 끄고 켭니다">
         <span class="sw" aria-hidden="true"></span><span>테두리 이펙트</span> <b id="fxState">ON</b>

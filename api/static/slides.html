@@ -17,9 +17,17 @@
   body { margin: 0; background: var(--bg); color: var(--text);
          font: 16px/1.5 -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", "Segoe UI", sans-serif; }
   a { color: inherit; }
-  .progress { position: fixed; top: 0; left: 0; right: 0; height: 4px; background: #161c26; z-index: 10; }
-  .progress i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--gold), #ffe08a); transition: width .3s; }
-  .deck { position: fixed; inset: 4px 0 56px; }
+  .progress { position: fixed; top: 44px; left: 0; right: 0; height: 4px; background: #161c26; z-index: 10; }
+  .progress i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #ff5a1f, #ff9a73); transition: width .3s; }
+  .sitenav { position: fixed; top: 0; left: 0; right: 0; height: 44px; border-bottom: 1px solid var(--line); background: rgba(11, 14, 19, .95); z-index: 20; display: flex; align-items: center; }
+  .sitenav-in { max-width: 1120px; width: 100%; margin: 0 auto; padding: 0 20px; display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+  .brand { display: inline-flex; align-items: center; gap: 8px; font-weight: 800; font-size: 14px; color: #fff; text-decoration: none; }
+  .brand-badge { padding: 2px 7px; border-radius: 6px; background: #ff5a1f; color: #fff; font-size: 10.5px; font-weight: 900; }
+  .nav-links { display: flex; align-items: center; gap: 18px; font-size: 13px; font-weight: 600; color: var(--sub); }
+  .nav-links a { text-decoration: none; color: inherit; }
+  .nav-links a:hover, .nav-links a.active { color: #fff; }
+  .nav-cta { padding: 5px 12px; border-radius: 999px; background: #ff5a1f; color: #fff; font-size: 12px; font-weight: 700; text-decoration: none; }
+  .deck { position: fixed; inset: 48px 0 56px; }
   .slide { position: absolute; inset: 0; display: none; overflow-y: auto; overflow-x: hidden;
            padding: clamp(18px, 4vh, 48px) clamp(16px, 5vw, 72px); }
   .slide.on { display: block; animation: in .3s ease-out; }
@@ -125,6 +133,18 @@
 </style>
 </head>
 <body>
+<header class="sitenav">
+  <div class="sitenav-in">
+    <a class="brand" href="/"><span class="brand-badge">FAKER</span><span>Desktop</span></a>
+    <nav class="nav-links" aria-label="주 메뉴">
+      <a href="/">웹 시뮬레이터 · 전적</a>
+      <a href="/overlay">인게임 HUD</a>
+      <a href="/slides" class="active">발표 슬라이드</a>
+      <a href="/download">다운로드</a>
+    </nav>
+    <a class="nav-cta" href="/download">다운로드</a>
+  </div>
+</header>
 <div class="progress" aria-hidden="true"><i id="bar"></i></div>
 <main class="deck" id="deck">
 
