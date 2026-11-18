@@ -54,8 +54,9 @@
 | `my_side` | 요청한 사람의 팀 | `"blue"` 또는 `"red"` | 그 밖의 값 |
 | `my_champion` (선택) | 내 챔피언 또는 역할군 | 챔피언 영문 ID(`"Ahri"`)·한국어 이름(`"아리"`), 또는 역할군 `"AD"` · `"AP"` · `"TANK"` · `"SUPPORT"`. 생략하면 `"AD"` | 목록에 없는 이름, 40자 초과 |
 | `enemy_top_threat` (선택) | 상대 팀에서 가장 크게 성장한 위협 | 챔피언 이름(위와 같은 방식), 또는 피해 유형 `"AD"` · `"AP"` · `"HEAL"` · `"TANK"`. 생략하면 `"AP"` | 목록에 없는 이름, 40자 초과 |
+| `enemy_items` (선택) | 상대 최대 위협 선수가 Tab 점수판에 공개한 아이템 | 아이템 ID 정수 목록, 최대 12개. `api/game_data.json`에 없는 ID도 받는다(운영 팁 판정에만 쓰고 모르는 ID는 무시). 생략하면 `[]` | 정수가 아닌 값, 1 미만·999999 초과, 13개 이상 |
 
-두 선택 칸은 승률 계산(모델 입력)에 쓰지 않는다. `/coach`의 `build_advice`에만 쓴다. 챔피언 목록은 `api/game_data.json`(Data Dragon에서 만든 표)이 정본이고, 대소문자와 앞뒤 공백은 가리지 않는다.
+세 선택 칸은 승률 계산(모델 입력)에 쓰지 않는다. `/coach`의 `build_advice`(`enemy_items`는 `threat_type` 보정과 `tactical_tip`)에만 쓴다. 챔피언 목록은 `api/game_data.json`(Data Dragon에서 만든 표)이 정본이고, 대소문자와 앞뒤 공백은 가리지 않는다.
 
 **422로 거절하는 입력** (이유: 계산할 수 없는 값을 200으로 돌려주면 쓰는 쪽이 틀린 숫자를 믿는다)
 
@@ -77,7 +78,7 @@
 | Riot 공식 로컬 API `https://127.0.0.1:2999/liveclientdata/allgamedata` | `client/bridge.py`가 관전·리플레이·연습 모드에서 응답을 받아 3절 입력으로 바꾼다. 점수판(양 팀 킬·어시스트·CS·레벨)과 이벤트(첫 킬·드래곤·전령·포탑)만 쓴다 | 랭크 게임 중에 쓰지 않는다. 상대 위치·쿨다운 등 점수판에 없는 값을 읽지 않는다 |
 | Data Dragon 아이템 가격표 | 브리지가 양 팀 아이템 가격 합을 **참고 값**(`item_gold`)으로 로그에 남긴다 | 모델 입력으로 쓰지 않는다. 학습 데이터의 골드는 "벌어들인 총골드"(쓰지 않은 골드 포함)라 아이템 가격 합과 정의가 달라, 섞으면 학습과 서빙의 값이 어긋난다 |
 
-브리지는 `allPlayers`에서 내 챔피언(`activePlayer`와 같은 선수)과 상대 팀 최다 킬 챔피언(동률이면 최다 CS, 그래도 같으면 목록 순서)을 찾아 `my_champion`·`enemy_top_threat`로 넘긴다. 챔피언은 `rawChampionName`의 `game_character_displayname_` 뒤 영문 ID를 먼저 쓰고, 없으면 `championName`을 쓴다. 둘 다 없으면 그 칸을 넣지 않는다(서버 기본값 AD·AP). 관전처럼 `activePlayer`가 없어 `--side`로 팀을 정하면 `my_champion`은 넣지 않고 `enemy_top_threat`만 넣는다. 새 챔피언처럼 `api/game_data.json`에 아직 없는 이름이라 `/coach`가 422를 돌려주면, 두 칸을 빼고 한 번만 다시 부른다(승률·목표는 받고 빌드만 기본값). 브리지가 쓰는 응답 필드와 변환 규칙은 `client/bridge.py` 머리 주석이 정본이다. 실제 게임 클라이언트의 응답으로는 아직 확인하지 않았고, 테스트는 공개 문서의 필드 구조로 만든 고정 자료로 한다.
+브리지는 `allPlayers`에서 내 챔피언(`activePlayer`와 같은 선수)과 상대 팀 최다 킬 챔피언(동률이면 최다 CS, 그래도 같으면 목록 순서)을 찾아 `my_champion`·`enemy_top_threat`로 넘긴다. 챔피언은 `rawChampionName`의 `game_character_displayname_` 뒤 영문 ID를 먼저 쓰고, 없으면 `championName`을 쓴다. 둘 다 없으면 그 칸을 넣지 않는다(서버 기본값 AD·AP). 관전처럼 `activePlayer`가 없어 `--side`로 팀을 정하면 `my_champion`은 넣지 않고 `enemy_top_threat`만 넣는다. 새 챔피언처럼 `api/game_data.json`에 아직 없는 이름이라 `/coach`가 422를 돌려주면, 두 칸(과 `enemy_items`)을 빼고 한 번만 다시 부른다(승률·목표는 받고 빌드만 기본값). 상대 위협 선수의 `items[].itemID`는 정수로 읽히고 1~999999인 것만 앞에서 12개까지 `enemy_items`로 넘긴다(없으면 칸을 넣지 않는다). **게임 API 응답이 덜 찬 경우에도 브리지는 죽지 않는다**: 연습 모드·리플레이 시작(`gameTime` 0.0, `activePlayer.abilities` 비어 있음, `items` 빈 목록), 숫자가 아닌 `itemID`·`count`·`abilityLevel`·점수는 그 값만 건너뛰거나 0으로 보고, 상대 팀 선수가 없으면(연습 모드 혼자) 그 팀 킬·어시·CS·오브젝트는 0, `avg_level`은 내 팀 평균과 같게 둔다(레벨 차이 0). 브리지가 쓰는 응답 필드와 변환 규칙은 `client/bridge.py` 머리 주석이 정본이다. 실제 게임 클라이언트의 응답으로는 아직 확인하지 않았고, 테스트는 공개 문서의 필드 구조로 만든 고정 자료로 한다.
 
 ### 3-2. 게임을 방해하지 않는 알림 (브리지)
 
@@ -380,7 +381,7 @@ LoL은 "테두리 없는 창 모드"여야 위에 뜬다. 전체 화면 독점 �
 
 `api/static/slides.html`을 그대로 돌려준다(`text/html`). 5분 발표용 7장 슬라이드이고 `발표대본.md`의 다섯 구간과 같은 순서다. 키보드 좌우 화살표·스페이스·클릭으로 넘기고, 위쪽 진행 막대와 `n / 7` 표시, 주소 `#n`으로 바로 가기를 지원한다. 외부 글꼴·CDN·그림 없이 한 파일로 완결한다(발표장 네트워크가 막혀도 뜬다). 시뮬레이터(`GET /`)와 서로 가는 링크를 둔다. 수치는 README 12절의 실측값만 쓴다. 7장 안에 원클릭 실행기(`/download`, Windows `.bat`·macOS `.app`), 초컴팩트 HUD(`/overlay`: 아이콘 한 줄 구매 순서, 인라인 스킬 이펙트, 최소화·투명도, 상대 공개 아이템 운영 팁), PostgreSQL 16 전적 DB 재학습 루프(`POST /matches` → `GET /matches/export` → `model.yml`)를 담는다. 1280×800·1366×768·1920×1080에서 어느 장도 세로로 스크롤하지 않는다.
 
-**상단 메뉴(`/`, `/download`, `/slides` 공통)**: 네 링크(`/`, `/overlay`, `/slides`, `/download`)와 지금 페이지 `active` 표시. 640px 이하에서는 중복 CTA와 브랜드 글자(`Desktop`)를 숨기고 긴 이름을 줄여(`웹 시뮬레이터`, `슬라이드`) 네 링크를 한 줄에 둔다. 넘치면 메뉴 안에서만 가로로 스크롤하고 페이지 가로 넘침은 0이다. 메뉴를 숨기지 않는다(모바일에서도 네 페이지로 갈 수 있어야 한다). `/overlay`는 게임 위 HUD라 상단 메뉴를 두지 않는다.
+**상단 메뉴(`/`, `/download`, `/slides` 공통)**: 세 링크(`/`, `/slides`, `/download`)와 지금 페이지 `active` 표시. `/overlay`는 메뉴에 두지 않고, `/`의 `인게임 HUD 미리보기` 버튼이 실제 팝업 크기(400×580, 창 이름 `lolHud`라 여러 번 눌러도 한 창)로 연다. 640px 이하에서는 중복 CTA와 브랜드 글자(`Desktop`)를 숨기고 긴 이름을 줄여(`웹 시뮬레이터`, `슬라이드`) 링크를 한 줄에 둔다. 넘치면 메뉴 안에서만 가로로 스크롤하고 페이지 가로 넘침은 0이다. 메뉴를 숨기지 않는다(모바일에서도 세 페이지로 갈 수 있어야 한다). `/overlay`는 게임 위 HUD라 상단 메뉴를 두지 않는다.
 
 ### AI 에이전트 연동
 
@@ -459,9 +460,9 @@ p_blue   = 1 / (1 + exp(−gold_est / 2500))
 - **정확도 0.68의 근거**: 사전 분석에서 규칙 기준선의 평가셋 정확도가 약 0.71이고, 공개 지표 로지스틱 회귀도 약 0.71이었다. 정확도로는 둘이 비슷하므로 주 기준은 확률 품질(Brier·LogLoss)로 두고, 정확도는 "규칙보다 3%p 넘게 떨어진 고장 난 모델"을 막는 하한으로만 쓴다.
 - **Brier를 주 기준으로 두는 이유**: 이 서비스는 "승률 43%", "+10.2%p"처럼 확률을 숫자로 보여 준다. 맞힌 비율보다 확률이 실제 빈도와 맞는지가 중요하다.
 
-**자동 테스트 기준선**: 2026-11-18 `uv run pytest -q` **305 passed**, skipped 0. 이보다 줄면 커밋 메시지와 `인수인계.md`에 이유를 적는다.
+**자동 테스트 기준선**: 2026-11-18 `uv run pytest -q` **312 passed**, skipped 0. 이보다 줄면 커밋 메시지와 `인수인계.md`에 이유를 적는다.
 
-**UI 점검(헤드리스 Chromium, Playwright)**: `/`, `/download`, `/slides`(일곱 장 모두), `/overlay`를 PC 1280×800·모바일 390×844(·태블릿 700×900)에서 열어 `documentElement.scrollWidth <= clientWidth`, 화면 밖으로 나간 요소 0개. 상단 메뉴로 `/` → `/download` → `/` → `/download` → `/slides` → `/overlay` 클릭 이동이 모두 그 주소로 가고, console error·pageerror 0건. `/overlay`는 브리지가 없으면 `127.0.0.1:8765` 연결 거부가 console error로 찍히므로 브리지를 저장 응답(`--file ... --overlay`)으로 띄워 둔 상태에서 잰다.
+**UI 점검(헤드리스 Chromium, Playwright)**: `/`, `/download`, `/slides`(일곱 장 모두), `/overlay`를 PC 1280×800·모바일 390×844(·태블릿 700×900)에서 열어 `documentElement.scrollWidth <= clientWidth`, 화면 밖으로 나간 요소 0개. 세 페이지 상단 메뉴에 `/overlay` 링크가 없고, 상단 메뉴로 `/` → `/download` → `/` → `/download` → `/slides` → `/` 클릭 이동이 모두 그 주소로 간다. `/`의 `인게임 HUD 미리보기`를 누르면 `/overlay` 팝업(400×580, `window.name` `lolHud`)이 뜨고 가로 넘침 0, 승률 숫자가 채워지며, 한 번 더 눌러도 창이 늘지 않는다. console error·pageerror 0건(팝업 포함). `/overlay`는 브리지가 없으면 `127.0.0.1:8765` 연결 거부가 console error로 찍히므로 브리지를 저장 응답(`--file ... --overlay`)으로 띄워 둔 상태에서 잰다.
 
 **서빙 부하 실측 `scripts/benchmark_serving.py`**
 

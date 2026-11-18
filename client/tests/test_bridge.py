@@ -385,13 +385,14 @@ def test_overlay_bridge_state_and_coach_interval():
     clock, calls, frames = Clock(), [], [at(900.0)]
     b = make_bridge(frames, clock, calls)
     st = b.step()
-    assert len(calls) == 1 and calls[0] == extract_features_from_liveclient(at(900.0))  # 첫 호출은 바로
+    feats = extract_features_from_liveclient(at(900.0))
+    assert len(calls) == 1 and calls[0] == {**feats, "enemy_items": [1036]}  # 첫 호출은 바로, 상대 위협 B1 의 공개 아이템
     assert st["connected"] and st["in_game"] and st["source"] == "live"
     assert (st["game_time_sec"], st["minutes"], st["pace_scale"]) == (900.0, 15.0, pytest.approx(2 / 3))
     assert (st["champion"], st["level"]) == ("Ahri", 7)
     assert st["owned_items"] == [{"itemID": 1055, "displayName": "item1055", "count": 1, "slot": None}]
     assert (st["next_skill"], st["next_skill_when"]) == ("Q", "now")  # 응답의 순서 Q > W > E, 7레벨
-    assert st["features"] == calls[0] and st["raw_features"] == WANT and st["coach"]["n"] == 1
+    assert st["features"] == feats and st["raw_features"] == WANT and st["coach"]["n"] == 1 and st["enemy_items"] == [1036]
 
     clock.t += 3
     b.step()                       # 입력 같음 → 부르지 않음
@@ -649,3 +650,149 @@ def test_relay_off_without_server_and_502_when_down():
         assert code == 502 and "서버에 연결하지 못했다" in body.decode()
     finally:
         httpd.shutdown()
+
+
+# ── 실게임 127.0.0.1:2999 덜 찬 응답 (연습 모드·리플레이 시작, AGENTS.md 3-1절 "덜 찬 경우") ──
+# 기대값은 머리 주석의 규칙으로 손으로 정했다: 점수 0, 레벨 1, 첫 킬 없음 → 상대 팀, 0초는 1분으로 보아 배율 10(0 × 10 = 0)
+from client.bridge import coach_input, enemy_item_ids  # noqa: E402
+
+ZERO = {"kills": 0, "assists": 0, "cs": 0, "avg_level": 1.0, "dragons": 0, "heralds": 0, "towers": 0}
+
+
+def early(seconds: float = 0.0) -> dict:
+    """게임 시작 직후: gameTime 0.0, 이벤트 없음, abilities 빈 사전, 모든 선수 items [] 와 점수 0, 레벨 1."""
+    d = at(seconds)
+    d["events"]["Events"] = []
+    d["activePlayer"]["abilities"] = {}
+    d["activePlayer"]["level"] = 1
+    for p in d["allPlayers"]:
+        p["items"], p["level"] = [], 1
+        p["scores"] = {"kills": 0, "deaths": 0, "assists": 0, "creepScore": 0, "wardScore": 0.0}
+    return d
+
+
+def api_coach(client):
+    """브리지의 coach 자리에 실제 POST /coach (TestClient). 200 이 아니면 브리지처럼 HTTPError."""
+    sent = []
+
+    def coach(body):
+        sent.append(body)
+        res = client.post("/coach", json=body)
+        if res.status_code != 200:
+            raise urllib.error.HTTPError("http://x/coach", res.status_code, res.text, {}, io.BytesIO(res.content))
+        return res.json()
+
+    return coach, sent
+
+
+def test_game_start_zero_state_converts_and_coaches(client):  # noqa: F811
+    d = early()
+    state, info = to_game_state(d)
+    assert (state["blue"], state["red"]) == (ZERO, ZERO)
+    assert (state["first_blood"], state["my_side"]) == ("red", "blue")  # 첫 킬 전: 상대 팀
+    assert state["enemy_top_threat"] == "Zed"  # 모두 0킬·0CS 면 레드 목록 첫 선수 B1
+    assert info == {"game_time": 0.0, "first_blood_seen": False, "item_gold": {"blue": 0.0, "red": 0.0},
+                    "champions": {"my_champion": "Ahri", "enemy_top_threat": "Zed"}, "enemy_items": []}
+    assert coach_input(state, info) == state  # 공개 아이템이 없으면 enemy_items 칸을 넣지 않는다
+    assert extract_features_from_liveclient(d) == state  # 0 × 10 = 0, 레벨은 그대로
+    assert extract_owned_items(d) == []
+
+    coach, sent = api_coach(client)
+    st = OverlayBridge(lambda: d, coach, clock=Clock()).step()
+    assert st["connected"] and st["error"] is None and st["coach_error"] is None
+    assert st["in_game"] is False and st["game_time_sec"] == 0.0 and (st["minutes"], st["pace_scale"]) == (1.0, 10.0)
+    assert sent == [state] and 0 < st["coach"]["my_win_prob"] < 1
+    assert st["coach"]["build_advice"]["skill_order"]["order"] == "Q > W > E"  # 규칙표 Ahri
+    assert (st["level"], st["next_skill"], st["next_skill_when"]) == (1, "Q", "now")  # abilities {}: 1레벨 첫 스킬
+    assert st["owned_items"] == [] and st["enemy_items"] == []
+
+
+def test_practice_tool_alone_has_no_enemy_team(client):  # noqa: F811
+    d = early(95.0)
+    d["allPlayers"] = [_player(d, "A1")]
+    me = d["allPlayers"][0]
+    me["level"], me["scores"]["creepScore"] = 3, 12
+    state, info = to_game_state(d)
+    # 레드 선수 0명: 킬·CS 0, 평균 레벨은 블루와 같게(3.0, 레벨 차이 0). 0으로 나누지 않는다
+    assert state["blue"] == {**ZERO, "cs": 12, "avg_level": 3.0}
+    assert state["red"] == {**ZERO, "avg_level": 3.0}
+    assert "enemy_top_threat" not in state and state["my_champion"] == "Ahri" and info["enemy_items"] == []
+
+    coach, sent = api_coach(client)
+    st = OverlayBridge(lambda: d, coach, clock=Clock()).step()
+    assert st["connected"] and st["error"] is None and st["coach_error"] is None
+    assert st["in_game"] and len(sent) == 1
+    # 95초 → 1.5833분, 배율 10/1.5833 = 6.3158. CS 12 → 75.8 → 76
+    assert sent[0]["blue"]["cs"] == 76 and sent[0]["red"] == {**ZERO, "avg_level": 3.0}
+
+
+def test_enemy_items_skip_bad_values_and_keep_unknown_ids():
+    b1 = {"items": [{"itemID": 999999}, {"itemID": 0}, {"itemID": "abc"}, {"itemID": 1000000}, {"price": 0},
+                    {"itemID": "3153"}, "garbage", {"itemID": None}, {"itemID": 223172}, {"itemID": -5}]}
+    # 정수로 읽히고 1~999999 인 것만, 순서 그대로. 게임 데이터에 없는 999999·223172 도 남긴다(서버가 무시)
+    assert enemy_item_ids(b1) == [999999, 3153, 223172]
+    assert enemy_item_ids({"items": [{"itemID": 1000 + i} for i in range(15)]}) == [1000 + i for i in range(12)]
+    assert enemy_item_ids(None) == [] and enemy_item_ids({"items": None}) == [] and enemy_item_ids({}) == []
+
+
+def test_unknown_enemy_item_ids_are_accepted_by_coach(client):  # noqa: F811
+    d = early()
+    _player(d, "B1")["items"] = [{"itemID": 999999}, {"itemID": "abc"}, {"itemID": 0}, {"itemID": 123456}]
+    state, info = to_game_state(d)
+    assert info["enemy_items"] == [999999, 123456]
+
+    coach, sent = api_coach(client)
+    st = OverlayBridge(lambda: d, coach, clock=Clock()).step()
+    assert st["connected"] and st["coach_error"] is None and st["enemy_items"] == [999999, 123456]
+    assert sent == [{**state, "enemy_items": [999999, 123456]}]
+    # 모르는 ID 는 위협 보정을 바꾸지 않는다: 아이템 없이 부른 응답과 빌드가 같다
+    base = client.post("/coach", json=state).json()["build_advice"]
+    assert st["coach"]["build_advice"]["threat_type"] == base["threat_type"]
+    assert st["coach"]["build_advice"]["tactical_tip"] == base["tactical_tip"]
+    assert client.post("/coach", json={**state, "enemy_items": [1000000]}).status_code == 422  # 그래서 브리지가 거른다
+
+
+def test_known_enemy_heal_item_switches_threat(client):  # noqa: F811
+    d = early(600.0)
+    _player(d, "B1")["items"] = [{"itemID": 999999}, {"itemID": 3153}]  # 모르는 ID + 몰락한 왕의 검(회복)
+    coach, sent = api_coach(client)
+    st = OverlayBridge(lambda: d, coach, clock=Clock()).step()
+    assert sent[0]["enemy_items"] == [999999, 3153]
+    assert st["coach"]["build_advice"]["threat_type"] == "HEAL"
+    assert st["coach"]["build_advice"]["tactical_tip"].startswith("상대 회복·흡혈 코어 감지")
+
+
+def test_malformed_numbers_never_crash_step(client):  # noqa: F811
+    d = early(120.0)
+    me = _player(d, "A1")
+    me["items"] = [{"itemID": None, "count": None}, {"itemID": 1055, "count": None, "displayName": "도란의 검"},
+                   {"itemID": "x"}, "garbage"]
+    me["scores"]["kills"] = None
+    _player(d, "B2")["level"] = None  # 레벨을 모르면 1
+    d["activePlayer"]["abilities"] = {"Q": {"abilityLevel": None}, "W": "garbage", "E": {}}
+    d["activePlayer"]["level"] = "abc"
+
+    state, _ = to_game_state(d)
+    assert state["blue"]["kills"] == 0 and state["red"]["avg_level"] == 1.0
+    assert extract_owned_items(d) == [{"itemID": 1055, "displayName": "도란의 검", "count": 1, "slot": None}]
+
+    coach, _ = api_coach(client)
+    st = OverlayBridge(lambda: d, coach, clock=Clock()).step()  # 예외가 밖으로 나오면 브리지 프로세스가 끝난다
+    assert st["connected"] and st["error"] is None and st["coach_error"] is None
+    # activePlayer.level 이 숫자가 아니면 내 선수 level(1). abilities: Q 0, E 0 → 1레벨 첫 스킬 Q 를 지금
+    assert (st["level"], st["next_skill"], st["next_skill_when"]) == (1, "Q", "now")
+    assert st["owned_items"] == [{"itemID": 1055, "displayName": "도란의 검", "count": 1, "slot": None}]
+
+
+def test_422_retry_also_drops_enemy_items():
+    sent = []
+
+    def coach(state):
+        sent.append(state)
+        if "enemy_items" in state:
+            raise _http_422()
+        return {"ok": True}
+
+    body = {"blue": {}, "red": {}, "enemy_items": [999999]}  # 챔피언 칸 없이 아이템만 있어도 한 번 다시
+    assert coach_with_fallback(coach, body) == {"ok": True}
+    assert sent == [body, {"blue": {}, "red": {}}]

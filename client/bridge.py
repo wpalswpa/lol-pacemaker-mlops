@@ -17,6 +17,11 @@
   enemy_top_threat  상대 팀 최다 킬 선수의 챔피언. 동률이면 최다 CS, 그래도 같으면 목록 순서
   챔피언 이름       rawChampionName "game_character_displayname_<영문 ID>" 의 영문 ID, 없으면 championName.
                     둘 다 없으면 그 칸을 넣지 않는다(서버 기본값). /coach 가 422 면 두 칸을 빼고 한 번 더 부른다
+  enemy_items       상대 위협 선수의 items[].itemID 중 정수이고 1~999999 인 것, 앞에서 12개(Tab 점수판 공개 값).
+                    없으면 칸을 넣지 않는다. 422 로 다시 부를 때는 이 칸도 뺀다
+  덜 찬 응답        연습 모드·리플레이 시작(gameTime 0.0, abilities {}, items [])에도 멈추지 않는다. 숫자가 아닌
+                    itemID·count·abilityLevel·점수는 건너뛰거나 0. 상대 팀 선수가 없으면(연습 모드 혼자) 그 팀은
+                    킬·어시·CS·오브젝트 0, avg_level 은 내 팀 평균과 같게 둔다(레벨 차이 0)
 참고 값 item_gold: 팀 아이템 가격 합(Data Dragon item.json 의 gold.total, 없으면 응답의 price). 로그에만 남기고
   모델 입력으로 쓰지 않는다(학습 데이터의 총골드와 정의가 다르다).
 
@@ -61,6 +66,10 @@ TEAM = {"ORDER": "blue", "CHAOS": "red"}
 STATS = ("kills", "assists", "cs", "avg_level", "dragons", "heralds", "towers")
 RAW_PREFIX = "game_character_displayname_"
 CHAMPION_FIELDS = ("my_champion", "enemy_top_threat")
+# 422 때 빼고 다시 부르는 선택 칸 (빌드 가이드에만 쓰는 칸)
+OPTIONAL_BUILD_FIELDS = CHAMPION_FIELDS + ("enemy_items",)
+ITEM_ID_MAX = 999999  # 3절 enemy_items 허용 범위
+ENEMY_ITEMS_MAX = 12
 # 토스트 카드 테두리 색 (build_advice.state). 웹 시뮬레이터의 테두리 이펙트와 같은 세 색
 GLOW = {"ahead": "#3ddc97", "even": "#ffd34d", "behind": "#ff4d5e"}
 # 3절 허용 범위 (10분 페이스 환산 뒤 자른다)
@@ -87,20 +96,55 @@ def champion_of(p: dict) -> str | None:
     return p.get("championName") or None
 
 
+def _int(v, default: int = 0) -> int:
+    """게임 API 값을 정수로. None·빈 문자열·숫자가 아닌 값이면 default (덜 찬 응답에도 멈추지 않는다)."""
+    try:
+        return int(v)
+    except (TypeError, ValueError, OverflowError):
+        return default
+
+
+def _num(v, default: float = 0.0) -> float:
+    try:
+        x = float(v)
+    except (TypeError, ValueError):
+        return default
+    return x if math.isfinite(x) else default
+
+
+def _score(p: dict, key: str) -> int:
+    return _int((p.get("scores") or {}).get(key))
+
+
+def _items(p: dict | None) -> list[dict]:
+    return [it for it in ((p or {}).get("items") or []) if isinstance(it, dict)]
+
+
 def top_threat(players: list[dict]) -> dict | None:
     """최다 킬, 동률이면 최다 CS, 그래도 같으면 목록 순서가 앞선 선수."""
     if not players:
         return None
     return max(enumerate(players),
-               key=lambda ip: (int(ip[1]["scores"]["kills"]), int(ip[1]["scores"]["creepScore"]), -ip[0]))[1]
+               key=lambda ip: (_score(ip[1], "kills"), _score(ip[1], "creepScore"), -ip[0]))[1]
+
+
+def enemy_item_ids(player: dict | None) -> list[int]:
+    """상대 위협 선수의 공개 아이템 ID. 정수로 읽히고 1~999999 인 것만, 앞에서 12개."""
+    ids = [_int(it.get("itemID")) for it in _items(player)]
+    return [i for i in ids if 1 <= i <= ITEM_ID_MAX][:ENEMY_ITEMS_MAX]
+
+
+def coach_input(state: dict, info: dict) -> dict:
+    """/coach 본문: 점수판 입력 + 공개 아이템이 있으면 enemy_items."""
+    return {**state, "enemy_items": info["enemy_items"]} if info.get("enemy_items") else dict(state)
 
 
 def _item_gold(players: list[dict], prices: dict[str, float] | None) -> float:
     total = 0.0
     for p in players:
-        for it in p.get("items", []):
+        for it in _items(p):
             price = (prices or {}).get(str(it.get("itemID"))) or it.get("price") or 0
-            total += float(price) * int(it.get("count", 1))
+            total += _num(price) * _int(it.get("count", 1), 1)
     return total
 
 
@@ -143,22 +187,25 @@ def to_game_state(data: dict, side: str | None = None, prices: dict[str, float] 
             first_blood = team_of.get(e.get("Recipient", ""))
 
     state: dict = {"first_blood": first_blood or enemy, "my_side": side}
+    levels = {t: [_num(p.get("level"), 1.0) for p in by_team[t]] for t in ("blue", "red")}
     for t in ("blue", "red"):
         ps = by_team[t]
+        other = levels["red" if t == "blue" else "blue"]
+        lv = levels[t] or other or [1.0]  # 선수가 없는 팀(연습 모드 혼자)은 상대 평균과 같게: 레벨 차이 0
         state[t] = {
-            "kills": sum(int(p["scores"]["kills"]) for p in ps),
-            "assists": sum(int(p["scores"]["assists"]) for p in ps),
-            "cs": sum(int(p["scores"]["creepScore"]) for p in ps),
-            "avg_level": sum(float(p["level"]) for p in ps) / len(ps),
+            "kills": sum(_score(p, "kills") for p in ps),
+            "assists": sum(_score(p, "assists") for p in ps),
+            "cs": sum(_score(p, "creepScore") for p in ps),
+            "avg_level": sum(lv) / len(lv),
             **obj[t],
         }
     threat = top_threat(by_team[enemy])
     picks = {"my_champion": champion_of(me_player) if me_player else None,
              "enemy_top_threat": champion_of(threat) if threat else None}
     state.update({k: v for k, v in picks.items() if v})
-    enemy_items = [int(it["itemID"]) for it in (threat or {}).get("items", []) if int(it.get("itemID") or 0) > 0][:12]
+    enemy_items = enemy_item_ids(threat)
     info = {
-        "game_time": float(data["gameData"]["gameTime"]),
+        "game_time": _num(data["gameData"]["gameTime"]),
         "first_blood_seen": first_blood is not None,
         "item_gold": {t: _item_gold(by_team[t], prices) for t in ("blue", "red")},
         "champions": picks,
@@ -168,13 +215,13 @@ def to_game_state(data: dict, side: str | None = None, prices: dict[str, float] 
 
 
 def coach_with_fallback(coach: Callable[[dict], dict], state: dict) -> dict:
-    """/coach 가 챔피언 이름 때문에 422 면(새 챔피언 등) 두 칸을 빼고 한 번만 다시 부른다."""
+    """/coach 가 챔피언 이름 때문에 422 면(새 챔피언 등) 두 칸과 enemy_items 를 빼고 한 번만 다시 부른다."""
     try:
         return coach(state)
     except urllib.error.HTTPError as e:
-        if e.code != 422 or not any(k in state for k in CHAMPION_FIELDS):
+        if e.code != 422 or not any(k in state for k in OPTIONAL_BUILD_FIELDS):
             raise
-        return coach({k: v for k, v in state.items() if k not in CHAMPION_FIELDS})
+        return coach({k: v for k, v in state.items() if k not in OPTIONAL_BUILD_FIELDS})
 
 
 def wait_and_coach(fetch: Callable[[], dict], coach: Callable[[dict], dict],
@@ -187,7 +234,7 @@ def wait_and_coach(fetch: Callable[[], dict], coach: Callable[[dict], dict],
         data = fetch()
         if float(data["gameData"]["gameTime"]) >= TEN_MINUTES:
             state, info = to_game_state(data, side, prices)
-            res = coach_with_fallback(coach, state)
+            res = coach_with_fallback(coach, coach_input(state, info))
             # 문구는 응답의 toast 그대로, 테두리 색은 build_advice.state
             notify(res["toast"], (res.get("build_advice") or {}).get("state"))
             print(json.dumps({"message": res["message"], "item_gold(참고)": info["item_gold"],
@@ -240,9 +287,9 @@ def _me(data: dict) -> dict | None:
 def extract_owned_items(data: dict) -> list[dict]:
     """내 선수(activePlayer 와 같은 이름, 없으면 첫 선수)의 보유 아이템."""
     p = _me(data) or {}
-    return [{"itemID": int(it["itemID"]), "displayName": it.get("displayName", ""),
-             "count": int(it.get("count", 1)), "slot": it.get("slot")}
-            for it in p.get("items", []) if "itemID" in it]
+    return [{"itemID": _int(it["itemID"]), "displayName": it.get("displayName", ""),
+             "count": _int(it.get("count", 1), 1), "slot": it.get("slot")}
+            for it in _items(p) if _int(it.get("itemID")) > 0]
 
 
 def skill_plan(order: str | None, levels: int = 18) -> list[str | None]:
@@ -285,7 +332,7 @@ def _abilities(data: dict) -> dict[str, int] | None:
     ab = (data.get("activePlayer") or {}).get("abilities")
     if not isinstance(ab, dict):
         return None
-    return {k: int(ab[k].get("abilityLevel", 0)) for k in ("Q", "W", "E", "R") if isinstance(ab.get(k), dict)}
+    return {k: _int(ab[k].get("abilityLevel")) for k in ("Q", "W", "E", "R") if isinstance(ab.get(k), dict)}
 
 
 def _order_of(coach: dict | None) -> str | None:
@@ -322,7 +369,7 @@ class OverlayBridge:
         self.state = {"connected": False, "source": source, "in_game": False, "game_time_sec": 0.0,
                       "minutes": None, "pace_scale": None, "updated_at": None, "champion": None, "level": None,
                       "owned_items": [], "next_skill": None, "next_skill_when": None, "features": None,
-                      "raw_features": None, "coach": None, "coach_error": None, "error": None,
+                      "raw_features": None, "enemy_items": [], "coach": None, "coach_error": None, "error": None,
                       "saved_match": None, "save_error": None}
 
     def snapshot(self) -> dict:
@@ -341,16 +388,17 @@ class OverlayBridge:
         minutes, k = pace_scale(gt)
         features = scale_to_ten_minutes(raw, gt)
         me = _me(data) or {}
-        level = int((data.get("activePlayer") or {}).get("level") or me.get("level") or 1)
+        level = _int((data.get("activePlayer") or {}).get("level") or me.get("level"), 1)
         now = self.clock()
 
+        body = coach_input(features, info)
         coach, coach_error = self.state["coach"], None
-        due = self.last_coach_at is None or (features != self.last_coach_input
+        due = self.last_coach_at is None or (body != self.last_coach_input
                                              and now - self.last_coach_at > COACH_MIN_SECONDS)
         if due:
             try:
-                coach = coach_with_fallback(self.coach, features)
-                self.last_coach_input, self.last_coach_at = features, now
+                coach = coach_with_fallback(self.coach, body)
+                self.last_coach_input, self.last_coach_at = body, now
             except Exception as e:  # noqa: BLE001  직전 응답을 그대로 둔다
                 coach_error = f"{type(e).__name__}: {e}"[:200]
                 self.last_coach_at = now
@@ -371,7 +419,8 @@ class OverlayBridge:
             self.state.update(
                 connected=True, in_game=gt > 0, game_time_sec=gt, minutes=minutes, pace_scale=k, updated_at=now,
                 champion=champion_of(me) if me else None, level=level, owned_items=extract_owned_items(data),
-                next_skill=skill, next_skill_when=when, features=features, raw_features=raw, coach=coach,
+                next_skill=skill, next_skill_when=when, features=features, raw_features=raw,
+                enemy_items=info["enemy_items"], coach=coach,
                 coach_error=coach_error if due else self.state["coach_error"], error=None,
                 saved_match=saved_match, save_error=save_error)
         return self.snapshot()
