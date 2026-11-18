@@ -47,7 +47,7 @@ API 계약, 검증 기준 수치, 승격·되돌리기 절차의 정본은 [AGEN
 목표는 "플레이어에게는 1초 안에 읽히는 숫자 목표를, AI 코칭 에이전트에게는 지어내지 않는 계산 도구를 주는 것"이다. 둘은 **같은 JSON 계약**을 쓴다.
 
 1. **게임 중인 플레이어**: 긴 글을 읽을 시간이 없다. 브리지(`client/bridge.py`)가 10분이 되면 한 번만 계산을 받아, 화면 우측 상단에 3줄짜리 작은 카드를 5초 띄웠다가 지우고(테두리가 우세 초록·접전 노랑·열세 빨강으로 빛남), 원하면 음성으로 한 번 읽어 준다. 둘은 `--effect on|off`, `--tts on|off`(또는 환경 변수 `LOL_EFFECT`, `LOL_TTS`)로 따로 켜고 끈다. 내 챔피언과 상대 최다 킬 챔피언은 게임 응답에서 자동으로 찾아 빌드 가이드에 넣는다. "승률 43% · 상위 68% / CS +20 → 53% (상위 45%)". 표나 긴 글은 띄우지 않는다. 카드 문구는 응답의 `toast`를 그대로 쓴다.
-2. **AI 코칭 에이전트(음성 비서, 디스코드 봇)**: 언어 모델이 승률을 어림하면 그럴듯한 숫자를 지어낸다. 원본 프로젝트의 정성 시험(SC-7)에서도 언어 모델이 킬 수만 보고 틀린 조언을 냈다. 에이전트가 `/openapi.json`의 도구(`predict_pace`, `coach_targets`)를 부르면 승률·요인·위치·목표가 담긴 JSON을 받아 그 숫자로만 말한다. 응답의 `model_version`으로 어느 판의 계산인지도 남긴다.
+2. **AI 코칭 에이전트(음성 비서, 디스코드 봇)**: 언어 모델이 승률을 어림하면 그럴듯한 숫자를 지어낸다. 원본 프로젝트의 정성 시험(SC-7)에서도 언어 모델이 킬 수만 보고 틀린 조언을 냈다. 에이전트가 `/openapi.json`의 도구(`predict_pace`, `coach_targets`)를 부르면 승률·요인·위치·목표가 담긴 JSON을 받아 그 숫자로만 말한다. 응답의 `model_version`으로 어느 판의 계산인지도 남긴다. 이 과정을 `client/agent_demo.py`가 그대로 보여 준다(도구 정의 변환 → `coach_targets` 호출 → 응답 숫자만으로 브리핑, 언어 모델 키 없이 재생).
 3. **발표·연습용 웹 시뮬레이터(`GET /`)**: 게임 클라이언트가 없어도 점수판 값과 챔피언을 프리셋·슬라이더·목록으로 바꿔 보는 어두운 카드 화면이다. 초보자가 글을 읽지 않고 따라 하도록 그림으로 보여 준다. 상태에 따라 화면 가장자리와 결과 카드 테두리가 초록(우세 · 적극 교전 가능)·노랑(접전 · 파밍 집중)·빨강(열세 · 1대1 싸움 금지)으로 빛나고 상단 버튼으로 끈다. 티어 분포 막대에는 지금 위치 ●와 첫 목표를 채웠을 때 위치 ★, 그 아래 3단계 행동 카드(예: 🛡️ 1대1 싸움 멈추기 → 🌾 포탑 앞에서 미니언 챙기기 + 첫 목표 → 🏃 아군 강세 라인 합류), Data Dragon 실제 아이콘으로 그린 내 챔피언 대 상대 위협과 아이템 카드 3장(신발 → 하위템 → 코어, 가격과 이유), 스킬 키캡 `[Q] ▶ [E] ▶ [W]`가 나온다. 행동 카드는 상태별 고정 문구이고 아이템·스킬은 규칙표다(AGENTS.md 3-3절).
 
 **입력을 어디서 얻나(합법적 경계)**: 사람이 웹 화면에 넣거나, 브리지가 Riot 공식 로컬 API(`127.0.0.1:2999/liveclientdata/allgamedata`)를 관전·리플레이·연습 모드에서 읽는다. 점수판과 오브젝트 이벤트만 쓰고, 랭크 게임 중에는 쓰지 않는다. Data Dragon 아이템 가격표로 계산한 양 팀 아이템 골드는 참고 값으로 로그에만 남기고 모델에 넣지 않는다. 학습 데이터의 골드(쓰지 않은 골드 포함 총골드)와 정의가 달라 섞으면 학습과 서빙이 어긋나기 때문이다.
@@ -166,7 +166,12 @@ MODEL_IMPL=onnx uv run uvicorn api.app:app --port 8083
 # 4. 브리지 (게임 없이 저장한 응답으로 시연. 실제 게임은 --file 대신 --cafile riotgames.pem)
 uv run python -m client.bridge --api http://127.0.0.1:8083 --file client/tests/fixtures/allgamedata_10min.json --effect on --tts off
 
-# 5. 로컬 전 과정 재현 (승격 m20261118-1 → -2, 깨진 판 자동 복구, 되돌리기)
+# 5. AI 에이전트 도구 호출 시연 (/openapi.json → coach_targets → 근거 수치만으로 브리핑)
+uv run python -m client.agent_demo --server http://127.0.0.1:8083
+
+# 발표 슬라이드: http://127.0.0.1:8083/slides (←·→·스페이스·클릭, 주소 #n 으로 바로 가기)
+
+# 6. 로컬 전 과정 재현 (승격 m20261118-1 → -2, 깨진 판 자동 복구, 되돌리기)
 E2E_DIR="$HOME/Library/Caches/lol-mlops-e2e" bash deploy/local_e2e.sh
 ```
 <!-- RUN:END -->
@@ -182,7 +187,7 @@ lol-pace-mlops/
 ├── 발표대본.md               11/24 5분 발표 대본, 시연 순서, 예상 질문
 ├── pyproject.toml, uv.lock   기본(서빙): fastapi·uvicorn·numpy·onnxruntime / train 그룹: pandas·scikit-learn·torch·onnx
 ├── api/
-│   ├── app.py                GET /health, POST /predict, POST /coach, GET / (웹 시뮬레이터), GET /meta/champions (숨은 경로)
+│   ├── app.py                GET /health, POST /predict, POST /coach, GET / (웹 시뮬레이터), GET /slides (발표 슬라이드), GET /meta/champions (숨은 경로)
 │   ├── contract.py           입력·출력 모델과 422 규칙, 피처 변환
 │   ├── service.py            요인 분해·백분위·코칭·티어 비교 (모든 구현체 공통)
 │   ├── build.py              우세·열세 상태 및 상대 위협 맞춤 아이템·스킬 가이드 계산
@@ -191,10 +196,12 @@ lol-pace-mlops/
 │   ├── coach_steps.json      코칭 단계(올릴 지표와 양, 연쇄 지표)
 │   ├── predictors/           rule · sklearn · dl · onnx (load → predict_proba)
 │   ├── static/index.html     웹 시뮬레이터 (테두리 이펙트 ON/OFF, ●★ 분포 막대, 행동 카드, 아이템·챔피언 아이콘, 스킬 키캡)
+│   ├── static/slides.html    5분 발표 슬라이드 7장 (외부 자원 없는 한 파일, 키보드·클릭·진행 막대)
 │   ├── tests/                계약 테스트와 고정 자료
 │   └── Dockerfile            ONNX Runtime만 담은 서빙 이미지
 ├── client/
 │   ├── bridge.py             로컬 게임 API → 입력 변환(챔피언 자동 추출), 10분 한 번 호출, 테두리 카드·음성 ON/OFF
+│   ├── agent_demo.py         AI 에이전트 시연: /openapi.json → 도구 정의, coach_targets 호출, 응답 숫자만으로 브리핑
 │   └── tests/                변환 테스트와 고정 자료
 ├── training/
 │   ├── data.py               CSV 읽기, 고정 평가셋, DATA_N·DATA_SEED 표본, 기준선·분위수 계산
@@ -237,6 +244,8 @@ lol-pace-mlops/
 | CI/CD `v1.0` (GitHub Actions) | 실행 44255436869, 아티팩트 없이 한 잡 `build` | `test` 성공 → `build` 성공(데이터 받기·게이트·ONNX·Parity·GHCR 푸시) → `deploy` 성공. 서버 `/health`: `status ok`, `onnx`, `v1.0`, `model_version baked` | 통과 |
 | 로컬 E2E 재실행 (2차 PC) | `E2E_DIR=$HOME/Library/Caches/lol-mlops-e2e` | 0단계 테스트 181 passed, 학습 2회(500/0 → m20261118-1, 5000/1 → m20261118-2) 게이트·ONNX(1.19e-07)·Parity(23건 1.19e-07) 통과 후 버킷 폴더에 올림. 2단계 `docker build`에서 이 PC 계정에 Docker 가 없어 exit 127로 멈춤(1차 PC 실행은 exit 0, 위 행) | 일부 |
 | 웹 시뮬레이터 화면 | 헤드리스 Chromium, 1280px·400px | 가로 넘침 0(`scrollWidth` = 화면 폭), Data Dragon 아이콘 5장 로드, 우세·접전·열세 테두리 색, ON/OFF 토글과 새로고침 뒤 유지, 모르는 챔피언 422 때 칸 이름이 든 오류 문구 | 통과 |
+| 발표 슬라이드 `/slides` | 헤드리스 Chromium, 1366px·1024px·400px | 7장 모두 가로 넘침 0, →·←·Home·클릭·`#5` 이동과 진행 막대, 마지막 장 시연 버튼이 `/`로 이동, 외부 요청 0건, 콘솔 오류 0 | 통과 |
+| AI 에이전트 시연 | `client/tests/test_agent_demo.py` 9건, ONNX 서버에 CLI 실행 | 도구 2개(`$ref` 없는 독립 스키마) 추출, 브리핑의 숫자가 모두 응답 값(응답에 없는 숫자를 넣으면 검사가 잡음), `model_version`·`basis` 포함 | 통과 |
 | 규칙 기준선 (`rule`) | 고정 평가셋 1,976경기 | 정확도 **0.7151** · Brier **0.1917** · LogLoss **0.5676** | 기준선 |
 | 성능 게이트 (`DATA_N=500, SEED=0`) | `sklearn` / `dl` | `sklearn`: 정확도 **0.7090**, Brier **0.1891**, LogLoss **0.5555**<br>`dl`: 정확도 **0.7100**, Brier **0.1887**, LogLoss **0.5566** | 통과 |
 | 성능 게이트 (`DATA_N=5000, SEED=1`) | `sklearn` / `dl` | `sklearn`: 정확도 **0.7156**, Brier **0.1824**, LogLoss **0.5385**<br>`dl`: 정확도 **0.7136**, Brier **0.1837**, LogLoss **0.5424** | 통과 |

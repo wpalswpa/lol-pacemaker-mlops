@@ -428,6 +428,16 @@ def test_index_page(client):
     assert "/meta/champions" in res.text
 
 
+def test_slides_page(client, app_module):
+    res = client.get("/slides")
+    assert res.status_code == 200 and "text/html" in res.headers["content-type"]
+    assert res.text.count('<section class="slide"') == 7  # 7장 (AGENTS.md 4절)
+    assert 'href="/"' in res.text  # 시뮬레이터로 가는 링크
+    for ext in ('src="http', "src='http", 'href="http', "href='http", "url(http", "@import"):
+        assert ext not in res.text  # 외부 글꼴·CDN·그림을 불러오지 않는다
+    assert "/slides" not in app_module.app.openapi()["paths"]  # 에이전트 도구에는 안 보인다
+
+
 def test_meta_champions_for_simulator(client):
     game = json.load(open(os.path.join(os.path.dirname(FIXTURES), "..", "game_data.json"), encoding="utf-8"))
     rules = json.load(open(os.path.join(os.path.dirname(FIXTURES), "..", "build_rules.json"), encoding="utf-8"))

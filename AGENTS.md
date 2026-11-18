@@ -220,10 +220,28 @@
 
 `champions`는 `game_data.json`의 모든 챔피언, 한국어 이름 순. `roles`는 규칙표 `role_class`의 키, `threat_types`는 규칙표 `threat_types` 그대로다.
 
+### `GET /slides` (발표 슬라이드, `include_in_schema=False`)
+
+`api/static/slides.html`을 그대로 돌려준다(`text/html`). 5분 발표용 7장 슬라이드이고 `발표대본.md`의 다섯 구간과 같은 순서다. 키보드 좌우 화살표·스페이스·클릭으로 넘기고, 위쪽 진행 막대와 `n / 7` 표시, 주소 `#n`으로 바로 가기를 지원한다. 외부 글꼴·CDN·그림 없이 한 파일로 완결한다(발표장 네트워크가 막혀도 뜬다). 시뮬레이터(`GET /`)와 서로 가는 링크를 둔다. 수치는 README 12절의 실측값만 쓴다.
+
 ### AI 에이전트 연동
 
 - `GET /openapi.json`이 두 도구(`predict_pace`, `coach_targets`)의 입력·출력 스키마를 그대로 내준다. 에이전트는 이 스키마로 함수 호출 도구를 만든다.
 - 에이전트는 승률·요인·목표를 스스로 계산하지 않고 응답의 숫자만 말한다. 원본 프로젝트의 정성 시험(SC-7)에서 언어 모델이 킬 수만 보고 틀린 조언을 낸 일이 있어서다. 답할 때 `model_version`을 함께 남겨 어느 판의 계산인지 추적한다.
+
+**시연 스크립트 `client/agent_demo.py`** ("AI에게 서비스를 제공한다면 어떻게 하나"를 보여 주는 데모)
+
+언어 모델 API를 부르지 않는다(키 없이 발표장에서 돌고, 테스트할 수 있게). 언어 모델이 할 일 중 "어느 도구를 어떤 인자로 부를지"는 시나리오에 적어 두고 그대로 재생하고, 나머지(도구 정의 만들기, 도구 실행, 응답으로 브리핑 쓰기)는 실제로 한다. 실제 언어 모델에 붙일 때는 `load_tool_schemas`가 만든 도구 정의를 그대로 넘기면 된다.
+
+| 함수 | 계약 |
+|---|---|
+| `load_tool_schemas(base_url, get=None)` | `GET {base_url}/openapi.json`에서 `operationId`가 `predict_pace`·`coach_targets`인 POST 경로를 찾아 함수 호출 도구 정의 목록으로 바꾼다. 각 항목 `{name, description, input_schema, path}`. `description`은 경로의 설명 문장, `input_schema`는 요청 본문 스키마에서 `$ref`를 모두 풀어 넣은 독립 JSON Schema(`additionalProperties: false`, `required` 유지). `path`는 도구를 실행할 경로이고 언어 모델에 넘길 때는 뺀다. 두 도구 중 하나라도 없으면 `ValueError` |
+| `run_agent_briefing(base_url, scenario=SCENARIO, get=None, post=None)` | 도구 정의 조회 → 시나리오의 도구 호출(`tool`, `input`) 실행(`POST {path}`) → `compose_briefing`. `{tools, tool_call, response, briefing}`을 돌려준다. 시나리오가 고른 도구가 정의 목록에 없으면 `ValueError`, 서버가 422면 그 오류를 그대로 올린다 |
+| `compose_briefing(response)` | `/coach` 응답만으로 한국어 브리핑 한 문단을 만든다. 쓰는 값: `my_win_prob`, `pace`, `tier_percentile.overall_top_pct`, `top_factors`(앞 2개), `coaching[0]`(`name`·`add`·`win_prob_after`·`gain_pp`), `horizon_min`, `build_advice`(`state`·`enemy_top_threat`·`threat_type`·`recommended_items`·`skill_order.order`), `warnings`, `how_to_read`, `model_version`, `basis` |
+
+- **지어낸 숫자 금지**: 브리핑에 나오는 모든 숫자는 응답 JSON에 있는 값이거나 그 값을 반올림한 것(확률은 ×100)이어야 한다. 문장 틀에 숫자를 직접 쓰지 않는다("1순위" 대신 "가장 크게"). 테스트가 브리핑의 숫자를 모두 뽑아 응답에서 나올 수 있는 값인지 확인한다.
+- 목표가 없으면 "지금 페이스 유지", `warnings`가 있으면 학습 범위 밖 입력이라 조심하라는 문장을 넣는다. 끝에 `how_to_read`와 출처(`model_version`, `basis`)를 붙인다.
+- 실행: `uv run python -m client.agent_demo --server http://127.0.0.1:8083` (`--json`이면 도구 정의와 응답 전체를 JSON으로).
 
 ### 오류
 
@@ -255,7 +273,7 @@ p_blue   = 1 / (1 + exp(−gold_est / 2500))
 
 ## 7. 테스트 작성 규칙 (`api/tests/`, `client/tests/`, `deploy/tests/`)
 
-- **범위**: `/predict`·`/coach`의 응답 형식과 계산 정의, 규칙 기준선 값, 백분위 계산(보간·동점 구간·표 밖), 입력 검증(422 목록 전부), `/health`, `/openapi.json`의 도구 이름, 레드 기준 뒤집기, 경계값(허용 범위의 끝, 하나 밖). 빌드 가이드의 규칙표 적용 순서(상태·계열·위협 조합)와 선택 칸 해석(이름·역할군·생략·없는 이름 422). `GET /meta/champions`의 형식과 스키마 숨김. 브리지의 응답 변환, 내 챔피언·상대 최다 킬(동률이면 최다 CS) 챔피언 찾기, 422 때 두 칸 빼고 한 번 다시 부르기, 10분 한 번 호출, `--effect`·`--tts` 옵션과 환경 변수의 우선순위. `server.sh`의 판 형식 검사와 실패 시 되돌리기.
+- **범위**: `/predict`·`/coach`의 응답 형식과 계산 정의, 규칙 기준선 값, 백분위 계산(보간·동점 구간·표 밖), 입력 검증(422 목록 전부), `/health`, `/openapi.json`의 도구 이름, 레드 기준 뒤집기, 경계값(허용 범위의 끝, 하나 밖). 빌드 가이드의 규칙표 적용 순서(상태·계열·위협 조합)와 선택 칸 해석(이름·역할군·생략·없는 이름 422). `GET /meta/champions`의 형식과 스키마 숨김, `GET /slides`가 HTML을 돌려주는지. `client/agent_demo.py`의 도구 정의 변환(`$ref` 풀기, 두 도구), 브리핑에 응답의 승률·목표·아이템·`model_version`·`basis`가 들어가고 응답에 없는 숫자가 없는지. 브리지의 응답 변환, 내 챔피언·상대 최다 킬(동률이면 최다 CS) 챔피언 찾기, 422 때 두 칸 빼고 한 번 다시 부르기, 10분 한 번 호출, `--effect`·`--tts` 옵션과 환경 변수의 우선순위. `server.sh`의 판 형식 검사와 실패 시 되돌리기.
 - **범위 밖**: 학습한 모델의 성능(`training/validate_model.py` 담당), 원본과 ONNX의 일치(`training/check_parity.py` 담당), 실제 Docker 컨테이너 기동(`deploy/local_e2e.sh` 담당).
 - **기대값의 출처**: 5절 규칙 식과 4절 정의, 고정 자료 `api/tests/fixtures/baseline.json`에서 테스트 안에서 손으로 계산한다. **현재 코드의 출력을 정답으로 옮겨 적지 않는다.** 옮겨 적으면 버그도 정답이 된다.
 - API 테스트는 `MODEL_IMPL=rule`, `MODEL_DIR=api/tests/fixtures`로 돌린다. 학습 산출물·Docker가 없어도 돌아야 하고, **skipped는 0건**이어야 한다.
