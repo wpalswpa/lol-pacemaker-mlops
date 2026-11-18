@@ -998,3 +998,39 @@ def test_launch_popup_reports_into_bridge_state(monkeypatch, system, how, cmd, w
         assert st["error"] == "Chrome·Edge 가 없어 항상 위로 고정할 수 없다"
     b.step()
     assert b.snapshot()["popup"]["how"] == how  # 게임 상태를 갱신해도 popup 은 남는다
+
+
+# ── 시각 경고 (AGENTS.md 3-4절 "시각 경고", docs/pace_scaling_analysis.md 5절) ──
+from client.bridge import PACE_EARLY_END, PACE_LATE_FROM, PACE_TEXT, PACE_VERY_LATE_FROM, pace_warning  # noqa: E402
+
+
+@pytest.mark.parametrize("seconds, level, text", [
+    (0.0, "early", "초반 환산 ×10.0 · 킬 1개가 10분보다 크게 반영돼요"),     # 1분 전은 1분으로 보아 ×10
+    (300.0, "early", "초반 환산 ×2.0 · 킬 1개가 10분보다 크게 반영돼요"),
+    (449.9, "early", "초반 환산 ×1.3 · 킬 1개가 10분보다 크게 반영돼요"),    # 10/7.498 = 1.33
+    (450.0, None, None),                                                   # 7:30 부터는 초반 경고 없음
+    (600.0, None, None),
+    (719.9, None, None),
+    (720.0, "late", "12분 이후 · 10분 모델 범위 밖(레벨) · 승률은 참고만"),  # 12:00 부터
+    (1199.9, "late", "12분 이후 · 10분 모델 범위 밖(레벨) · 승률은 참고만"),
+    (1200.0, "very_late", "20분 이후 · 포탑 차이도 범위 밖 · 우세·열세 방향만 보세요"),
+    (1500.0, "very_late", "20분 이후 · 포탑 차이도 범위 밖 · 우세·열세 방향만 보세요"),
+])
+def test_pace_warning_boundaries(seconds, level, text):
+    w = pace_warning(seconds)
+    assert (w and (w["level"], w["text"])) == ((level, text) if level else None)
+
+
+def test_pace_warning_in_bridge_state():
+    for seconds, want in ((390.0, "early"), (600.0, None), (860.0, "late"), (1390.0, "very_late")):  # 데모 세 시각 + 10분
+        st = make_bridge([at(seconds)], Clock(), []).step()
+        assert (st["pace_warning"] or {}).get("level") == want, seconds
+
+
+def test_hud_uses_same_pace_boundaries_and_texts(client):  # noqa: F811
+    t = client.get("/overlay").text
+    assert (f"PACE_EARLY_END = {PACE_EARLY_END:g}, PACE_LATE_FROM = {PACE_LATE_FROM:g}, "
+            f"PACE_VERY_LATE_FROM = {PACE_VERY_LATE_FROM:g}") in t
+    assert PACE_TEXT["late"] in t and PACE_TEXT["very_late"] in t
+    assert PACE_TEXT["early"].replace("{scale}", "${(10 / Math.max(t / 60, 1)).toFixed(1)}") in t
+    assert 'id="paceWarn"' in t and '$("paceWarn").textContent = pw ? pw.text : ""' in t

@@ -258,6 +258,27 @@ def pace_scale(game_time: float) -> tuple[float, float]:
     return minutes, 10.0 / minutes
 
 
+# 시각 경고 (AGENTS.md 3-4절 "시각 경고", 근거 docs/pace_scaling_analysis.md 5절). HUD 데모도 같은 경계·문구를 쓴다
+PACE_EARLY_END, PACE_LATE_FROM, PACE_VERY_LATE_FROM = 450.0, 720.0, 1200.0
+PACE_TEXT = {
+    "early": "초반 환산 ×{scale} · 킬 1개가 10분보다 크게 반영돼요",
+    "late": "12분 이후 · 10분 모델 범위 밖(레벨) · 승률은 참고만",
+    "very_late": "20분 이후 · 포탑 차이도 범위 밖 · 우세·열세 방향만 보세요",
+}
+
+
+def pace_warning(game_time: float) -> dict | None:
+    """경과 초 → {"level", "text"} 또는 None. 경계 시각은 그 구간에 들어간다."""
+    t = float(game_time)
+    if t < PACE_EARLY_END:
+        return {"level": "early", "text": PACE_TEXT["early"].format(scale=f"{pace_scale(t)[1]:.1f}")}
+    if t >= PACE_VERY_LATE_FROM:
+        return {"level": "very_late", "text": PACE_TEXT["very_late"]}
+    if t >= PACE_LATE_FROM:
+        return {"level": "late", "text": PACE_TEXT["late"]}
+    return None
+
+
 def scale_to_ten_minutes(state: dict, game_time: float) -> dict:
     """누적 지표를 "지금 속도로 10분이 되었을 때" 값으로. avg_level·first_blood·챔피언 칸은 그대로."""
     _, k = pace_scale(game_time)
@@ -370,7 +391,7 @@ class OverlayBridge:
                       "minutes": None, "pace_scale": None, "updated_at": None, "champion": None, "level": None,
                       "owned_items": [], "next_skill": None, "next_skill_when": None, "features": None,
                       "raw_features": None, "enemy_items": [], "coach": None, "coach_error": None, "error": None,
-                      "saved_match": None, "save_error": None, "popup": None}
+                      "saved_match": None, "save_error": None, "popup": None, "pace_warning": None}
 
     def snapshot(self) -> dict:
         with self.lock:
@@ -423,6 +444,7 @@ class OverlayBridge:
         with self.lock:
             self.state.update(
                 connected=True, in_game=gt > 0, game_time_sec=gt, minutes=minutes, pace_scale=k, updated_at=now,
+                pace_warning=pace_warning(gt),
                 champion=champion_of(me) if me else None, level=level, owned_items=extract_owned_items(data),
                 next_skill=skill, next_skill_when=when, features=features, raw_features=raw,
                 enemy_items=info["enemy_items"], coach=coach,

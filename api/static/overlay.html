@@ -85,6 +85,8 @@
   .key.off { color: var(--sub); background: linear-gradient(#232b38, #1a212d); border-color: #3a475a; }
   .order-keys { display: flex; align-items: center; gap: 4px; color: var(--dim); flex: none; }
   .tip { color: var(--sub); font-size: 11px; margin: 4px 0 0; overflow-wrap: anywhere; }
+  .pace-warn { margin-top: 3px; font-size: 10.5px; color: var(--yellow); overflow-wrap: anywhere; }
+  .pace-warn.very_late { color: var(--red); }
   .brief-text { margin: 0; font-size: 11px; line-height: 1.45; color: var(--text); overflow-wrap: anywhere; }
   .brief-src { font-size: 10px; font-weight: 700; color: var(--dim); }
   .brief-src.llm { color: var(--green, #3ddc97); }
@@ -113,6 +115,7 @@
     <span class="tac even" id="tac">계산 중</span>
     <div class="msg" id="msg">게임 중 상태를 기다리는 중</div>
     <div class="warn" id="warn" hidden>학습 범위 밖 입력이 있어요. 수치를 조심해서 보세요</div>
+    <div class="pace-warn" id="paceWarn" hidden></div>
   </section>
 
   <section class="sec" aria-label="시작·상황별 아이템">
@@ -233,6 +236,15 @@ function miniRow(target, items, owned) {  // 아이콘만, 이름·이유는 말
   }));
 }
 
+// 시각 경고 (AGENTS.md 3-4절 "시각 경고"). client/bridge.py 의 pace_warning 과 같은 경계·문구
+const PACE_EARLY_END = 450, PACE_LATE_FROM = 720, PACE_VERY_LATE_FROM = 1200;
+function paceWarning(t) {
+  if (t < PACE_EARLY_END) return { level: "early", text: `초반 환산 ×${(10 / Math.max(t / 60, 1)).toFixed(1)} · 킬 1개가 10분보다 크게 반영돼요` };
+  if (t >= PACE_VERY_LATE_FROM) return { level: "very_late", text: "20분 이후 · 포탑 차이도 범위 밖 · 우세·열세 방향만 보세요" };
+  if (t >= PACE_LATE_FROM) return { level: "late", text: "12분 이후 · 10분 모델 범위 밖(레벨) · 승률은 참고만" };
+  return null;
+}
+
 function buildView(coach) {  // 응답 → 화면 칸 (AGENTS.md 3-4절 표의 이름)
   const b = coach.build_advice;
   const c = coach.coaching[0];
@@ -258,6 +270,10 @@ function render() {
   $("msg").textContent = v.coach_message;
   $("warn").hidden = !(coach.warnings && coach.warnings.length);
   $("scaleNote").textContent = `10분 페이스 환산 · ${mmss(view.t)}`;
+  const pw = view.mode === "live" && "pace" in view ? view.pace : paceWarning(view.t);
+  $("paceWarn").hidden = !pw;
+  $("paceWarn").className = `pace-warn ${pw ? pw.level : ""}`;
+  $("paceWarn").textContent = pw ? pw.text : "";
   $("champ").textContent = [b.my_champion, b.enemy_top_threat && `vs ${b.enemy_top_threat}`].filter(Boolean).join(" ");
   miniRow($("starter"), v.starter_items, view.owned);
   miniRow($("situ"), v.situational_items, view.owned);
@@ -365,7 +381,7 @@ document.querySelectorAll("[data-demo]").forEach((btn) => btn.addEventListener("
 function applyLive(st) {
   const body = st.features ? { ...st.features, ...((st.enemy_items || []).length ? { enemy_items: st.enemy_items } : {}) } : null;
   view = { mode: "live", t: st.game_time_sec, coach: st.coach, owned: new Set((st.owned_items || []).map((i) => i.itemID)),
-           level: st.level, next: st.next_skill, when: st.next_skill_when, body };
+           level: st.level, next: st.next_skill, when: st.next_skill_when, body, pace: st.pace_warning || null };
   render();
 }
 async function poll() {

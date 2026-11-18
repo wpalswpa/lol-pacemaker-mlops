@@ -1,0 +1,2645 @@
+{
+ "bounds": {
+  "feature": {
+   "kills": [
+    -10.0,
+    10.0
+   ],
+   "assists": [
+    -14.0,
+    14.0
+   ],
+   "cs": [
+    -83.22,
+    83.0
+   ],
+   "avg_level": [
+    -1.2000000476837158,
+    1.2000000476837158
+   ],
+   "dragons": [
+    -1.0,
+    1.0
+   ],
+   "heralds": [
+    -1.0,
+    1.0
+   ],
+   "towers": [
+    -1.0,
+    1.0
+   ]
+  },
+  "team": {
+   "kills": [
+    1.0,
+    14.0
+   ],
+   "assists": [
+    0.0,
+    18.0
+   ],
+   "cs": [
+    205.0,
+    324.0
+   ],
+   "avg_level": [
+    6.2,
+    7.6
+   ],
+   "dragons": [
+    0.0,
+    1.0
+   ],
+   "heralds": [
+    0.0,
+    1.0
+   ],
+   "towers": [
+    0.0,
+    1.0
+   ]
+  }
+ },
+ "n_games": 9879,
+ "n_team_rows": 19758,
+ "times": {
+  "5": {
+   "minutes": 5.0,
+   "pace_scale": 2.0,
+   "boards": [
+    {
+     "name": "접전",
+     "raw": {
+      "blue": {
+       "kills": 2,
+       "assists": 2,
+       "cs": 118,
+       "avg_level": 4.9,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      },
+      "red": {
+       "kills": 2,
+       "assists": 2,
+       "cs": 118,
+       "avg_level": 4.9,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      }
+     },
+     "scaled": {
+      "blue": {
+       "kills": 4,
+       "assists": 4,
+       "cs": 236,
+       "avg_level": 4.9,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      },
+      "red": {
+       "kills": 4,
+       "assists": 4,
+       "cs": 236,
+       "avg_level": 4.9,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      }
+     },
+     "win_prob_pct": 52.7765154838562,
+     "kill_pp": 7.753652572631836,
+     "features": [],
+     "team": [
+      "blue.avg_level",
+      "red.avg_level"
+     ]
+    },
+    {
+     "name": "우세",
+     "raw": {
+      "blue": {
+       "kills": 3,
+       "assists": 4,
+       "cs": 125,
+       "avg_level": 5.199999999999999,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      },
+      "red": {
+       "kills": 2,
+       "assists": 2,
+       "cs": 112,
+       "avg_level": 4.699999999999999,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      }
+     },
+     "scaled": {
+      "blue": {
+       "kills": 6,
+       "assists": 8,
+       "cs": 250,
+       "avg_level": 5.199999999999999,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      },
+      "red": {
+       "kills": 4,
+       "assists": 4,
+       "cs": 224,
+       "avg_level": 4.699999999999999,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      }
+     },
+     "win_prob_pct": 75.79882740974426,
+     "kill_pp": 5.3255438804626465,
+     "features": [],
+     "team": [
+      "blue.avg_level",
+      "red.avg_level"
+     ]
+    },
+    {
+     "name": "열세",
+     "raw": {
+      "blue": {
+       "kills": 2,
+       "assists": 2,
+       "cs": 112,
+       "avg_level": 4.699999999999999,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      },
+      "red": {
+       "kills": 3,
+       "assists": 4,
+       "cs": 125,
+       "avg_level": 5.199999999999999,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      }
+     },
+     "scaled": {
+      "blue": {
+       "kills": 4,
+       "assists": 4,
+       "cs": 224,
+       "avg_level": 4.699999999999999,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      },
+      "red": {
+       "kills": 6,
+       "assists": 8,
+       "cs": 250,
+       "avg_level": 5.199999999999999,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      }
+     },
+     "win_prob_pct": 28.509414196014404,
+     "kill_pp": 6.858608245849609,
+     "features": [],
+     "team": [
+      "blue.avg_level",
+      "red.avg_level"
+     ]
+    }
+   ],
+   "projected": {
+    "feature_ood_pct": {
+     "kills": 0.1518372304889159,
+     "assists": 0.2631845328474542,
+     "cs": 1.0223706852920336,
+     "avg_level": 0.9312683469986841,
+     "dragons": 0.0,
+     "heralds": 0.0,
+     "towers": 0.0
+    },
+    "team_ood_pct": {
+     "kills": 3.66433849579917,
+     "assists": 0.1467759894726187,
+     "cs": 8.928029152748254,
+     "avg_level": 100.0,
+     "dragons": 0.0,
+     "heralds": 0.0,
+     "towers": 0.0
+    },
+    "any_ood_pct": 100.0,
+    "kill_pp_mean": 6.255720615386963,
+    "kill_pp_p10": 3.5929059982299805,
+    "kill_pp_p90": 7.859068870544434,
+    "kill_pp_zero_pct": 0.0
+   }
+  },
+  "10": {
+   "minutes": 10.0,
+   "pace_scale": 1.0,
+   "boards": [
+    {
+     "name": "접전",
+     "raw": {
+      "blue": {
+       "kills": 6,
+       "assists": 6,
+       "cs": 269,
+       "avg_level": 7.0,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      },
+      "red": {
+       "kills": 6,
+       "assists": 6,
+       "cs": 269,
+       "avg_level": 7.0,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      }
+     },
+     "scaled": {
+      "blue": {
+       "kills": 6,
+       "assists": 6,
+       "cs": 269,
+       "avg_level": 7.0,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      },
+      "red": {
+       "kills": 6,
+       "assists": 6,
+       "cs": 269,
+       "avg_level": 7.0,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      }
+     },
+     "win_prob_pct": 52.7765154838562,
+     "kill_pp": 3.9178013801574707,
+     "features": [],
+     "team": []
+    },
+    {
+     "name": "우세",
+     "raw": {
+      "blue": {
+       "kills": 8,
+       "assists": 9,
+       "cs": 285,
+       "avg_level": 7.3,
+       "dragons": 1,
+       "heralds": 0,
+       "towers": 0
+      },
+      "red": {
+       "kills": 5,
+       "assists": 5,
+       "cs": 255,
+       "avg_level": 6.8,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      }
+     },
+     "scaled": {
+      "blue": {
+       "kills": 8,
+       "assists": 9,
+       "cs": 285,
+       "avg_level": 7.3,
+       "dragons": 1,
+       "heralds": 0,
+       "towers": 0
+      },
+      "red": {
+       "kills": 5,
+       "assists": 5,
+       "cs": 255,
+       "avg_level": 6.8,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      }
+     },
+     "win_prob_pct": 83.75863432884216,
+     "kill_pp": 2.0391225814819336,
+     "features": [],
+     "team": []
+    },
+    {
+     "name": "열세",
+     "raw": {
+      "blue": {
+       "kills": 5,
+       "assists": 5,
+       "cs": 255,
+       "avg_level": 6.8,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      },
+      "red": {
+       "kills": 8,
+       "assists": 9,
+       "cs": 285,
+       "avg_level": 7.3,
+       "dragons": 1,
+       "heralds": 0,
+       "towers": 0
+      }
+     },
+     "scaled": {
+      "blue": {
+       "kills": 5,
+       "assists": 5,
+       "cs": 255,
+       "avg_level": 6.8,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      },
+      "red": {
+       "kills": 8,
+       "assists": 9,
+       "cs": 285,
+       "avg_level": 7.3,
+       "dragons": 1,
+       "heralds": 0,
+       "towers": 0
+      }
+     },
+     "win_prob_pct": 19.49710249900818,
+     "kill_pp": 2.603520393371582,
+     "features": [],
+     "team": []
+    }
+   ],
+   "projected": {
+    "feature_ood_pct": {
+     "kills": 1.3564125923676487,
+     "assists": 1.5892296791173197,
+     "cs": 1.9941289604210952,
+     "avg_level": 0.9312683469986841,
+     "dragons": 0.0,
+     "heralds": 0.0,
+     "towers": 0.6275938860208523
+    },
+    "team_ood_pct": {
+     "kills": 1.4576374126935925,
+     "assists": 0.9616357930964672,
+     "cs": 1.9232715861929344,
+     "avg_level": 1.0122482032594393,
+     "dragons": 0.0,
+     "heralds": 0.0,
+     "towers": 0.32391942504302057
+    },
+    "any_ood_pct": 10.335054155278875,
+    "kill_pp_mean": 2.8521924018859863,
+    "kill_pp_p10": 1.2073277235031128,
+    "kill_pp_p90": 3.9229273796081543,
+    "kill_pp_zero_pct": 0.0
+   }
+  },
+  "15": {
+   "minutes": 15.0,
+   "pace_scale": 0.6666666666666666,
+   "boards": [
+    {
+     "name": "접전",
+     "raw": {
+      "blue": {
+       "kills": 10,
+       "assists": 10,
+       "cs": 420,
+       "avg_level": 9.899999999999999,
+       "dragons": 1,
+       "heralds": 1,
+       "towers": 1
+      },
+      "red": {
+       "kills": 10,
+       "assists": 10,
+       "cs": 420,
+       "avg_level": 9.899999999999999,
+       "dragons": 1,
+       "heralds": 1,
+       "towers": 1
+      }
+     },
+     "scaled": {
+      "blue": {
+       "kills": 7,
+       "assists": 7,
+       "cs": 280,
+       "avg_level": 9.899999999999999,
+       "dragons": 1,
+       "heralds": 1,
+       "towers": 1
+      },
+      "red": {
+       "kills": 7,
+       "assists": 7,
+       "cs": 280,
+       "avg_level": 9.899999999999999,
+       "dragons": 1,
+       "heralds": 1,
+       "towers": 1
+      }
+     },
+     "win_prob_pct": 52.7765154838562,
+     "kill_pp": 0.0,
+     "features": [],
+     "team": [
+      "blue.avg_level",
+      "red.avg_level"
+     ]
+    },
+    {
+     "name": "우세",
+     "raw": {
+      "blue": {
+       "kills": 14,
+       "assists": 15,
+       "cs": 445,
+       "avg_level": 10.2,
+       "dragons": 2,
+       "heralds": 1,
+       "towers": 1
+      },
+      "red": {
+       "kills": 8,
+       "assists": 8,
+       "cs": 398,
+       "avg_level": 9.7,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 1
+      }
+     },
+     "scaled": {
+      "blue": {
+       "kills": 9,
+       "assists": 10,
+       "cs": 297,
+       "avg_level": 10.2,
+       "dragons": 1,
+       "heralds": 1,
+       "towers": 1
+      },
+      "red": {
+       "kills": 5,
+       "assists": 5,
+       "cs": 265,
+       "avg_level": 9.7,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 1
+      }
+     },
+     "win_prob_pct": 87.69318461418152,
+     "kill_pp": 1.6082286834716797,
+     "features": [],
+     "team": [
+      "blue.avg_level",
+      "red.avg_level"
+     ]
+    },
+    {
+     "name": "열세",
+     "raw": {
+      "blue": {
+       "kills": 8,
+       "assists": 8,
+       "cs": 398,
+       "avg_level": 9.7,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 1
+      },
+      "red": {
+       "kills": 14,
+       "assists": 15,
+       "cs": 445,
+       "avg_level": 10.2,
+       "dragons": 2,
+       "heralds": 1,
+       "towers": 1
+      }
+     },
+     "scaled": {
+      "blue": {
+       "kills": 5,
+       "assists": 5,
+       "cs": 265,
+       "avg_level": 9.7,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 1
+      },
+      "red": {
+       "kills": 9,
+       "assists": 10,
+       "cs": 297,
+       "avg_level": 10.2,
+       "dragons": 1,
+       "heralds": 1,
+       "towers": 1
+      }
+     },
+     "win_prob_pct": 14.914281666278839,
+     "kill_pp": 2.12105655670166,
+     "features": [],
+     "team": [
+      "blue.avg_level",
+      "red.avg_level"
+     ]
+    }
+   ],
+   "projected": {
+    "feature_ood_pct": {
+     "kills": 3.1177244660390726,
+     "assists": 3.2290717683976107,
+     "cs": 2.4901305800182203,
+     "avg_level": 0.9312683469986841,
+     "dragons": 0.0,
+     "heralds": 0.0,
+     "towers": 1.3766575564328374
+    },
+    "team_ood_pct": {
+     "kills": 3.4365826500657963,
+     "assists": 2.095353780747039,
+     "cs": 4.317238586901508,
+     "avg_level": 99.9949387589837,
+     "dragons": 0.0,
+     "heralds": 0.0,
+     "towers": 1.0173094442757364
+    },
+    "any_ood_pct": 100.0,
+    "kill_pp_mean": 1.7312896251678467,
+    "kill_pp_p10": 0.0,
+    "kill_pp_p90": 3.786705255508423,
+    "kill_pp_zero_pct": 30.711610486891384
+   }
+  },
+  "20": {
+   "minutes": 20.0,
+   "pace_scale": 0.5,
+   "boards": [
+    {
+     "name": "접전",
+     "raw": {
+      "blue": {
+       "kills": 15,
+       "assists": 15,
+       "cs": 571,
+       "avg_level": 11.899999999999999,
+       "dragons": 1,
+       "heralds": 1,
+       "towers": 3
+      },
+      "red": {
+       "kills": 15,
+       "assists": 15,
+       "cs": 571,
+       "avg_level": 11.899999999999999,
+       "dragons": 1,
+       "heralds": 1,
+       "towers": 3
+      }
+     },
+     "scaled": {
+      "blue": {
+       "kills": 8,
+       "assists": 8,
+       "cs": 286,
+       "avg_level": 11.899999999999999,
+       "dragons": 1,
+       "heralds": 1,
+       "towers": 2
+      },
+      "red": {
+       "kills": 8,
+       "assists": 8,
+       "cs": 286,
+       "avg_level": 11.899999999999999,
+       "dragons": 1,
+       "heralds": 1,
+       "towers": 2
+      }
+     },
+     "win_prob_pct": 52.7765154838562,
+     "kill_pp": 0.0,
+     "features": [],
+     "team": [
+      "blue.avg_level",
+      "blue.towers",
+      "red.avg_level",
+      "red.towers"
+     ]
+    },
+    {
+     "name": "우세",
+     "raw": {
+      "blue": {
+       "kills": 20,
+       "assists": 22,
+       "cs": 605,
+       "avg_level": 12.2,
+       "dragons": 2,
+       "heralds": 1,
+       "towers": 4
+      },
+      "red": {
+       "kills": 12,
+       "assists": 12,
+       "cs": 542,
+       "avg_level": 11.7,
+       "dragons": 1,
+       "heralds": 0,
+       "towers": 2
+      }
+     },
+     "scaled": {
+      "blue": {
+       "kills": 10,
+       "assists": 11,
+       "cs": 303,
+       "avg_level": 12.2,
+       "dragons": 1,
+       "heralds": 1,
+       "towers": 2
+      },
+      "red": {
+       "kills": 6,
+       "assists": 6,
+       "cs": 271,
+       "avg_level": 11.7,
+       "dragons": 1,
+       "heralds": 0,
+       "towers": 1
+      }
+     },
+     "win_prob_pct": 88.55671882629395,
+     "kill_pp": 1.5081703662872314,
+     "features": [],
+     "team": [
+      "blue.avg_level",
+      "blue.towers",
+      "red.avg_level"
+     ]
+    },
+    {
+     "name": "열세",
+     "raw": {
+      "blue": {
+       "kills": 12,
+       "assists": 12,
+       "cs": 542,
+       "avg_level": 11.7,
+       "dragons": 1,
+       "heralds": 0,
+       "towers": 2
+      },
+      "red": {
+       "kills": 20,
+       "assists": 22,
+       "cs": 605,
+       "avg_level": 12.2,
+       "dragons": 2,
+       "heralds": 1,
+       "towers": 4
+      }
+     },
+     "scaled": {
+      "blue": {
+       "kills": 6,
+       "assists": 6,
+       "cs": 271,
+       "avg_level": 11.7,
+       "dragons": 1,
+       "heralds": 0,
+       "towers": 1
+      },
+      "red": {
+       "kills": 10,
+       "assists": 11,
+       "cs": 303,
+       "avg_level": 12.2,
+       "dragons": 1,
+       "heralds": 1,
+       "towers": 2
+      }
+     },
+     "win_prob_pct": 13.896767795085907,
+     "kill_pp": 2.0033910274505615,
+     "features": [],
+     "team": [
+      "blue.avg_level",
+      "red.avg_level",
+      "red.towers"
+     ]
+    }
+   ],
+   "projected": {
+    "feature_ood_pct": {
+     "kills": 4.413402166211155,
+     "assists": 4.433647130276343,
+     "cs": 2.733070148800486,
+     "avg_level": 0.9312683469986841,
+     "dragons": 5.132098390525357,
+     "heralds": 0.0,
+     "towers": 14.141107399534366
+    },
+    "team_ood_pct": {
+     "kills": 5.536997671829132,
+     "assists": 4.418463407227452,
+     "cs": 6.847859095050106,
+     "avg_level": 100.0,
+     "dragons": 3.3353578297398525,
+     "heralds": 0.0,
+     "towers": 71.8341937443061
+    },
+    "any_ood_pct": 100.0,
+    "kill_pp_mean": 1.20470130443573,
+    "kill_pp_p10": 0.0,
+    "kill_pp_p90": 3.725144863128662,
+    "kill_pp_zero_pct": 49.83297904646219
+   }
+  },
+  "25": {
+   "minutes": 25.0,
+   "pace_scale": 0.4,
+   "boards": [
+    {
+     "name": "접전",
+     "raw": {
+      "blue": {
+       "kills": 20,
+       "assists": 20,
+       "cs": 722,
+       "avg_level": 13.399999999999999,
+       "dragons": 2,
+       "heralds": 1,
+       "towers": 5
+      },
+      "red": {
+       "kills": 20,
+       "assists": 20,
+       "cs": 722,
+       "avg_level": 13.399999999999999,
+       "dragons": 2,
+       "heralds": 1,
+       "towers": 5
+      }
+     },
+     "scaled": {
+      "blue": {
+       "kills": 8,
+       "assists": 8,
+       "cs": 289,
+       "avg_level": 13.399999999999999,
+       "dragons": 1,
+       "heralds": 0,
+       "towers": 2
+      },
+      "red": {
+       "kills": 8,
+       "assists": 8,
+       "cs": 289,
+       "avg_level": 13.399999999999999,
+       "dragons": 1,
+       "heralds": 0,
+       "towers": 2
+      }
+     },
+     "win_prob_pct": 52.7765154838562,
+     "kill_pp": 0.0,
+     "features": [],
+     "team": [
+      "blue.avg_level",
+      "blue.towers",
+      "red.avg_level",
+      "red.towers"
+     ]
+    },
+    {
+     "name": "우세",
+     "raw": {
+      "blue": {
+       "kills": 26,
+       "assists": 30,
+       "cs": 765,
+       "avg_level": 13.7,
+       "dragons": 3,
+       "heralds": 1,
+       "towers": 6
+      },
+      "red": {
+       "kills": 16,
+       "assists": 16,
+       "cs": 685,
+       "avg_level": 13.2,
+       "dragons": 1,
+       "heralds": 0,
+       "towers": 4
+      }
+     },
+     "scaled": {
+      "blue": {
+       "kills": 10,
+       "assists": 12,
+       "cs": 306,
+       "avg_level": 13.7,
+       "dragons": 1,
+       "heralds": 0,
+       "towers": 2
+      },
+      "red": {
+       "kills": 6,
+       "assists": 6,
+       "cs": 274,
+       "avg_level": 13.2,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 2
+      }
+     },
+     "win_prob_pct": 86.37703061103821,
+     "kill_pp": 1.7569482326507568,
+     "features": [],
+     "team": [
+      "blue.avg_level",
+      "blue.towers",
+      "red.avg_level",
+      "red.towers"
+     ]
+    },
+    {
+     "name": "열세",
+     "raw": {
+      "blue": {
+       "kills": 16,
+       "assists": 16,
+       "cs": 685,
+       "avg_level": 13.2,
+       "dragons": 1,
+       "heralds": 0,
+       "towers": 4
+      },
+      "red": {
+       "kills": 26,
+       "assists": 30,
+       "cs": 765,
+       "avg_level": 13.7,
+       "dragons": 3,
+       "heralds": 1,
+       "towers": 6
+      }
+     },
+     "scaled": {
+      "blue": {
+       "kills": 6,
+       "assists": 6,
+       "cs": 274,
+       "avg_level": 13.2,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 2
+      },
+      "red": {
+       "kills": 10,
+       "assists": 12,
+       "cs": 306,
+       "avg_level": 13.7,
+       "dragons": 1,
+       "heralds": 0,
+       "towers": 2
+      }
+     },
+     "win_prob_pct": 16.456957161426544,
+     "kill_pp": 2.2921056747436523,
+     "features": [],
+     "team": [
+      "blue.avg_level",
+      "blue.towers",
+      "red.avg_level",
+      "red.towers"
+     ]
+    }
+   ],
+   "projected": {
+    "feature_ood_pct": {
+     "kills": 5.992509363295881,
+     "assists": 5.759692276546209,
+     "cs": 2.8747848972568075,
+     "avg_level": 0.9312683469986841,
+     "dragons": 1.6600870533454806,
+     "heralds": 0.0,
+     "towers": 31.11650976819516
+    },
+    "team_ood_pct": {
+     "kills": 5.536997671829132,
+     "assists": 4.418463407227452,
+     "cs": 8.659783378884503,
+     "avg_level": 100.0,
+     "dragons": 0.8300435266727403,
+     "heralds": 0.0,
+     "towers": 84.45692883895131
+    },
+    "any_ood_pct": 100.0,
+    "kill_pp_mean": 1.4360918998718262,
+    "kill_pp_p10": 0.0,
+    "kill_pp_p90": 3.7727737426757812,
+    "kill_pp_zero_pct": 39.22461787630327
+   }
+  }
+ },
+ "fine": {
+  "6": {
+   "minutes": 6.0,
+   "pace_scale": 1.6666666666666667,
+   "boards": [
+    {
+     "name": "접전",
+     "raw": {
+      "blue": {
+       "kills": 3,
+       "assists": 3,
+       "cs": 148,
+       "avg_level": 5.32,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      },
+      "red": {
+       "kills": 3,
+       "assists": 3,
+       "cs": 148,
+       "avg_level": 5.32,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      }
+     },
+     "scaled": {
+      "blue": {
+       "kills": 5,
+       "assists": 5,
+       "cs": 247,
+       "avg_level": 5.32,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      },
+      "red": {
+       "kills": 5,
+       "assists": 5,
+       "cs": 247,
+       "avg_level": 5.32,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      }
+     },
+     "win_prob_pct": 52.7765154838562,
+     "kill_pp": 7.753652572631836,
+     "features": [],
+     "team": [
+      "blue.avg_level",
+      "red.avg_level"
+     ]
+    },
+    {
+     "name": "우세",
+     "raw": {
+      "blue": {
+       "kills": 4,
+       "assists": 5,
+       "cs": 157,
+       "avg_level": 5.620000000000001,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      },
+      "red": {
+       "kills": 3,
+       "assists": 3,
+       "cs": 140,
+       "avg_level": 5.120000000000001,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      }
+     },
+     "scaled": {
+      "blue": {
+       "kills": 7,
+       "assists": 8,
+       "cs": 262,
+       "avg_level": 5.620000000000001,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      },
+      "red": {
+       "kills": 5,
+       "assists": 5,
+       "cs": 233,
+       "avg_level": 5.120000000000001,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      }
+     },
+     "win_prob_pct": 76.02275013923645,
+     "kill_pp": 2.7643978595733643,
+     "features": [],
+     "team": [
+      "blue.avg_level",
+      "red.avg_level"
+     ]
+    },
+    {
+     "name": "열세",
+     "raw": {
+      "blue": {
+       "kills": 3,
+       "assists": 3,
+       "cs": 140,
+       "avg_level": 5.120000000000001,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      },
+      "red": {
+       "kills": 4,
+       "assists": 5,
+       "cs": 157,
+       "avg_level": 5.620000000000001,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      }
+     },
+     "scaled": {
+      "blue": {
+       "kills": 5,
+       "assists": 5,
+       "cs": 233,
+       "avg_level": 5.120000000000001,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      },
+      "red": {
+       "kills": 7,
+       "assists": 8,
+       "cs": 262,
+       "avg_level": 5.620000000000001,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      }
+     },
+     "win_prob_pct": 28.26048731803894,
+     "kill_pp": 6.828120231628418,
+     "features": [],
+     "team": [
+      "blue.avg_level",
+      "red.avg_level"
+     ]
+    }
+   ],
+   "projected": {
+    "feature_ood_pct": {
+     "kills": 0.21257212268448225,
+     "assists": 0.5769814758578804,
+     "cs": 1.2551877720417046,
+     "avg_level": 0.9312683469986841,
+     "dragons": 0.0,
+     "heralds": 0.0,
+     "towers": 0.08097985626075514
+    },
+    "team_ood_pct": {
+     "kills": 0.850288490737929,
+     "assists": 0.22775584573337385,
+     "cs": 4.089482741168134,
+     "avg_level": 99.96963255390222,
+     "dragons": 0.0,
+     "heralds": 0.0,
+     "towers": 0.04048992813037757
+    },
+    "any_ood_pct": 100.0,
+    "kill_pp_mean": 5.213356018066406,
+    "kill_pp_p10": 2.369927406311035,
+    "kill_pp_p90": 7.809706687927246,
+    "kill_pp_zero_pct": 0.0
+   }
+  },
+  "6.5": {
+   "minutes": 6.5,
+   "pace_scale": 1.5384615384615385,
+   "boards": [
+    {
+     "name": "접전",
+     "raw": {
+      "blue": {
+       "kills": 3,
+       "assists": 3,
+       "cs": 163,
+       "avg_level": 5.530000000000001,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      },
+      "red": {
+       "kills": 3,
+       "assists": 3,
+       "cs": 163,
+       "avg_level": 5.530000000000001,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      }
+     },
+     "scaled": {
+      "blue": {
+       "kills": 5,
+       "assists": 5,
+       "cs": 251,
+       "avg_level": 5.530000000000001,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      },
+      "red": {
+       "kills": 5,
+       "assists": 5,
+       "cs": 251,
+       "avg_level": 5.530000000000001,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      }
+     },
+     "win_prob_pct": 52.7765154838562,
+     "kill_pp": 3.9178013801574707,
+     "features": [],
+     "team": [
+      "blue.avg_level",
+      "red.avg_level"
+     ]
+    },
+    {
+     "name": "우세",
+     "raw": {
+      "blue": {
+       "kills": 5,
+       "assists": 5,
+       "cs": 173,
+       "avg_level": 5.83,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      },
+      "red": {
+       "kills": 3,
+       "assists": 3,
+       "cs": 155,
+       "avg_level": 5.33,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      }
+     },
+     "scaled": {
+      "blue": {
+       "kills": 8,
+       "assists": 8,
+       "cs": 266,
+       "avg_level": 5.83,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      },
+      "red": {
+       "kills": 5,
+       "assists": 5,
+       "cs": 238,
+       "avg_level": 5.33,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      }
+     },
+     "win_prob_pct": 78.63453030586243,
+     "kill_pp": 2.537846565246582,
+     "features": [],
+     "team": [
+      "blue.avg_level",
+      "red.avg_level"
+     ]
+    },
+    {
+     "name": "열세",
+     "raw": {
+      "blue": {
+       "kills": 3,
+       "assists": 3,
+       "cs": 155,
+       "avg_level": 5.33,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      },
+      "red": {
+       "kills": 5,
+       "assists": 5,
+       "cs": 173,
+       "avg_level": 5.83,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      }
+     },
+     "scaled": {
+      "blue": {
+       "kills": 5,
+       "assists": 5,
+       "cs": 238,
+       "avg_level": 5.33,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      },
+      "red": {
+       "kills": 8,
+       "assists": 8,
+       "cs": 266,
+       "avg_level": 5.83,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      }
+     },
+     "win_prob_pct": 25.33765733242035,
+     "kill_pp": 3.1078457832336426,
+     "features": [],
+     "team": [
+      "blue.avg_level",
+      "red.avg_level"
+     ]
+    }
+   ],
+   "projected": {
+    "feature_ood_pct": {
+     "kills": 0.5061241016297197,
+     "assists": 0.6478388500860411,
+     "cs": 1.366535074400243,
+     "avg_level": 0.9312683469986841,
+     "dragons": 0.0,
+     "heralds": 0.0,
+     "towers": 0.6478388500860411
+    },
+    "team_ood_pct": {
+     "kills": 0.850288490737929,
+     "assists": 0.33404190707561493,
+     "cs": 3.067112055876101,
+     "avg_level": 99.74187670816885,
+     "dragons": 0.0,
+     "heralds": 0.0,
+     "towers": 0.32391942504302057
+    },
+    "any_ood_pct": 100.0,
+    "kill_pp_mean": 4.404123306274414,
+    "kill_pp_p10": 2.0719146728515625,
+    "kill_pp_p90": 7.674417495727539,
+    "kill_pp_zero_pct": 0.0
+   }
+  },
+  "7": {
+   "minutes": 7.0,
+   "pace_scale": 1.4285714285714286,
+   "boards": [
+    {
+     "name": "접전",
+     "raw": {
+      "blue": {
+       "kills": 4,
+       "assists": 4,
+       "cs": 178,
+       "avg_level": 5.74,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      },
+      "red": {
+       "kills": 4,
+       "assists": 4,
+       "cs": 178,
+       "avg_level": 5.74,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      }
+     },
+     "scaled": {
+      "blue": {
+       "kills": 6,
+       "assists": 6,
+       "cs": 254,
+       "avg_level": 5.74,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      },
+      "red": {
+       "kills": 6,
+       "assists": 6,
+       "cs": 254,
+       "avg_level": 5.74,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      }
+     },
+     "win_prob_pct": 52.7765154838562,
+     "kill_pp": 3.9178013801574707,
+     "features": [],
+     "team": [
+      "blue.avg_level",
+      "red.avg_level"
+     ]
+    },
+    {
+     "name": "우세",
+     "raw": {
+      "blue": {
+       "kills": 5,
+       "assists": 6,
+       "cs": 189,
+       "avg_level": 6.039999999999999,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      },
+      "red": {
+       "kills": 3,
+       "assists": 3,
+       "cs": 169,
+       "avg_level": 5.539999999999999,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      }
+     },
+     "scaled": {
+      "blue": {
+       "kills": 7,
+       "assists": 9,
+       "cs": 270,
+       "avg_level": 6.039999999999999,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      },
+      "red": {
+       "kills": 4,
+       "assists": 4,
+       "cs": 241,
+       "avg_level": 5.539999999999999,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      }
+     },
+     "win_prob_pct": 79.2867660522461,
+     "kill_pp": 4.719954490661621,
+     "features": [],
+     "team": [
+      "blue.avg_level",
+      "red.avg_level"
+     ]
+    },
+    {
+     "name": "열세",
+     "raw": {
+      "blue": {
+       "kills": 3,
+       "assists": 3,
+       "cs": 169,
+       "avg_level": 5.539999999999999,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      },
+      "red": {
+       "kills": 5,
+       "assists": 6,
+       "cs": 189,
+       "avg_level": 6.039999999999999,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      }
+     },
+     "scaled": {
+      "blue": {
+       "kills": 4,
+       "assists": 4,
+       "cs": 241,
+       "avg_level": 5.539999999999999,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      },
+      "red": {
+       "kills": 7,
+       "assists": 9,
+       "cs": 270,
+       "avg_level": 6.039999999999999,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      }
+     },
+     "win_prob_pct": 24.602095782756805,
+     "kill_pp": 6.325261116027832,
+     "features": [],
+     "team": [
+      "blue.avg_level",
+      "red.avg_level"
+     ]
+    }
+   ],
+   "projected": {
+    "feature_ood_pct": {
+     "kills": 0.4352667274015589,
+     "assists": 1.0729830954550057,
+     "cs": 1.4677598947261867,
+     "avg_level": 0.9312683469986841,
+     "dragons": 0.0,
+     "heralds": 0.0,
+     "towers": 0.010122482032594393
+    },
+    "team_ood_pct": {
+     "kills": 0.850288490737929,
+     "assists": 0.6579613321186355,
+     "cs": 2.6875189796538113,
+     "avg_level": 97.86921753213889,
+     "dragons": 0.0,
+     "heralds": 0.0,
+     "towers": 0.005061241016297196
+    },
+    "any_ood_pct": 99.9898775179674,
+    "kill_pp_mean": 4.517592906951904,
+    "kill_pp_p10": 1.998986005783081,
+    "kill_pp_p90": 7.715141773223877,
+    "kill_pp_zero_pct": 0.0
+   }
+  },
+  "8": {
+   "minutes": 8.0,
+   "pace_scale": 1.25,
+   "boards": [
+    {
+     "name": "접전",
+     "raw": {
+      "blue": {
+       "kills": 4,
+       "assists": 4,
+       "cs": 209,
+       "avg_level": 6.16,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      },
+      "red": {
+       "kills": 4,
+       "assists": 4,
+       "cs": 209,
+       "avg_level": 6.16,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      }
+     },
+     "scaled": {
+      "blue": {
+       "kills": 5,
+       "assists": 5,
+       "cs": 261,
+       "avg_level": 6.16,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      },
+      "red": {
+       "kills": 5,
+       "assists": 5,
+       "cs": 261,
+       "avg_level": 6.16,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      }
+     },
+     "win_prob_pct": 52.7765154838562,
+     "kill_pp": 3.9178013801574707,
+     "features": [],
+     "team": [
+      "blue.avg_level",
+      "red.avg_level"
+     ]
+    },
+    {
+     "name": "우세",
+     "raw": {
+      "blue": {
+       "kills": 6,
+       "assists": 7,
+       "cs": 221,
+       "avg_level": 6.460000000000001,
+       "dragons": 1,
+       "heralds": 0,
+       "towers": 0
+      },
+      "red": {
+       "kills": 4,
+       "assists": 4,
+       "cs": 198,
+       "avg_level": 5.960000000000001,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      }
+     },
+     "scaled": {
+      "blue": {
+       "kills": 8,
+       "assists": 9,
+       "cs": 276,
+       "avg_level": 6.460000000000001,
+       "dragons": 1,
+       "heralds": 0,
+       "towers": 0
+      },
+      "red": {
+       "kills": 5,
+       "assists": 5,
+       "cs": 248,
+       "avg_level": 5.960000000000001,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      }
+     },
+     "win_prob_pct": 83.50930213928223,
+     "kill_pp": 2.0650386810302734,
+     "features": [],
+     "team": [
+      "red.avg_level"
+     ]
+    },
+    {
+     "name": "열세",
+     "raw": {
+      "blue": {
+       "kills": 4,
+       "assists": 4,
+       "cs": 198,
+       "avg_level": 5.960000000000001,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      },
+      "red": {
+       "kills": 6,
+       "assists": 7,
+       "cs": 221,
+       "avg_level": 6.460000000000001,
+       "dragons": 1,
+       "heralds": 0,
+       "towers": 0
+      }
+     },
+     "scaled": {
+      "blue": {
+       "kills": 5,
+       "assists": 5,
+       "cs": 248,
+       "avg_level": 5.960000000000001,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      },
+      "red": {
+       "kills": 8,
+       "assists": 9,
+       "cs": 276,
+       "avg_level": 6.460000000000001,
+       "dragons": 1,
+       "heralds": 0,
+       "towers": 0
+      }
+     },
+     "win_prob_pct": 19.784599542617798,
+     "kill_pp": 2.6312217712402344,
+     "features": [],
+     "team": [
+      "blue.avg_level"
+     ]
+    }
+   ],
+   "projected": {
+    "feature_ood_pct": {
+     "kills": 0.8401660087053345,
+     "assists": 1.2855552181394878,
+     "cs": 1.730944427573641,
+     "avg_level": 0.9312683469986841,
+     "dragons": 0.0,
+     "heralds": 0.0,
+     "towers": 0.08097985626075514
+    },
+    "team_ood_pct": {
+     "kills": 1.1033505415527887,
+     "assists": 0.6579613321186355,
+     "cs": 1.8372304889158821,
+     "avg_level": 72.49215507642474,
+     "dragons": 0.0,
+     "heralds": 0.0,
+     "towers": 0.04048992813037757
+    },
+    "any_ood_pct": 95.37402571110437,
+    "kill_pp_mean": 3.531588554382324,
+    "kill_pp_p10": 1.4710676670074463,
+    "kill_pp_p90": 6.660335063934326,
+    "kill_pp_zero_pct": 0.0
+   }
+  },
+  "11": {
+   "minutes": 11.0,
+   "pace_scale": 0.9090909090909091,
+   "boards": [
+    {
+     "name": "접전",
+     "raw": {
+      "blue": {
+       "kills": 7,
+       "assists": 7,
+       "cs": 299,
+       "avg_level": 7.58,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      },
+      "red": {
+       "kills": 7,
+       "assists": 7,
+       "cs": 299,
+       "avg_level": 7.58,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      }
+     },
+     "scaled": {
+      "blue": {
+       "kills": 6,
+       "assists": 6,
+       "cs": 272,
+       "avg_level": 7.58,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      },
+      "red": {
+       "kills": 6,
+       "assists": 6,
+       "cs": 272,
+       "avg_level": 7.58,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      }
+     },
+     "win_prob_pct": 52.7765154838562,
+     "kill_pp": 3.9178013801574707,
+     "features": [],
+     "team": []
+    },
+    {
+     "name": "우세",
+     "raw": {
+      "blue": {
+       "kills": 9,
+       "assists": 10,
+       "cs": 317,
+       "avg_level": 7.879999999999999,
+       "dragons": 1,
+       "heralds": 0,
+       "towers": 0
+      },
+      "red": {
+       "kills": 6,
+       "assists": 6,
+       "cs": 284,
+       "avg_level": 7.379999999999999,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      }
+     },
+     "scaled": {
+      "blue": {
+       "kills": 8,
+       "assists": 9,
+       "cs": 288,
+       "avg_level": 7.879999999999999,
+       "dragons": 1,
+       "heralds": 0,
+       "towers": 0
+      },
+      "red": {
+       "kills": 5,
+       "assists": 5,
+       "cs": 258,
+       "avg_level": 7.379999999999999,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      }
+     },
+     "win_prob_pct": 83.75863432884216,
+     "kill_pp": 2.0391225814819336,
+     "features": [],
+     "team": [
+      "blue.avg_level"
+     ]
+    },
+    {
+     "name": "열세",
+     "raw": {
+      "blue": {
+       "kills": 6,
+       "assists": 6,
+       "cs": 284,
+       "avg_level": 7.379999999999999,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      },
+      "red": {
+       "kills": 9,
+       "assists": 10,
+       "cs": 317,
+       "avg_level": 7.879999999999999,
+       "dragons": 1,
+       "heralds": 0,
+       "towers": 0
+      }
+     },
+     "scaled": {
+      "blue": {
+       "kills": 5,
+       "assists": 5,
+       "cs": 258,
+       "avg_level": 7.379999999999999,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      },
+      "red": {
+       "kills": 8,
+       "assists": 9,
+       "cs": 288,
+       "avg_level": 7.879999999999999,
+       "dragons": 1,
+       "heralds": 0,
+       "towers": 0
+      }
+     },
+     "win_prob_pct": 19.49710249900818,
+     "kill_pp": 2.603520393371582,
+     "features": [],
+     "team": [
+      "red.avg_level"
+     ]
+    }
+   ],
+   "projected": {
+    "feature_ood_pct": {
+     "kills": 1.7916793197692076,
+     "assists": 1.9131491041603401,
+     "cs": 2.044741370584067,
+     "avg_level": 0.9312683469986841,
+     "dragons": 0.0,
+     "heralds": 0.0,
+     "towers": 0.6275938860208523
+    },
+    "team_ood_pct": {
+     "kills": 2.115598744812228,
+     "assists": 0.9616357930964672,
+     "cs": 2.2724972163174413,
+     "avg_level": 27.624253466950094,
+     "dragons": 0.0,
+     "heralds": 0.0,
+     "towers": 0.32391942504302057
+    },
+    "any_ood_pct": 53.922461787630326,
+    "kill_pp_mean": 2.474957227706909,
+    "kill_pp_p10": 0.0,
+    "kill_pp_p90": 3.9104247093200684,
+    "kill_pp_zero_pct": 12.653102540742992
+   }
+  },
+  "12": {
+   "minutes": 12.0,
+   "pace_scale": 0.8333333333333334,
+   "boards": [
+    {
+     "name": "접전",
+     "raw": {
+      "blue": {
+       "kills": 8,
+       "assists": 8,
+       "cs": 329,
+       "avg_level": 8.16,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      },
+      "red": {
+       "kills": 8,
+       "assists": 8,
+       "cs": 329,
+       "avg_level": 8.16,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      }
+     },
+     "scaled": {
+      "blue": {
+       "kills": 7,
+       "assists": 7,
+       "cs": 274,
+       "avg_level": 8.16,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      },
+      "red": {
+       "kills": 7,
+       "assists": 7,
+       "cs": 274,
+       "avg_level": 8.16,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      }
+     },
+     "win_prob_pct": 52.7765154838562,
+     "kill_pp": 3.9178013801574707,
+     "features": [],
+     "team": [
+      "blue.avg_level",
+      "red.avg_level"
+     ]
+    },
+    {
+     "name": "우세",
+     "raw": {
+      "blue": {
+       "kills": 10,
+       "assists": 11,
+       "cs": 349,
+       "avg_level": 8.46,
+       "dragons": 1,
+       "heralds": 0,
+       "towers": 0
+      },
+      "red": {
+       "kills": 6,
+       "assists": 6,
+       "cs": 312,
+       "avg_level": 7.960000000000001,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      }
+     },
+     "scaled": {
+      "blue": {
+       "kills": 8,
+       "assists": 9,
+       "cs": 291,
+       "avg_level": 8.46,
+       "dragons": 1,
+       "heralds": 0,
+       "towers": 0
+      },
+      "red": {
+       "kills": 5,
+       "assists": 5,
+       "cs": 260,
+       "avg_level": 7.960000000000001,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      }
+     },
+     "win_prob_pct": 83.88214707374573,
+     "kill_pp": 2.026224136352539,
+     "features": [],
+     "team": [
+      "blue.avg_level",
+      "red.avg_level"
+     ]
+    },
+    {
+     "name": "열세",
+     "raw": {
+      "blue": {
+       "kills": 6,
+       "assists": 6,
+       "cs": 312,
+       "avg_level": 7.960000000000001,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      },
+      "red": {
+       "kills": 10,
+       "assists": 11,
+       "cs": 349,
+       "avg_level": 8.46,
+       "dragons": 1,
+       "heralds": 0,
+       "towers": 0
+      }
+     },
+     "scaled": {
+      "blue": {
+       "kills": 5,
+       "assists": 5,
+       "cs": 260,
+       "avg_level": 7.960000000000001,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      },
+      "red": {
+       "kills": 8,
+       "assists": 9,
+       "cs": 291,
+       "avg_level": 8.46,
+       "dragons": 1,
+       "heralds": 0,
+       "towers": 0
+      }
+     },
+     "win_prob_pct": 19.354547560214996,
+     "kill_pp": 2.5896713733673096,
+     "features": [],
+     "team": [
+      "blue.avg_level",
+      "red.avg_level"
+     ]
+    }
+   ],
+   "projected": {
+    "feature_ood_pct": {
+     "kills": 1.680332017410669,
+     "assists": 2.267435975301144,
+     "cs": 2.2370685292033605,
+     "avg_level": 0.9312683469986841,
+     "dragons": 0.0,
+     "heralds": 0.0,
+     "towers": 4.342544791982994
+    },
+    "team_ood_pct": {
+     "kills": 2.115598744812228,
+     "assists": 1.4222087255795122,
+     "cs": 2.6520902925397305,
+     "avg_level": 91.96781050713635,
+     "dragons": 0.0,
+     "heralds": 0.0,
+     "towers": 2.2117623241218745
+    },
+    "any_ood_pct": 99.73681546715255,
+    "kill_pp_mean": 2.118018627166748,
+    "kill_pp_p10": 0.0,
+    "kill_pp_p90": 3.8952999114990234,
+    "kill_pp_zero_pct": 19.74896244559166
+   }
+  },
+  "13": {
+   "minutes": 13.0,
+   "pace_scale": 0.7692307692307693,
+   "boards": [
+    {
+     "name": "접전",
+     "raw": {
+      "blue": {
+       "kills": 8,
+       "assists": 8,
+       "cs": 360,
+       "avg_level": 8.74,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 1
+      },
+      "red": {
+       "kills": 8,
+       "assists": 8,
+       "cs": 360,
+       "avg_level": 8.74,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 1
+      }
+     },
+     "scaled": {
+      "blue": {
+       "kills": 6,
+       "assists": 6,
+       "cs": 277,
+       "avg_level": 8.74,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 1
+      },
+      "red": {
+       "kills": 6,
+       "assists": 6,
+       "cs": 277,
+       "avg_level": 8.74,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 1
+      }
+     },
+     "win_prob_pct": 52.7765154838562,
+     "kill_pp": 3.9178013801574707,
+     "features": [],
+     "team": [
+      "blue.avg_level",
+      "red.avg_level"
+     ]
+    },
+    {
+     "name": "우세",
+     "raw": {
+      "blue": {
+       "kills": 11,
+       "assists": 13,
+       "cs": 381,
+       "avg_level": 9.04,
+       "dragons": 1,
+       "heralds": 0,
+       "towers": 1
+      },
+      "red": {
+       "kills": 7,
+       "assists": 7,
+       "cs": 341,
+       "avg_level": 8.54,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      }
+     },
+     "scaled": {
+      "blue": {
+       "kills": 8,
+       "assists": 10,
+       "cs": 293,
+       "avg_level": 9.04,
+       "dragons": 1,
+       "heralds": 0,
+       "towers": 1
+      },
+      "red": {
+       "kills": 5,
+       "assists": 5,
+       "cs": 262,
+       "avg_level": 8.54,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      }
+     },
+     "win_prob_pct": 88.6065125465393,
+     "kill_pp": 1.5023410320281982,
+     "features": [],
+     "team": [
+      "blue.avg_level",
+      "red.avg_level"
+     ]
+    },
+    {
+     "name": "열세",
+     "raw": {
+      "blue": {
+       "kills": 7,
+       "assists": 7,
+       "cs": 341,
+       "avg_level": 8.54,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      },
+      "red": {
+       "kills": 11,
+       "assists": 13,
+       "cs": 381,
+       "avg_level": 9.04,
+       "dragons": 1,
+       "heralds": 0,
+       "towers": 1
+      }
+     },
+     "scaled": {
+      "blue": {
+       "kills": 5,
+       "assists": 5,
+       "cs": 262,
+       "avg_level": 8.54,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 0
+      },
+      "red": {
+       "kills": 8,
+       "assists": 10,
+       "cs": 293,
+       "avg_level": 9.04,
+       "dragons": 1,
+       "heralds": 0,
+       "towers": 1
+      }
+     },
+     "win_prob_pct": 13.837975263595581,
+     "kill_pp": 1.996474027633667,
+     "features": [],
+     "team": [
+      "blue.avg_level",
+      "red.avg_level"
+     ]
+    }
+   ],
+   "projected": {
+    "feature_ood_pct": {
+     "kills": 2.297803421398927,
+     "assists": 2.5812329183115703,
+     "cs": 2.3079259034315216,
+     "avg_level": 0.9312683469986841,
+     "dragons": 1.6600870533454806,
+     "heralds": 0.6073489219556636,
+     "towers": 4.879036339710497
+    },
+    "team_ood_pct": {
+     "kills": 2.115598744812228,
+     "assists": 1.4222087255795122,
+     "cs": 3.2847454195768804,
+     "avg_level": 99.72669298511995,
+     "dragons": 0.8300435266727403,
+     "heralds": 0.3036744609778318,
+     "towers": 4.033809089988865
+    },
+    "any_ood_pct": 100.0,
+    "kill_pp_mean": 1.8187637329101562,
+    "kill_pp_p10": 0.0,
+    "kill_pp_p90": 3.861999988555908,
+    "kill_pp_zero_pct": 27.269966595809294
+   }
+  },
+  "14": {
+   "minutes": 14.0,
+   "pace_scale": 0.7142857142857143,
+   "boards": [
+    {
+     "name": "접전",
+     "raw": {
+      "blue": {
+       "kills": 9,
+       "assists": 9,
+       "cs": 390,
+       "avg_level": 9.32,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 1
+      },
+      "red": {
+       "kills": 9,
+       "assists": 9,
+       "cs": 390,
+       "avg_level": 9.32,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 1
+      }
+     },
+     "scaled": {
+      "blue": {
+       "kills": 6,
+       "assists": 6,
+       "cs": 279,
+       "avg_level": 9.32,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 1
+      },
+      "red": {
+       "kills": 6,
+       "assists": 6,
+       "cs": 279,
+       "avg_level": 9.32,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 1
+      }
+     },
+     "win_prob_pct": 52.7765154838562,
+     "kill_pp": 3.9178013801574707,
+     "features": [],
+     "team": [
+      "blue.avg_level",
+      "red.avg_level"
+     ]
+    },
+    {
+     "name": "우세",
+     "raw": {
+      "blue": {
+       "kills": 12,
+       "assists": 14,
+       "cs": 413,
+       "avg_level": 9.620000000000001,
+       "dragons": 1,
+       "heralds": 0,
+       "towers": 1
+      },
+      "red": {
+       "kills": 8,
+       "assists": 8,
+       "cs": 370,
+       "avg_level": 9.120000000000001,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 1
+      }
+     },
+     "scaled": {
+      "blue": {
+       "kills": 9,
+       "assists": 10,
+       "cs": 295,
+       "avg_level": 9.620000000000001,
+       "dragons": 1,
+       "heralds": 0,
+       "towers": 1
+      },
+      "red": {
+       "kills": 6,
+       "assists": 6,
+       "cs": 264,
+       "avg_level": 9.120000000000001,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 1
+      }
+     },
+     "win_prob_pct": 83.88214707374573,
+     "kill_pp": 0.0,
+     "features": [],
+     "team": [
+      "blue.avg_level",
+      "red.avg_level"
+     ]
+    },
+    {
+     "name": "열세",
+     "raw": {
+      "blue": {
+       "kills": 8,
+       "assists": 8,
+       "cs": 370,
+       "avg_level": 9.120000000000001,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 1
+      },
+      "red": {
+       "kills": 12,
+       "assists": 14,
+       "cs": 413,
+       "avg_level": 9.620000000000001,
+       "dragons": 1,
+       "heralds": 0,
+       "towers": 1
+      }
+     },
+     "scaled": {
+      "blue": {
+       "kills": 6,
+       "assists": 6,
+       "cs": 264,
+       "avg_level": 9.120000000000001,
+       "dragons": 0,
+       "heralds": 0,
+       "towers": 1
+      },
+      "red": {
+       "kills": 9,
+       "assists": 10,
+       "cs": 295,
+       "avg_level": 9.620000000000001,
+       "dragons": 1,
+       "heralds": 0,
+       "towers": 1
+      }
+     },
+     "win_prob_pct": 19.354547560214996,
+     "kill_pp": 0.0,
+     "features": [],
+     "team": [
+      "blue.avg_level",
+      "red.avg_level"
+     ]
+    }
+   ],
+   "projected": {
+    "feature_ood_pct": {
+     "kills": 2.0751088166818503,
+     "assists": 2.763437594898269,
+     "cs": 2.3585383135944933,
+     "avg_level": 0.9312683469986841,
+     "dragons": 0.0,
+     "heralds": 0.0,
+     "towers": 0.3036744609778318
+    },
+    "team_ood_pct": {
+     "kills": 2.115598744812228,
+     "assists": 2.095353780747039,
+     "cs": 3.7858082801903024,
+     "avg_level": 99.95951007186962,
+     "dragons": 0.0,
+     "heralds": 0.0,
+     "towers": 0.32391942504302057
+    },
+    "any_ood_pct": 100.0,
+    "kill_pp_mean": 1.5486795902252197,
+    "kill_pp_p10": 0.0,
+    "kill_pp_p90": 3.8492846488952637,
+    "kill_pp_zero_pct": 40.19637615143233
+   }
+  },
+  "17": {
+   "minutes": 17.0,
+   "pace_scale": 0.5882352941176471,
+   "boards": [
+    {
+     "name": "접전",
+     "raw": {
+      "blue": {
+       "kills": 12,
+       "assists": 12,
+       "cs": 481,
+       "avg_level": 10.700000000000003,
+       "dragons": 1,
+       "heralds": 1,
+       "towers": 2
+      },
+      "red": {
+       "kills": 12,
+       "assists": 12,
+       "cs": 481,
+       "avg_level": 10.700000000000003,
+       "dragons": 1,
+       "heralds": 1,
+       "towers": 2
+      }
+     },
+     "scaled": {
+      "blue": {
+       "kills": 7,
+       "assists": 7,
+       "cs": 283,
+       "avg_level": 10.700000000000003,
+       "dragons": 1,
+       "heralds": 1,
+       "towers": 1
+      },
+      "red": {
+       "kills": 7,
+       "assists": 7,
+       "cs": 283,
+       "avg_level": 10.700000000000003,
+       "dragons": 1,
+       "heralds": 1,
+       "towers": 1
+      }
+     },
+     "win_prob_pct": 52.7765154838562,
+     "kill_pp": 3.9178013801574707,
+     "features": [],
+     "team": [
+      "blue.avg_level",
+      "red.avg_level"
+     ]
+    },
+    {
+     "name": "우세",
+     "raw": {
+      "blue": {
+       "kills": 16,
+       "assists": 18,
+       "cs": 509,
+       "avg_level": 11.0,
+       "dragons": 2,
+       "heralds": 1,
+       "towers": 2
+      },
+      "red": {
+       "kills": 10,
+       "assists": 10,
+       "cs": 456,
+       "avg_level": 10.5,
+       "dragons": 1,
+       "heralds": 0,
+       "towers": 1
+      }
+     },
+     "scaled": {
+      "blue": {
+       "kills": 9,
+       "assists": 11,
+       "cs": 299,
+       "avg_level": 11.0,
+       "dragons": 1,
+       "heralds": 1,
+       "towers": 1
+      },
+      "red": {
+       "kills": 6,
+       "assists": 6,
+       "cs": 268,
+       "avg_level": 10.5,
+       "dragons": 1,
+       "heralds": 0,
+       "towers": 1
+      }
+     },
+     "win_prob_pct": 81.64259195327759,
+     "kill_pp": 2.2537171840667725,
+     "features": [],
+     "team": [
+      "blue.avg_level",
+      "red.avg_level"
+     ]
+    },
+    {
+     "name": "열세",
+     "raw": {
+      "blue": {
+       "kills": 10,
+       "assists": 10,
+       "cs": 456,
+       "avg_level": 10.5,
+       "dragons": 1,
+       "heralds": 0,
+       "towers": 1
+      },
+      "red": {
+       "kills": 16,
+       "assists": 18,
+       "cs": 509,
+       "avg_level": 11.0,
+       "dragons": 2,
+       "heralds": 1,
+       "towers": 2
+      }
+     },
+     "scaled": {
+      "blue": {
+       "kills": 6,
+       "assists": 6,
+       "cs": 268,
+       "avg_level": 10.5,
+       "dragons": 1,
+       "heralds": 0,
+       "towers": 1
+      },
+      "red": {
+       "kills": 9,
+       "assists": 11,
+       "cs": 299,
+       "avg_level": 11.0,
+       "dragons": 1,
+       "heralds": 1,
+       "towers": 1
+      }
+     },
+     "win_prob_pct": 21.92627787590027,
+     "kill_pp": 0.0,
+     "features": [],
+     "team": [
+      "blue.avg_level",
+      "red.avg_level"
+     ]
+    }
+   ],
+   "projected": {
+    "feature_ood_pct": {
+     "kills": 3.512501265310254,
+     "assists": 3.401153962951716,
+     "cs": 2.5609879542463814,
+     "avg_level": 0.9312683469986841,
+     "dragons": 0.0,
+     "heralds": 0.0,
+     "towers": 1.2551877720417046
+    },
+    "team_ood_pct": {
+     "kills": 3.4365826500657963,
+     "assists": 3.1430306711205587,
+     "cs": 5.4205891284542975,
+     "avg_level": 100.0,
+     "dragons": 0.0,
+     "heralds": 0.0,
+     "towers": 12.577183925498533
+    },
+    "any_ood_pct": 100.0,
+    "kill_pp_mean": 1.3173680305480957,
+    "kill_pp_p10": 0.0,
+    "kill_pp_p90": 3.7831592559814453,
+    "kill_pp_zero_pct": 47.757870229780345
+   }
+  }
+ },
+ "demos": [
+  {
+   "name": "데모 초반 우세 06:30",
+   "seconds": 390,
+   "pace_scale": 1.5384615384615385,
+   "win_prob_pct": 90.87246656417847,
+   "kill_pp": 2.307009696960449,
+   "features": [
+    "dragons"
+   ],
+   "team": [
+    "blue.cs",
+    "blue.dragons"
+   ]
+  },
+  {
+   "name": "데모 중반 박빙 14:20",
+   "seconds": 860,
+   "pace_scale": 0.6976744186046512,
+   "win_prob_pct": 57.22362995147705,
+   "kill_pp": 0.0,
+   "features": [],
+   "team": [
+    "blue.cs",
+    "blue.avg_level",
+    "red.cs",
+    "red.avg_level"
+   ]
+  },
+  {
+   "name": "데모 후반 열세 23:10",
+   "seconds": 1390,
+   "pace_scale": 0.4316546762589928,
+   "win_prob_pct": 6.00430928170681,
+   "kill_pp": 0.9575921893119812,
+   "features": [
+    "towers"
+   ],
+   "team": [
+    "blue.avg_level",
+    "red.cs",
+    "red.avg_level",
+    "red.towers"
+   ]
+  }
+ ],
+ "model": "m2 조건(DATA_N 5000·DATA_SEED 1, 실서버 m20261118-2 와 같은 학습 조건으로 다시 학습)"
+}
