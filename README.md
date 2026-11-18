@@ -28,6 +28,51 @@
 
 API 계약, 검증 기준 수치, 승격·되돌리기 절차의 정본은 [AGENTS.md](AGENTS.md)다. 이 문서는 기획, 설계 이유, 흐름, 실행 방법을 다룬다.
 
+## 바로 쓰기 (어떤 컴퓨터에서든)
+
+| 하고 싶은 것 | 필요한 것 | 바로 실행 |
+|---|---|---|
+| ① 설치 없이 둘러보기 | 브라우저 | `https://<내 도메인>/` (시뮬레이터 + 전적 표), `/overlay` (게임 중 HUD, 데모 3개), `/slides` (발표 슬라이드) |
+| ② Windows 게임 중 팝업 | Python 3.9 이상(추가 설치 없음), 이 저장소 폴더 | `python -m client.bridge --server http://<고정 IP> --insecure-local --overlay --launch-popup --save-match` |
+| ③ macOS 게임 중 팝업 | 기본 `python3`(3.9 이상), 이 저장소 폴더 | `python3 -m client.bridge --server http://<고정 IP> --insecure-local --overlay --launch-popup --save-match` |
+| ④ 개발·학습 환경 전체 | [uv](https://docs.astral.sh/uv/) | `uv sync --all-groups && uv run pytest -q` |
+
+**① 브라우저로 접속.** 서버 주소 뒤에 경로만 붙인다. 서버에 도메인(`SITE_ADDRESS`)을 넣어 HTTPS 로 띄웠다면 `https://<내 도메인>/…`, 도메인 없이 HTTP 로 띄웠다면 `http://<고정 IP>/…`이다(도메인을 넣은 서버는 IP 주소로 들어온 요청에 답하지 않는다). 시뮬레이터 맨 아래에서 승·패를 골라 `전적 저장`을 누르면 전적 DB 에 쌓인다. `/overlay`는 브리지가 없으면 시뮬레이션 배지로 데모만 돈다.
+
+**② Windows 인게임 팝업.** 저장소를 내려받아(`git clone` 또는 GitHub 의 Download ZIP) 그 폴더에서 PowerShell 로 실행한다. `client/bridge.py`는 표준 라이브러리만 쓰므로 `pip install`이 필요 없다(`python` 대신 `py`도 된다).
+
+```powershell
+cd lol-pace-mlops
+python -m client.bridge --server http://<고정 IP> --insecure-local --overlay --launch-popup --save-match
+# 도메인을 쓰는 서버면 --server https://<내 도메인>
+# 게임 없이 시험: --file client/tests/fixtures/allgamedata_10min.json 을 붙인다
+```
+
+- LoL 을 **테두리 없는 창 모드**로 둔다(전체 화면이면 어떤 창도 게임 위에 못 뜬다). 팝업은 Edge 또는 Chrome 의 `--app` 창(380×560, 우측 상단)이고 항상 위에 고정한다. 둘 다 없으면 기본 브라우저 탭으로 연다.
+- 팝업 주소는 `http://127.0.0.1:8765/overlay`다. 브리지가 서버의 HUD 를 받아 이 PC 에서 내주고 `/coach`만 서버로 넘긴다. 공개 주소에서 연 페이지는 브라우저가 이 PC(`127.0.0.1`)의 브리지를 읽지 못하게 막기 때문이다(AGENTS.md 3-4절). 팝업을 닫았으면 이 주소를 브라우저에 다시 열면 된다.
+- 게임 API(`127.0.0.1:2999`)는 게임이 진행 중일 때만 열린다. 관전·리플레이·연습 모드에서 쓰고 랭크 게임 중에는 쓰지 않는다(AGENTS.md 12절).
+- `--insecure-local`은 게임 클라이언트의 자체 인증서를 확인하지 않고 이 PC(`127.0.0.1`)만 읽는다는 뜻이다. Riot 문서의 `riotgames.pem`이 있으면 대신 `--cafile riotgames.pem`을 쓴다.
+- `--save-match`는 경기가 끝날 때(GameEnd) 점수판 값과 승패만 서버 전적 DB 에 한 번 올린다. 소환사명 같은 개인 정보는 보내지 않는다. 끄려면 빼고 실행한다. 멈출 때는 Ctrl+C.
+
+**③ macOS 인게임 팝업.** 같은 폴더에서 `python3`로 실행한다. macOS 기본 `python3`(3.9)에서도 돈다.
+
+```bash
+cd lol-pace-mlops
+python3 -m client.bridge --server http://<고정 IP> --insecure-local --overlay --launch-popup --save-match
+```
+
+팝업은 Swift 로 만든 항상 위 패널(`client/overlay_popup.swift`, 처음 한 번 컴파일)이다. 컴파일러가 없으면(`xcode-select --install`로 설치) Chrome `--app` 창, 그것도 없으면 기본 브라우저로 연다. 테두리 없는 창 모드와 나머지 옵션은 ②와 같다.
+
+**④ 개발·학습 환경 복제.** 테스트는 원본 CSV·Docker·외부 DB 없이 돈다(전적 DB 는 메모리 SQLite).
+
+```bash
+git clone <저장소 주소> && cd lol-pace-mlops
+uv sync --all-groups && uv run pytest -q         # 303 passed 기대 (학습 그룹 없이 돌리면 2건 건너뜀)
+MODEL_IMPL=rule MODEL_DIR=api/tests/fixtures uv run uvicorn api.app:app --port 8084   # http://127.0.0.1:8084/ (학습 산출물 없이 규칙 모델 + 테스트용 기준선)
+```
+
+학습·ONNX 변환·전 과정 재현은 아래 9절. 학습에는 Kaggle 원본 CSV 를 `data/`에 두어야 한다(6절).
+
 ## 현재 상태
 
 <!-- STATUS:START -->

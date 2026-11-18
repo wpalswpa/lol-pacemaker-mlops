@@ -455,8 +455,8 @@ def test_run_overlay_one_step_then_stops():
 
 
 def test_popup_command_choice():
-    url = overlay_url("http://127.0.0.1:8083/", 8765)
-    assert url == "http://127.0.0.1:8083/overlay?bridge_url=http://127.0.0.1:8765/bridge/state"
+    url = overlay_url(8765)   # HUD 는 브리지가 같은 출처에서 내준다 (3-4절 "팝업")
+    assert url == "http://127.0.0.1:8765/overlay?bridge_url=http://127.0.0.1:8765/bridge/state"
     how, cmd = popup_command(url, "Darwin", which=lambda n: "/usr/bin/swiftc" if n == "swiftc" else None,
                              build=lambda: "/cache/overlay-popup")
     assert how == "swift" and cmd == ["/cache/overlay-popup", url, "380", "560"]
@@ -566,3 +566,86 @@ def test_save_match_requires_overlay(capsys):
     with pytest.raises(SystemExit):
         main(["--file", FIX, "--save-match"])
     assert "--overlay" in capsys.readouterr().err
+
+
+def test_bridge_runs_on_python39():
+    """macOS 기본 python3(3.9)·오래된 Windows 파이썬에서도 `python -m client.bridge` 가 떠야 한다 (README 바로 쓰기).
+    X | None 표기는 3.9 에서 정의할 때 계산되면 TypeError 라 지연 평가를 켜 두고, 문법도 3.9 기준으로 확인한다."""
+    import ast
+
+    src = open(os.path.join(os.path.dirname(__file__), "..", "bridge.py"), encoding="utf-8").read()
+    tree = ast.parse(src, feature_version=(3, 9))
+    assert any(isinstance(n, ast.ImportFrom) and n.module == "__future__" and any(a.name == "annotations" for a in n.names)
+               for n in tree.body)
+    imported = {a.name.split(".")[0] for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names}
+    imported |= {n.module.split(".")[0] for n in ast.walk(tree) if isinstance(n, ast.ImportFrom) and n.module}
+    assert imported <= {"__future__", "argparse", "hashlib", "json", "math", "os", "platform", "shutil", "ssl",
+                        "subprocess", "sys", "threading", "time", "webbrowser", "urllib", "collections", "http",
+                        "ctypes", "tkinter"}, imported      # 표준 라이브러리만 (설치 없이)
+
+
+# ── 브리지가 HUD 를 같은 출처에서 내주는 중계 (AGENTS.md 3-4절 "팝업") ──
+from client.bridge import RELAY_MAX_BODY  # noqa: E402
+
+
+def _req(port, method, path, body=None, headers=None):
+    conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+    conn.request(method, path, body=body, headers=headers or {})
+    r = conn.getresponse()
+    out = (r.status, dict(r.getheaders()), r.read())
+    conn.close()
+    return out
+
+
+def test_relay_serves_hud_same_origin():
+    seen = []
+
+    def upstream(method, path, body):
+        seen.append((method, path, body))
+        if path == "/overlay":
+            return 200, "text/html; charset=utf-8", "<title>HUD</title>".encode()
+        if path == "/coach" and b"bad" in body:
+            return 422, "application/json", b'{"detail": []}'
+        return 200, "application/json", b'{"ok": true}'
+
+    clock, calls = Clock(), []
+    httpd = serve_state(make_bridge([at(900.0)], clock, calls), 0, upstream)
+    port = httpd.server_address[1]
+    try:
+        code, h, body = _req(port, "GET", "/overlay?bridge_url=x")
+        assert (code, h["Content-Type"], body) == (200, "text/html; charset=utf-8", "<title>HUD</title>".encode())
+        assert "Access-Control-Allow-Origin" not in h          # 중계 경로는 같은 출처 전용 (CORS 안 염)
+        assert _req(port, "GET", "/meta/champions")[0] == 200
+        code, _, body = _req(port, "POST", "/coach", b'{"a": 1}', {"Content-Type": "application/json"})
+        assert (code, body) == (200, b'{"ok": true}')
+        assert _req(port, "POST", "/coach", b'{"bad": 1}')[0] == 422   # 서버의 422 를 그대로
+        assert seen == [("GET", "/overlay", None), ("GET", "/meta/champions", None),
+                        ("POST", "/coach", b'{"a": 1}'), ("POST", "/coach", b'{"bad": 1}')]
+        # 화이트리스트 밖은 넘기지 않는다
+        for method, path in (("POST", "/matches"), ("GET", "/matches"), ("GET", "/health"), ("POST", "/overlay"),
+                             ("GET", "/"), ("POST", "/bridge/state")):
+            assert _req(port, method, path, b"{}" if method == "POST" else None)[0] == 404, (method, path)
+        assert len(seen) == 4
+        big = b"x" * (RELAY_MAX_BODY + 1)
+        assert _req(port, "POST", "/coach", big)[0] == 413 and len(seen) == 4
+        assert _req(port, "GET", "/bridge/state")[0] == 200
+    finally:
+        httpd.shutdown()
+
+
+def test_relay_off_without_server_and_502_when_down():
+    clock, calls = Clock(), []
+    httpd = serve_state(make_bridge([at(900.0)], clock, calls), 0)       # 서버 주소 없음 → 중계 없음
+    try:
+        assert _req(httpd.server_address[1], "GET", "/overlay")[0] == 404
+    finally:
+        httpd.shutdown()
+
+    def down(method, path, body):
+        raise urllib.error.URLError("연결 거부")
+    httpd = serve_state(make_bridge([at(900.0)], clock, calls), 0, down)
+    try:
+        code, _, body = _req(httpd.server_address[1], "GET", "/overlay")
+        assert code == 502 and "서버에 연결하지 못했다" in body.decode()
+    finally:
+        httpd.shutdown()

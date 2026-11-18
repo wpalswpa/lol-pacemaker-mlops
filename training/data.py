@@ -3,13 +3,13 @@
 - 고정 평가셋: 전체의 20% 를 random_state=42 층화 추출로 한 번 나눈다. 판이 바뀌어도 같은 시험지다.
 - 학습 표본: 나머지 80%(학습 풀)에서 DATA_N 건을 DATA_SEED 로 뽑는다. 패치가 바뀐 상황을 흉내 내는 장치다.
 - 피처 순서·변환은 api/contract.py 의 FEATURES 를 그대로 쓴다 (서빙과 같은 정의).
+- 열 → (X, y) 변환은 table_to_xy 한 곳이다. 원본 CSV 와 전적 DB 내보내기(GET /matches/export)가 같은 함수를 지난다.
+  이 함수는 numpy 만 쓰므로 학습 라이브러리가 없는 CI 테스트에서도 그대로 검사할 수 있다.
 """
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 
 import numpy as np
-import pandas as pd
-from sklearn.model_selection import train_test_split
 
 from api.contract import FEATURES, TEAM_STATS
 
@@ -35,20 +35,28 @@ CSV_COLUMNS = {
 _cache: dict = {}
 
 
+def table_to_xy(col: Mapping) -> tuple[np.ndarray, np.ndarray, dict[str, np.ndarray]]:
+    """열 이름 → 값 배열(DataFrame 도 된다)을 모델 입력 X float32 [N, 8], 정답 y int64 [N] (블루 승 1), 팀 원값으로."""
+    teams = {}
+    for side in ("blue", "red"):
+        teams[side] = np.column_stack(
+            [sum(np.asarray(col[side + c], dtype=np.float64) for c in CSV_COLUMNS[s]) for s in TEAM_STATS])
+    first_blood = np.asarray(col["blueFirstBlood"], dtype=np.float64)
+    X = np.column_stack([first_blood, teams["blue"] - teams["red"]]).astype(np.float32)
+    assert X.shape[1] == len(FEATURES)
+    y = np.asarray(col["blueWins"], dtype=np.int64)
+    return X, y, teams
+
+
 def _load() -> dict:
     """CSV 를 한 번 읽어 팀 값·피처·정답·분할을 만든다."""
     if _cache:
         return _cache
-    df = pd.read_csv(DATA_PATH)
-    teams = {}
-    for side in ("blue", "red"):
-        teams[side] = np.column_stack(
-            [sum(df[side + c].to_numpy(dtype=np.float64) for c in CSV_COLUMNS[s]) for s in TEAM_STATS])
-    first_blood = df["blueFirstBlood"].to_numpy(dtype=np.float64)
-    X = np.column_stack([first_blood, teams["blue"] - teams["red"]]).astype(np.float32)
-    assert X.shape[1] == len(FEATURES)
-    y = df["blueWins"].to_numpy(dtype=np.int64)
-    pool, test = train_test_split(np.arange(len(df)), test_size=HOLDOUT_FRAC, stratify=y,
+    import pandas as pd  # 학습 그룹. 이 모듈을 가져오기만 할 때는 필요 없다
+    from sklearn.model_selection import train_test_split
+
+    X, y, teams = table_to_xy(pd.read_csv(DATA_PATH))
+    pool, test = train_test_split(np.arange(len(y)), test_size=HOLDOUT_FRAC, stratify=y,
                                   random_state=HOLDOUT_SEED)
     _cache.update(X=X, y=y, blue=teams["blue"], red=teams["red"], pool=np.sort(pool), test=np.sort(test))
     return _cache

@@ -35,6 +35,8 @@
   uv run python -m client.bridge --server http://127.0.0.1:8083 --insecure-local --overlay --launch-popup
   uv run python -m client.bridge --server http://127.0.0.1:8083 --file client/tests/fixtures/allgamedata_10min.json --overlay --save-match
 """
+from __future__ import annotations  # macOS 기본 python3(3.9)에서도 돌게 (X | None 표기)
+
 import argparse
 import hashlib
 import json
@@ -373,7 +375,27 @@ class OverlayBridge:
         return self.snapshot()
 
 
-def _handler(bridge: OverlayBridge) -> type[BaseHTTPRequestHandler]:
+# 브리지가 같은 출처(127.0.0.1)에서 HUD 를 내주기 위해 서버로 넘겨 주는 경로 (AGENTS.md 3-4절 "팝업").
+# 공개 주소의 웹 페이지는 브라우저의 로컬 네트워크 접근 제한 때문에 127.0.0.1 브리지를 읽지 못한다(Chromium 159 확인).
+RELAY = {("GET", "/overlay"), ("GET", "/meta/champions"), ("POST", "/coach")}
+RELAY_MAX_BODY = 64 * 1024
+Upstream = Callable[[str, str, "bytes | None"], "tuple[int, str, bytes]"]
+
+
+def http_upstream(server: str, timeout: float = 5.0) -> Upstream:
+    """(메서드, 경로, 본문) → (상태 코드, Content-Type, 본문). 4xx·5xx 도 그대로 돌려준다."""
+    def call(method: str, path: str, body: bytes | None) -> tuple[int, str, bytes]:
+        req = urllib.request.Request(server.rstrip("/") + path, data=body, method=method,
+                                     headers={"Content-Type": "application/json"} if body is not None else {})
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                return r.status, r.headers.get("Content-Type", "application/octet-stream"), r.read()
+        except urllib.error.HTTPError as e:
+            return e.code, e.headers.get("Content-Type", "application/json"), e.read()
+    return call
+
+
+def _handler(bridge: OverlayBridge, upstream: Upstream | None = None) -> type[BaseHTTPRequestHandler]:
     class Handler(BaseHTTPRequestHandler):
         def _cors(self) -> None:
             self.send_header("Access-Control-Allow-Origin", "*")
@@ -386,11 +408,45 @@ def _handler(bridge: OverlayBridge) -> type[BaseHTTPRequestHandler]:
             self._cors()
             self.end_headers()
 
-        def do_GET(self) -> None:  # noqa: N802
-            if self.path.split("?", 1)[0] != "/bridge/state":
-                self.send_response(404)
+        def _send(self, code: int, ctype: str | None = None, body: bytes = b"", cors: bool = True) -> None:
+            self.send_response(code)
+            if cors:
                 self._cors()
-                self.end_headers()
+            if ctype:
+                self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def _relay(self, method: str) -> bool:
+            """화이트리스트 경로만 서버로 넘긴다. 넘겼으면 True."""
+            path = self.path.split("?", 1)[0]
+            if upstream is None or (method, path) not in RELAY:
+                return False
+            body = None
+            if method == "POST":
+                n = int(self.headers.get("Content-Length") or 0)
+                if n > RELAY_MAX_BODY:
+                    self._send(413, cors=False)
+                    return True
+                body = self.rfile.read(n)
+            try:
+                code, ctype, data = upstream(method, path, body)
+            except (urllib.error.URLError, OSError, ValueError):
+                code, ctype, data = 502, "application/json; charset=utf-8", \
+                    json.dumps({"detail": "서버에 연결하지 못했다"}, ensure_ascii=False).encode()
+            self._send(code, ctype, data, cors=False)   # 같은 출처에서만 쓰므로 CORS 를 열지 않는다
+            return True
+
+        def do_POST(self) -> None:  # noqa: N802
+            if not self._relay("POST"):
+                self._send(404)
+
+        def do_GET(self) -> None:  # noqa: N802
+            if self._relay("GET"):
+                return
+            if self.path.split("?", 1)[0] != "/bridge/state":
+                self._send(404)
                 return
             body = json.dumps(bridge.snapshot(), ensure_ascii=False).encode()
             self.send_response(200)
@@ -406,15 +462,16 @@ def _handler(bridge: OverlayBridge) -> type[BaseHTTPRequestHandler]:
     return Handler
 
 
-def serve_state(bridge: OverlayBridge, port: int = 8765) -> ThreadingHTTPServer:
-    """127.0.0.1 에만 연다. 뒤쪽 스레드에서 돈다."""
-    httpd = ThreadingHTTPServer(("127.0.0.1", port), _handler(bridge))
+def serve_state(bridge: OverlayBridge, port: int = 8765, upstream: Upstream | None = None) -> ThreadingHTTPServer:
+    """127.0.0.1 에만 연다. 뒤쪽 스레드에서 돈다. upstream 을 주면 /overlay·/meta/champions·POST /coach 를 서버로 넘긴다."""
+    httpd = ThreadingHTTPServer(("127.0.0.1", port), _handler(bridge, upstream))
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     return httpd
 
 
-def overlay_url(server: str, port: int) -> str:
-    return f"{server.rstrip('/')}/overlay?bridge_url=http://127.0.0.1:{port}/bridge/state"
+def overlay_url(port: int) -> str:
+    """팝업 주소. HUD 를 브리지(127.0.0.1)가 내주므로 상태 읽기가 같은 출처다."""
+    return f"http://127.0.0.1:{port}/overlay?bridge_url=http://127.0.0.1:{port}/bridge/state"
 
 
 SWIFT_SRC = os.path.join(os.path.dirname(__file__), "overlay_popup.swift")
@@ -523,9 +580,9 @@ def _pin_windows_topmost_async(pid: int) -> None:
     threading.Thread(target=_worker, daemon=True).start()
 
 
-def launch_popup(server: str, port: int) -> str:
+def launch_popup(port: int) -> str:
     """항상 위 팝업을 띄우고 쓴 방식을 돌려준다."""
-    url = overlay_url(server, port)
+    url = overlay_url(port)
     how, cmd = popup_command(url)
     if cmd:
         proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
@@ -536,12 +593,15 @@ def launch_popup(server: str, port: int) -> str:
     return how
 
 
-def run_overlay(bridge: OverlayBridge, port: int, popup_server: str | None = None,
+def run_overlay(bridge: OverlayBridge, port: int, server: str | None = None, popup: bool = False,
                 sleep: Callable[[float], None] = time.sleep, max_steps: int | None = None) -> None:
-    httpd = serve_state(bridge, port)
-    print(f"브리지 상태: http://127.0.0.1:{httpd.server_address[1]}/bridge/state (멈추려면 Ctrl+C)")
-    if popup_server:
-        launch_popup(popup_server, httpd.server_address[1])
+    httpd = serve_state(bridge, port, http_upstream(server) if server else None)
+    real = httpd.server_address[1]
+    print(f"브리지 상태: http://127.0.0.1:{real}/bridge/state (멈추려면 Ctrl+C)")
+    if server:
+        print(f"HUD: {overlay_url(real)}")
+    if popup:
+        launch_popup(real)
     steps = 0
     try:
         while max_steps is None or steps < max_steps:
@@ -709,7 +769,7 @@ def main(argv: list[str] | None = None) -> int:
         bridge = OverlayBridge(fetch, lambda s: post_coach(a.api, s), a.side, prices,
                                source="file" if a.file else "live",
                                save=(lambda p: post_match(a.api, p)) if a.save_match else None)
-        run_overlay(bridge, a.listen_port, a.api if a.launch_popup else None)
+        run_overlay(bridge, a.listen_port, a.api, popup=a.launch_popup)
         return 0
 
     def notify(lines: list[str], state: str | None = None) -> None:
