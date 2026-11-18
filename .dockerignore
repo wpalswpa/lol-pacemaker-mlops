@@ -6,6 +6,6 @@ data
 artifacts/*.joblib
 artifacts/*.pt
 artifacts/metrics_*.json
-client
+client/tests
 deploy
 training
