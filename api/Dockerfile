@@ -8,6 +8,7 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --locked --no-default-groups --no-cache
 ENV PATH="/app/.venv/bin:$PATH"
 COPY api/ api/
+COPY client/bridge.py client/overlay_popup.swift client/
 COPY artifacts/model_sklearn.onnx artifacts/baseline.json artifacts/
 ARG MODEL_IMPL=onnx
 ENV MODEL_IMPL=${MODEL_IMPL}

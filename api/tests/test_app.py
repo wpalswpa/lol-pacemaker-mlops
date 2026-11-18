@@ -607,3 +607,37 @@ def test_app_starts_when_postgres_unreachable(monkeypatch):
     c = TestClient(mod.app)
     assert c.get("/health").status_code == 200
     assert c.get("/matches").status_code == 503
+
+
+def test_download_page_and_launcher_scripts(client):
+    page = client.get("/download")
+    assert page.status_code == 200
+    assert "LoL 페이스메이커 데스크톱 다운로드" in page.text
+    assert "/download/launcher?os=windows" in page.text
+    assert "/download/launcher?os=mac" in page.text
+
+    bridge = client.get("/download/bridge.py")
+    assert bridge.status_code == 200
+    assert "extract_owned_items" in bridge.text
+
+    swift = client.get("/download/overlay_popup.swift")
+    assert swift.status_code == 200
+    assert "NSPanel" in swift.text
+
+    win = client.get("/download/launcher?os=windows", headers={"host": "<서버 IP>"})
+    assert win.status_code == 200
+    assert "lol-pacemaker-overlay.bat" in win.headers.get("content-disposition", "")
+    assert "http://<서버 IP>/download/bridge.py" in win.text
+    assert "--launch-popup" in win.text
+
+    mac = client.get(
+        "/download/launcher?os=mac",
+        headers={"host": "jjm.eta.pyhub.kr", "x-forwarded-proto": "https"},
+    )
+    assert mac.status_code == 200
+    assert "lol-pacemaker-overlay.command" in mac.headers.get("content-disposition", "")
+    assert "https://jjm.eta.pyhub.kr/download/bridge.py" in mac.text
+    assert "https://jjm.eta.pyhub.kr/download/overlay_popup.swift" in mac.text
+
+    assert client.get("/download/launcher?os=linux").status_code == 422
+    assert client.get("/download/launcher?os=windows", headers={"host": "bad.com;calc"}).status_code == 400

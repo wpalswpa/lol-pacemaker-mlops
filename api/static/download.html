@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LoL 페이스메이커 데스크톱 다운로드</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='6' fill='%236366f1'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #0b0d12;
+    --surface: #12151e;
+    --surface2: #171b26;
+    --line: #242938;
+    --text: #f3f4f6;
+    --sub: #9ca3af;
+    --dim: #6b7280;
+    --accent: #5f5cf6;
+    --accent-hover: #716ef8;
+    --good: #34d399;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.55 -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", "Segoe UI", sans-serif; }
+  a { color: inherit; text-decoration: none; }
+
+  /* 상단 내비게이션 (OP.GG Desktop 스타일) */
+  header {
+    border-bottom: 1px solid var(--line);
+    background: rgba(11, 13, 18, 0.92);
+    position: sticky; top: 0; z-index: 20; backdrop-filter: blur(8px);
+  }
+  .nav {
+    max-width: 1120px; margin: 0 auto; padding: 14px 24px;
+    display: flex; align-items: center; justify-content: space-between; gap: 20px;
+  }
+  .brand {
+    display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 16px; letter-spacing: -0.02em;
+  }
+  .brand-badge {
+    display: inline-flex; align-items: center; justify-content: center;
+    padding: 3px 8px; border-radius: 7px; background: #fff; color: #0b0d12;
+    font-size: 11px; font-weight: 900; letter-spacing: .02em;
+  }
+  .nav-links {
+    display: flex; align-items: center; gap: 24px; color: var(--sub); font-size: 14px; font-weight: 600;
+  }
+  .nav-links a:hover { color: #fff; }
+  .nav-links a.active { color: #fff; }
+  .nav-cta {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 9px 18px; border-radius: 999px; background: var(--accent); color: #fff;
+    font-size: 13px; font-weight: 700; transition: background .15s;
+  }
+  .nav-cta:hover { background: var(--accent-hover); }
+
+  main { max-width: 1120px; margin: 0 auto; padding: 64px 24px 80px; }
+
+  .eyebrow { color: var(--sub); font-size: 13px; font-weight: 600; margin-bottom: 14px; }
+  h1 { font-size: clamp(32px, 5vw, 52px); font-weight: 900; letter-spacing: -0.03em; margin: 0 0 18px; line-height: 1.15; }
+  .hero-desc { color: var(--sub); font-size: 16px; max-width: 680px; margin: 0 0 28px; }
+  .meta-row {
+    display: flex; align-items: center; gap: 28px; flex-wrap: wrap;
+    font-size: 13px; color: var(--sub); margin-bottom: 40px;
+  }
+  .meta-row strong { color: #fff; font-weight: 700; margin-left: 6px; }
+
+  /* 2단 OS 다운로드 카드 */
+  .os-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; margin-bottom: 44px; }
+  @media (max-width: 760px) { .os-grid { grid-template-columns: 1fr; } .nav-links { display: none; } }
+
+  .os-card {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 18px;
+    padding: 34px 32px; display: flex; flex-direction: column; justify-content: space-between; gap: 26px;
+    transition: border-color .2s, transform .2s;
+  }
+  .os-card:hover { border-color: #3a4259; transform: translateY(-2px); }
+  .os-icon { width: 34px; height: 34px; color: #f3f4f6; margin-bottom: 14px; }
+  .os-title { font-size: 28px; font-weight: 800; margin: 0 0 8px; letter-spacing: -0.02em; }
+  .os-desc { color: var(--sub); font-size: 14px; margin: 0; }
+  .os-actions { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+  .btn-download {
+    display: inline-flex; align-items: center; gap: 10px;
+    padding: 13px 26px; border-radius: 999px; background: var(--accent); color: #fff;
+    font-size: 15px; font-weight: 700; transition: background .15s;
+  }
+  .btn-download:hover { background: var(--accent-hover); }
+  .ver-note { font-size: 13px; color: var(--dim); }
+  .ver-note strong { color: #e5e7eb; margin-left: 4px; }
+
+  /* 3단계 안내 */
+  .steps-card {
+    background: var(--surface2); border: 1px solid var(--line); border-radius: 16px;
+    padding: 26px 30px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px;
+  }
+  @media (max-width: 760px) { .steps-card { grid-template-columns: 1fr; } }
+  .step-num {
+    display: inline-block; padding: 3px 9px; border-radius: 999px;
+    background: rgba(95, 92, 246, .18); color: #a5b4fc; font-size: 12px; font-weight: 700; margin-bottom: 8px;
+  }
+  .step-title { font-size: 15px; font-weight: 700; margin: 0 0 6px; }
+  .step-text { font-size: 13px; color: var(--sub); margin: 0; }
+  .footnote {
+    margin-top: 22px; font-size: 12.5px; color: var(--dim);
+    display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="nav">
+    <a class="brand" href="/">
+      <span class="brand-badge">FAKER</span>
+      <span>Desktop</span>
+    </a>
+    <nav class="nav-links" aria-label="주 메뉴">
+      <a href="/">웹 시뮬레이터 · 전적</a>
+      <a href="/overlay">인게임 HUD</a>
+      <a href="/slides">발표 슬라이드</a>
+      <a href="/download" class="active">다운로드</a>
+    </nav>
+    <a class="nav-cta" id="quick-cta" href="/download/launcher?os=windows">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      <span>다운로드</span>
+    </a>
+  </div>
+</header>
+
+<main>
+  <div class="eyebrow">다운로드</div>
+  <h1>LoL 페이스메이커 데스크톱 다운로드</h1>
+  <p class="hero-desc">
+    연습모드·리플레이에서 지금 살 아이템과 찍을 스킬을 강조 테두리로 알려 주는 인게임 팝업 오버레이와
+    전적 DB 자동 기록까지. 별도 설정 없이 클릭 한 번으로 내 PC에서 바로 실행하세요.
+  </p>
+
+  <div class="meta-row">
+    <span>최신 버전 <strong id="app-ver">v1.4</strong></span>
+    <span>모델 버전 <strong id="model-ver">-</strong></span>
+    <span>지원 OS <strong>Windows · macOS</strong></span>
+  </div>
+
+  <div class="os-grid">
+    <section class="os-card" aria-label="Windows 다운로드">
+      <div>
+        <svg class="os-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M2 3.5L11 2.2V11.3H2V3.5ZM12.2 2L22 0.5V11.3H12.2V2ZM2 12.5H11V21.7L2 20.4V12.5ZM12.2 12.5H22V23.3L12.2 21.9V12.5Z"/>
+        </svg>
+        <h2 class="os-title">Windows</h2>
+        <p class="os-desc">모든 인게임 오버레이(항상 위 고정), 구매·스킬 강조 테두리, 자동 전적 저장을 사용할 수 있습니다.</p>
+      </div>
+      <div class="os-actions">
+        <a class="btn-download" href="/download/launcher?os=windows" download="lol-pacemaker-overlay.bat">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          <span>Windows 다운로드</span>
+        </a>
+        <span class="ver-note">파일 <strong class="ver-tag">.bat 원클릭 실행기</strong></span>
+      </div>
+    </section>
+
+    <section class="os-card" aria-label="macOS 다운로드">
+      <div>
+        <svg class="os-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M16.365 1.43c0 1.14-.493 2.27-1.177 3.08-.744.9-1.99 1.57-2.987 1.57-.12 0-.23-.02-.3-.03-.01-.06-.04-.22-.04-.39 0-1.15.572-2.27 1.206-2.98.804-.94 2.142-1.64 3.248-1.68.03.13.05.28.05.43zm4.565 15.71c-.03.07-.463 1.58-1.518 3.12-.945 1.34-1.94 2.71-3.43 2.71-1.517 0-1.9-.88-3.63-.88-1.698 0-2.302.91-3.67.91-1.377 0-2.332-1.26-3.428-2.8-1.287-1.82-2.323-4.63-2.323-7.28 0-4.28 2.797-6.55 5.552-6.55 1.448 0 2.675.95 3.6.95.865 0 2.222-1.01 3.902-1.01.613 0 2.886.06 4.374 2.19-.13.09-2.383 1.37-2.383 4.19 0 3.26 2.854 4.42 2.955 4.45z"/>
+        </svg>
+        <h2 class="os-title">macOS</h2>
+        <p class="os-desc">Swift 네이티브 항상 위 플로팅 패널과 로컬 브리지 연동 오버레이를 사용할 수 있습니다.</p>
+      </div>
+      <div class="os-actions">
+        <a class="btn-download" href="/download/launcher?os=mac" download="lol-pacemaker-overlay.command">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          <span>macOS 다운로드</span>
+        </a>
+        <span class="ver-note">파일 <strong class="ver-tag">.command 실행기</strong></span>
+      </div>
+    </section>
+  </div>
+
+  <section class="steps-card" aria-label="실행 방법">
+    <div>
+      <span class="step-num">STEP 1</span>
+      <h3 class="step-title">OS에 맞는 런처 받기</h3>
+      <p class="step-text">위 버튼을 누르면 현재 서버 주소가 자동 입력된 경량 실행기 파일이 내려받아집니다.</p>
+    </div>
+    <div>
+      <span class="step-num">STEP 2</span>
+      <h3 class="step-title">더블클릭으로 자동 실행</h3>
+      <p class="step-text">Python 3만 있으면 추가 설치 없이 최신 브리지 스크립트를 서버에서 받아 팝업을 띄웁니다.</p>
+    </div>
+    <div>
+      <span class="step-num">STEP 3</span>
+      <h3 class="step-title">연습모드 · 리플레이에서 확인</h3>
+      <p class="step-text">롤 화면 설정을 '테두리 없음'으로 두면 우측 상단 항상 위 HUD와 강조 테두리가 동작합니다.</p>
+    </div>
+  </section>
+
+  <div class="footnote">
+    <span>관전·리플레이·연습 모드 전용 (공개 점수판 API 127.0.0.1:2999 만 사용 · 랭크 미사용)</span>
+    <span>Python 3 표준 라이브러리 기반 · 추가 pip 설치 불필요</span>
+  </div>
+</main>
+
+<script>
+(function () {
+  if (/Mac|iPhone|iPad/i.test(navigator.userAgent)) {
+    const cta = document.getElementById("quick-cta");
+    if (cta) { cta.href = "/download/launcher?os=mac"; cta.setAttribute("download", "lol-pacemaker-overlay.command"); }
+  }
+  fetch("/health").then(r => r.json()).then(d => {
+    if (d.app_version) document.getElementById("app-ver").textContent = d.app_version;
+    if (d.model_version) document.getElementById("model-ver").textContent = d.model_version;
+  }).catch(() => {});
+})();
+</script>
+</body>
+</html>

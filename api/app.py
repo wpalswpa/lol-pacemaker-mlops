@@ -9,9 +9,10 @@ import io
 import json
 import logging
 import os
+import re
 from typing import Annotated, Literal
 
-from fastapi import FastAPI, Query, Request
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, Response
 
@@ -42,6 +43,11 @@ app = FastAPI(
 _INDEX = os.path.join(os.path.dirname(__file__), "static", "index.html")
 _SLIDES = os.path.join(os.path.dirname(__file__), "static", "slides.html")
 _OVERLAY = os.path.join(os.path.dirname(__file__), "static", "overlay.html")
+_DOWNLOAD = os.path.join(os.path.dirname(__file__), "static", "download.html")
+_ROOT_DIR = os.path.dirname(os.path.dirname(__file__))
+_BRIDGE_PY = os.path.join(_ROOT_DIR, "client", "bridge.py")
+_POPUP_SWIFT = os.path.join(_ROOT_DIR, "client", "overlay_popup.swift")
+_HOST_RE = re.compile(r"^[A-Za-z0-9.\-:\[\]]+$")
 
 # 전적 DB (AGENTS.md 3-5절). PostgreSQL 이 아직 안 떴어도 앱은 뜬다. /matches 가 다음 요청에서 다시 연결한다
 try:
@@ -119,6 +125,87 @@ def overlay() -> FileResponse:
 def slides() -> FileResponse:
     """5분 발표 슬라이드(AGENTS.md 4절). 외부 자원 없이 한 파일로 완결."""
     return FileResponse(_SLIDES, media_type="text/html; charset=utf-8")
+
+
+@app.get("/download", include_in_schema=False)
+def download_page() -> FileResponse:
+    """Windows/macOS 원클릭 인게임 런처 다운로드 화면 (AGENTS.md 3-6절)."""
+    return FileResponse(_DOWNLOAD, media_type="text/html; charset=utf-8")
+
+
+@app.get("/download/bridge.py", include_in_schema=False)
+def download_bridge() -> FileResponse:
+    """표준 라이브러리 기반 로컬 브리지 스크립트."""
+    return FileResponse(_BRIDGE_PY, media_type="text/x-python; charset=utf-8", filename="bridge.py")
+
+
+@app.get("/download/overlay_popup.swift", include_in_schema=False)
+def download_popup_swift() -> FileResponse:
+    """macOS Swift WebKit Always-On-Top 플로팅 패널 소스."""
+    return FileResponse(_POPUP_SWIFT, media_type="text/plain; charset=utf-8", filename="overlay_popup.swift")
+
+
+def _origin_from_request(request: Request) -> str:
+    proto = (request.headers.get("x-forwarded-proto") or request.url.scheme or "http").split(",")[0].strip().lower()
+    if proto not in ("http", "https"):
+        raise HTTPException(status_code=400, detail="잘못된 프로토콜")
+    host = (request.headers.get("host") or request.url.netloc or "").strip()
+    if not host or not _HOST_RE.match(host):
+        raise HTTPException(status_code=400, detail="잘못된 Host 헤더")
+    return f"{proto}://{host}"
+
+
+@app.get("/download/launcher", include_in_schema=False)
+def download_launcher(request: Request, os: Literal["windows", "mac"] = Query(...)) -> Response:
+    """요청 서버 주소가 자동 입력된 원클릭 인게임 오버레이 실행기를 생성해 내려준다."""
+    origin = _origin_from_request(request)
+    if os == "windows":
+        script = (
+            "@echo off\r\n"
+            "chcp 65001 >nul\r\n"
+            "setlocal\r\n"
+            "echo [LoL Pacemaker] 인게임 오버레이 실행 준비 중...\r\n"
+            "set \"PY_CMD=\"\r\n"
+            "where python >nul 2>nul && set \"PY_CMD=python\"\r\n"
+            "if not defined PY_CMD (where py >nul 2>nul && set \"PY_CMD=py -3\")\r\n"
+            "if not defined PY_CMD (\r\n"
+            "  echo Python 3 이 설치되어 있지 않습니다. https://www.python.org/downloads/ 에서 설치 후 다시 실행하세요.\r\n"
+            "  pause\r\n"
+            "  exit /b 1\r\n"
+            ")\r\n"
+            "set \"APP_DIR=%TEMP%\\lol-pace-client\"\r\n"
+            "if not exist \"%APP_DIR%\\client\" mkdir \"%APP_DIR%\\client\"\r\n"
+            f"curl.exe -fsSL \"{origin}/download/bridge.py\" -o \"%APP_DIR%\\client\\bridge.py\"\r\n"
+            "if errorlevel 1 (\r\n"
+            f"  powershell -NoProfile -Command \"Invoke-WebRequest -Uri '{origin}/download/bridge.py' -OutFile '%APP_DIR%\\client\\bridge.py'\"\r\n"
+            ")\r\n"
+            "pushd \"%APP_DIR%\"\r\n"
+            "echo [LoL Pacemaker] 항상 위 인게임 오버레이 팝업을 켭니다. (종료: Ctrl+C)\r\n"
+            f"%PY_CMD% -m client.bridge --server \"{origin}\" --insecure-local --overlay --launch-popup --save-match\r\n"
+            "popd\r\n"
+            "pause\r\n"
+        )
+        return Response(
+            content=script.encode("utf-8"),
+            media_type="application/octet-stream",
+            headers={"Content-Disposition": 'attachment; filename="lol-pacemaker-overlay.bat"'},
+        )
+    script = (
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
+        "APP_DIR=\"$HOME/.cache/lol-pace-client\"\n"
+        "mkdir -p \"$APP_DIR/client\"\n"
+        f"curl -fsSL \"{origin}/download/bridge.py\" -o \"$APP_DIR/client/bridge.py\"\n"
+        f"curl -fsSL \"{origin}/download/overlay_popup.swift\" -o \"$APP_DIR/client/overlay_popup.swift\"\n"
+        "cd \"$APP_DIR\"\n"
+        "echo \"[LoL Pacemaker] 항상 위 인게임 오버레이 팝업을 켭니다. (종료: Ctrl+C)\"\n"
+        f"python3 -m client.bridge --server \"{origin}\" --insecure-local --overlay --launch-popup --save-match\n"
+    )
+    return Response(
+        content=script.encode("utf-8"),
+        media_type="application/octet-stream",
+        headers={"Content-Disposition": 'attachment; filename="lol-pacemaker-overlay.command"'},
+    )
 
 
 # ── 전적 기록 (AGENTS.md 3-5절, 4절). 쓰기 경로라 AI 에이전트 도구에는 내놓지 않는다 ──
