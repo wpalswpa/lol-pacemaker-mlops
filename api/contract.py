@@ -71,6 +71,9 @@ class GameState(BaseModel):
     # 선택 칸: 승률 계산에 쓰지 않고 /coach 의 build_advice 에만 쓴다
     my_champion: Annotated[str | None, Field(max_length=40, description="내 챔피언(영문 ID·한국어 이름) 또는 역할군 AD·AP·TANK·SUPPORT")] = None
     enemy_top_threat: Annotated[str | None, Field(max_length=40, description="상대 최대 위협 챔피언 또는 유형 AD·AP·HEAL·TANK")] = None
+    enemy_items: list[Annotated[int, Field(strict=True, ge=1, le=999999)]] = Field(
+        default_factory=list, max_length=12, description="상대 최대 위협 챔피언이 보유한 공개 아이템 ID 목록(Tab 점수판)"
+    )
 
     @field_validator("my_champion")
     @classmethod
@@ -186,6 +189,7 @@ class BuildAdvice(BaseModel):
     enemy_top_threat: str | None
     threat_type: str
     posture: str
+    tactical_tip: str | None = None
     recommended_items: list[BuildItem] = Field(description="1 신발, 2 하위템, 3 코어")
     starter_items: list[ExtraItem] = Field(description="게임 시작 때 살 아이템 (규칙표 starter)")
     situational_items: list[ExtraItem] = Field(description="상황이 바뀌면 바꿔 살 아이템, 최대 3개")

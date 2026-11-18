@@ -207,7 +207,7 @@ class PaceService:
                          f"(상위 {c['overall_top_pct_after']:.0f}%)")
         else:
             tail = " → 지금 페이스 유지"
-        build = advise(my_p, state.my_champion, state.enemy_top_threat)
+        build = advise(my_p, state.my_champion, state.enemy_top_threat, enemy_items=state.enemy_items)
         if base["warnings"]:
             toast.append("학습 범위 밖 입력 있음")
         else:  # 경고가 없을 때만 빌드 한 줄 (카드는 최대 3줄)

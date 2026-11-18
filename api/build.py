@@ -101,10 +101,37 @@ def _situational(pierce: str, taken: set[int]) -> list[dict]:
     return out[:3]
 
 
-def advise(my_win_prob: float, my_champion: str | None, enemy_top_threat: str | None) -> dict:
-    """AGENTS.md "규칙표 적용 순서" 1~6 을 그대로 따른다."""
+ENEMY_HEAL_ITEMS = frozenset({3153, 3072, 6673, 3033, 3065, 6616, 1053})
+ENEMY_TANK_ITEMS = frozenset({3068, 3075, 3084, 6665, 3143, 3110, 3001, 2502})
+
+
+def _enemy_tactical_tip(state: str, threat: str, detected_by_item: str | None) -> str:
+    if detected_by_item == "HEAL":
+        return "상대 회복·흡혈 코어 감지 -> 치유 감소 하위템 우선 · 장기 교전 금지"
+    if detected_by_item == "TANK":
+        return "상대 방어·체력 코어 감지 -> 관통 하위템 우선 · 뒷라인 포커싱"
+    if state == "behind":
+        return f"열세 + 상대 {threat} 위협 -> 방어 하위템 먼저 챙기고 1대1 회피"
+    if state == "ahead":
+        return f"우세 -> 핵심 딜 코어로 스노우볼 · 상대 {threat} 견제 시야 확보"
+    return f"접전 -> 미니언 파밍 유지하며 상대 {threat} 아이템 완성 타이밍 체크"
+
+
+def advise(
+    my_win_prob: float,
+    my_champion: str | None,
+    enemy_top_threat: str | None,
+    enemy_items: list[int] | None = None,
+) -> dict:
+    """AGENTS.md "규칙표 적용 순서" 1~6 및 상대 공개 아이템 기반 동적 위협 보정."""
     me, th = resolve_my(my_champion), resolve_threat(enemy_top_threat)
     state, cls, dmg, threat = state_of(my_win_prob), me["class"], me["damage"], th["threat"]
+    item_set = set(enemy_items or ())
+    detected_by_item = None
+    if item_set & ENEMY_HEAL_ITEMS:
+        threat, detected_by_item = "HEAL", "HEAL"
+    elif item_set & ENEMY_TANK_ITEMS and threat in ("AD", "AP", "TANK"):
+        threat, detected_by_item = "TANK", "TANK"
     pierce = "tank" if cls == "tank" else dmg  # 대응 하위템을 고르는 열: 탱커는 탱커용
     hurts = threat in ("AD", "AP")  # 막아야 할 피해 유형이 정해졌나
 
@@ -137,6 +164,7 @@ def advise(my_win_prob: float, my_champion: str | None, enemy_top_threat: str | 
         "enemy_top_threat": th["champion"],
         "threat_type": threat,
         "posture": RULES["posture"][state],
+        "tactical_tip": _enemy_tactical_tip(state, threat, detected_by_item),
         "recommended_items": picked,
         "starter_items": [_extra(i, "starter") for i in RULES["starter"][cls]],
         "situational_items": _situational(pierce, {it["item_id"] for it in picked}),

@@ -653,3 +653,24 @@ def test_download_page_and_launcher_scripts(client):
 
     assert client.get("/download/launcher?os=linux").status_code == 422
     assert client.get("/download/launcher?os=windows", headers={"host": "bad.com;calc"}).status_code == 400
+
+
+def test_enemy_items_dynamic_coaching_and_t1_orange_theme(client):
+    payload = {
+        "blue": {"kills": 5, "assists": 6, "cs": 230, "avg_level": 8.0, "dragons": 0, "heralds": 0, "towers": 0},
+        "red": {"kills": 7, "assists": 9, "cs": 250, "avg_level": 8.4, "dragons": 1, "heralds": 0, "towers": 1},
+        "first_blood": "red",
+        "my_side": "blue",
+        "my_champion": "Ahri",
+        "enemy_top_threat": "Zed",
+        "enemy_items": [3153],  # 몰락한 왕의 검(흡혈 코어)
+    }
+    res = client.post("/coach", json=payload)
+    assert res.status_code == 200
+    advice = res.json()["build_advice"]
+    assert advice["threat_type"] == "HEAL"
+    assert "회복" in advice["tactical_tip"]
+
+    dl = client.get("/download")
+    assert dl.status_code == 200
+    assert "#ff5a1f" in dl.text

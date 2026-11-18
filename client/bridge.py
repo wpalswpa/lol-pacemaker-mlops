@@ -156,11 +156,13 @@ def to_game_state(data: dict, side: str | None = None, prices: dict[str, float] 
     picks = {"my_champion": champion_of(me_player) if me_player else None,
              "enemy_top_threat": champion_of(threat) if threat else None}
     state.update({k: v for k, v in picks.items() if v})
+    enemy_items = [int(it["itemID"]) for it in (threat or {}).get("items", []) if int(it.get("itemID") or 0) > 0][:12]
     info = {
         "game_time": float(data["gameData"]["gameTime"]),
         "first_blood_seen": first_blood is not None,
         "item_gold": {t: _item_gold(by_team[t], prices) for t in ("blue", "red")},
         "champions": picks,
+        "enemy_items": enemy_items,
     }
     return state, info
 
