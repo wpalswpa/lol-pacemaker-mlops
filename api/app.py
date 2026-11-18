@@ -10,6 +10,7 @@ import json
 import logging
 import os
 import re
+import zipfile
 from typing import Annotated, Literal
 
 from fastapi import FastAPI, HTTPException, Query, Request
@@ -164,12 +165,18 @@ def download_launcher(request: Request, os: Literal["windows", "mac"] = Query(..
             "@echo off\r\n"
             "chcp 65001 >nul\r\n"
             "setlocal\r\n"
-            "echo [LoL Pacemaker] 인게임 오버레이 실행 준비 중...\r\n"
+            "echo [LoL Pacemaker] 인게임 오버레이 준비 중...\r\n"
             "set \"PY_CMD=\"\r\n"
             "where python >nul 2>nul && set \"PY_CMD=python\"\r\n"
             "if not defined PY_CMD (where py >nul 2>nul && set \"PY_CMD=py -3\")\r\n"
             "if not defined PY_CMD (\r\n"
-            "  echo Python 3 이 설치되어 있지 않습니다. https://www.python.org/downloads/ 에서 설치 후 다시 실행하세요.\r\n"
+            "  echo Python 3 자동 설치를 시도합니다...\r\n"
+            "  winget install -e --id Python.Python.3.12 --silent --accept-package-agreements --accept-source-agreements >nul 2>nul\r\n"
+            "  if exist \"%LocalAppData%\\Programs\\Python\\Python312\\python.exe\" set \"PY_CMD=%LocalAppData%\\Programs\\Python\\Python312\\python.exe\"\r\n"
+            ")\r\n"
+            "if not defined PY_CMD (\r\n"
+            "  echo Python 3 설치가 필요합니다. 브라우저에서 설치 페이지를 엽니다.\r\n"
+            "  start https://www.python.org/downloads/windows/\r\n"
             "  pause\r\n"
             "  exit /b 1\r\n"
             ")\r\n"
@@ -180,7 +187,7 @@ def download_launcher(request: Request, os: Literal["windows", "mac"] = Query(..
             f"  powershell -NoProfile -Command \"Invoke-WebRequest -Uri '{origin}/download/bridge.py' -OutFile '%APP_DIR%\\client\\bridge.py'\"\r\n"
             ")\r\n"
             "pushd \"%APP_DIR%\"\r\n"
-            "echo [LoL Pacemaker] 항상 위 인게임 오버레이 팝업을 켭니다. (종료: Ctrl+C)\r\n"
+            "echo [LoL Pacemaker] 항상 위 인게임 오버레이 팝업을 켭니다.\r\n"
             f"%PY_CMD% -m client.bridge --server \"{origin}\" --insecure-local --overlay --launch-popup --save-match\r\n"
             "popd\r\n"
             "pause\r\n"
@@ -190,7 +197,7 @@ def download_launcher(request: Request, os: Literal["windows", "mac"] = Query(..
             media_type="application/octet-stream",
             headers={"Content-Disposition": 'attachment; filename="lol-pacemaker-overlay.bat"'},
         )
-    script = (
+    run_sh = (
         "#!/usr/bin/env bash\n"
         "set -euo pipefail\n"
         "APP_DIR=\"$HOME/.cache/lol-pace-client\"\n"
@@ -198,13 +205,28 @@ def download_launcher(request: Request, os: Literal["windows", "mac"] = Query(..
         f"curl -fsSL \"{origin}/download/bridge.py\" -o \"$APP_DIR/client/bridge.py\"\n"
         f"curl -fsSL \"{origin}/download/overlay_popup.swift\" -o \"$APP_DIR/client/overlay_popup.swift\"\n"
         "cd \"$APP_DIR\"\n"
-        "echo \"[LoL Pacemaker] 항상 위 인게임 오버레이 팝업을 켭니다. (종료: Ctrl+C)\"\n"
-        f"python3 -m client.bridge --server \"{origin}\" --insecure-local --overlay --launch-popup --save-match\n"
+        f"exec python3 -m client.bridge --server \"{origin}\" --insecure-local --overlay --launch-popup --save-match\n"
     )
+    info_plist = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
+        '<plist version="1.0"><dict>'
+        "<key>CFBundleExecutable</key><string>run</string>"
+        "<key>CFBundleIdentifier</key><string>local.lolpace.launcher</string>"
+        "<key>CFBundleName</key><string>LoL-Pacemaker</string>"
+        "<key>LSUIElement</key><true/>"
+        "</dict></plist>\n"
+    )
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zi_run = zipfile.ZipInfo("LoL-Pacemaker.app/Contents/MacOS/run")
+        zi_run.external_attr = 0o755 << 16
+        zf.writestr(zi_run, run_sh.encode("utf-8"))
+        zf.writestr("LoL-Pacemaker.app/Contents/Info.plist", info_plist.encode("utf-8"))
     return Response(
-        content=script.encode("utf-8"),
-        media_type="application/octet-stream",
-        headers={"Content-Disposition": 'attachment; filename="lol-pacemaker-overlay.command"'},
+        content=buf.getvalue(),
+        media_type="application/zip",
+        headers={"Content-Disposition": 'attachment; filename="LoL-Pacemaker-macOS.zip"'},
     )
 
 

@@ -635,9 +635,15 @@ def test_download_page_and_launcher_scripts(client):
         headers={"host": "jjm.eta.pyhub.kr", "x-forwarded-proto": "https"},
     )
     assert mac.status_code == 200
-    assert "lol-pacemaker-overlay.command" in mac.headers.get("content-disposition", "")
-    assert "https://jjm.eta.pyhub.kr/download/bridge.py" in mac.text
-    assert "https://jjm.eta.pyhub.kr/download/overlay_popup.swift" in mac.text
+    assert "LoL-Pacemaker-macOS.zip" in mac.headers.get("content-disposition", "")
+    import io
+    import zipfile
+    with zipfile.ZipFile(io.BytesIO(mac.content)) as zf:
+        run_info = zf.getinfo("LoL-Pacemaker.app/Contents/MacOS/run")
+        assert (run_info.external_attr >> 16) == 0o755
+        run_text = zf.read(run_info).decode("utf-8")
+        assert "https://jjm.eta.pyhub.kr/download/bridge.py" in run_text
+        assert "https://jjm.eta.pyhub.kr/download/overlay_popup.swift" in run_text
 
     assert client.get("/download/launcher?os=linux").status_code == 422
     assert client.get("/download/launcher?os=windows", headers={"host": "bad.com;calc"}).status_code == 400
