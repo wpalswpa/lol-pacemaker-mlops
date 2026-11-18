@@ -14,6 +14,8 @@
 | 판단 내용(규칙 상수, 코칭 단계, 기준선)은 데이터나 한 곳의 상수로 두고, 코드는 그것을 적용만 한다 | 패치마다 바뀌는 값을 코드 여러 곳에서 고치면 서로 어긋난다 | 규칙 기준선의 상수는 `api/predictors/rule.py` 한 곳 |
 | 모델 파일(`*.joblib`, `*.pt`)은 우리 학습이 만든 `MODEL_DIR`에서만 읽는다. 요청 본문이나 외부 경로에서 받은 파일을 열지 않는다 | joblib·torch 파일은 열 때 코드가 실행될 수 있다. 서빙 이미지는 ONNX만 연다 | 없음 |
 
+일정(마일스톤 M1~M6)과 이슈 지도는 `인수인계.md` 4-1절이 정본이다(GitHub 마일스톤·이슈와 같은 번호).
+
 ## 2. 실행 설정 (환경 변수)
 
 | 변수 | 기본값 | 뜻 |
@@ -378,7 +380,7 @@ LoL은 "테두리 없는 창 모드"여야 위에 뜬다. 전체 화면 독점 �
 
 | 단계 | 누가 | 무엇을 정하나 |
 |---|---|---|
-| 1단계 수치 | ONNX 모델 + 규칙표(`service.coach`) | `my_win_prob`, `build_advice`(`state`·`tactical_tip`·`recommended_items`·`skill_order`), `coaching[0]`(핵심 목표). 모든 숫자와 아이템 이름은 여기서만 나온다 |
+| 1단계 수치 | ONNX 모델 + 규칙표(`service.coach`) | `my_win_prob`, `build_advice`(`state`·`tactical_tip`·`recommended_items`·`skill_order`), `coaching[0]`(핵심 목표). 모든 숫자와 아이템 이름은 여기서만 나온다. 계산 시간은 로컬 ONNX `/predict` p95 0.73ms(`docs/benchmark_summary.json`), LLM 을 기다리지 않는다 |
 | 2단계 문장 | 경량 LLM(`LLM_MODEL`) | 1단계 결과를 줄인 JSON(`build_prompt_payload`: `win_prob_pct`, `state`(한국어 `우세`·`접전`·`열세`), `my_champion`, `enemy_top_threat`, `threat_type`, `tactical_tip`, `top_goal`, `horizon_min`, `recommended_items` 이름, `skill_order`)만 받아 한국어 2문장 이내 운영 브리핑으로 옮긴다. 새 수치·아이템을 만들지 않는다 |
 | 3단계 검사 | `validate_briefing_output(text, payload)` | LLM 문장을 아래 검사 규칙으로 본다. 하나라도 걸리면 그 문장을 버리고 규칙 문장으로 답한다 |
 
