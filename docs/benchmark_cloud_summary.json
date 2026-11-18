@@ -1,0 +1,82 @@
+{
+  "generated_at": "2026-11-18T08:23:21+00:00",
+  "target": "<원격 서버>",
+  "health": {
+    "status": "ok",
+    "model": "onnx",
+    "app_version": "v1.2",
+    "model_version": "m20261118-2"
+  },
+  "settings": {
+    "requests": 40,
+    "concurrency": 10,
+    "warmup": 5,
+    "timeout_s": 10.0
+  },
+  "results": [
+    {
+      "endpoint": "POST /predict",
+      "mode": "순차",
+      "concurrency": 1,
+      "total": 40,
+      "ok": 40,
+      "failed": 0,
+      "success_rate": 100.0,
+      "p50_ms": 599.881,
+      "p95_ms": 668.389,
+      "p99_ms": 928.539,
+      "mean_ms": 612.496,
+      "max_ms": 930.862,
+      "rps": 1.63,
+      "elapsed_s": 24.503
+    },
+    {
+      "endpoint": "POST /predict",
+      "mode": "동시",
+      "concurrency": 10,
+      "total": 40,
+      "ok": 40,
+      "failed": 0,
+      "success_rate": 100.0,
+      "p50_ms": 588.983,
+      "p95_ms": 630.863,
+      "p99_ms": 634.168,
+      "mean_ms": 592.868,
+      "max_ms": 634.187,
+      "rps": 16.72,
+      "elapsed_s": 2.392
+    },
+    {
+      "endpoint": "POST /coach",
+      "mode": "순차",
+      "concurrency": 1,
+      "total": 40,
+      "ok": 40,
+      "failed": 0,
+      "success_rate": 100.0,
+      "p50_ms": 598.48,
+      "p95_ms": 737.787,
+      "p99_ms": 1358.062,
+      "mean_ms": 637.298,
+      "max_ms": 1452.358,
+      "rps": 1.57,
+      "elapsed_s": 25.496
+    },
+    {
+      "endpoint": "POST /coach",
+      "mode": "동시",
+      "concurrency": 10,
+      "total": 40,
+      "ok": 40,
+      "failed": 0,
+      "success_rate": 100.0,
+      "p50_ms": 593.289,
+      "p95_ms": 638.445,
+      "p99_ms": 638.692,
+      "mean_ms": 596.874,
+      "max_ms": 638.806,
+      "rps": 16.57,
+      "elapsed_s": 2.414
+    }
+  ]
+}
