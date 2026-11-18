@@ -34,7 +34,12 @@ jobs:
           KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
         run: |
           mkdir -p data
-          uvx kaggle datasets download -d bobbyscience/league-of-legends-diamond-ranked-games-10-min -p data --unzip
+          if [ -n "$KAGGLE_USERNAME" ] && [ -n "$KAGGLE_KEY" ]; then
+            uvx kaggle datasets download -d bobbyscience/league-of-legends-diamond-ranked-games-10-min -p data --unzip
+          else
+            curl -fsSL "https://www.kaggle.com/api/v1/datasets/download/bobbyscience/league-of-legends-diamond-ranked-games-10-min" -o /tmp/lol.zip
+            unzip -q -o /tmp/lol.zip -d data && rm -f /tmp/lol.zip
+          fi
           test -f data/high_diamond_ranked_10min.csv
       - run: uv run --locked --group train python -m training.train_sklearn
       - run: uv run --locked python -m training.validate_model sklearn # 실패하면 여기서 중단 → 배포 안 됨

@@ -62,8 +62,11 @@ jobs:
           mkdir -p data
           if [ "$TRAINER" = ec2 ]; then
             aws s3 cp "s3://$DATA_BUCKET/lol/high_diamond_ranked_10min.csv" data/
-          else
+          elif [ -n "$KAGGLE_USERNAME" ] && [ -n "$KAGGLE_KEY" ]; then
             uvx kaggle datasets download -d bobbyscience/league-of-legends-diamond-ranked-games-10-min -p data --unzip
+          else
+            curl -fsSL "https://www.kaggle.com/api/v1/datasets/download/bobbyscience/league-of-legends-diamond-ranked-games-10-min" -o /tmp/lol.zip
+            unzip -q -o /tmp/lol.zip -d data && rm -f /tmp/lol.zip
           fi
           test -f data/high_diamond_ranked_10min.csv
       - name: 모델 판 이름 (UTC 날짜-실행 번호)
