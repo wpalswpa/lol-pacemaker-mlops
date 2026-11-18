@@ -186,6 +186,17 @@ LoL은 "테두리 없는 창 모드"여야 위에 뜬다. 전체 화면 독점 �
 
 글자는 모두 `textContent`로 넣고(브리지·서버 응답을 HTML로 해석하지 않는다), 아이콘 주소는 정수 `item_id`와 `/meta/champions`의 `version`으로만 만든다. 동작 줄이기 설정이면 깜빡임 없이 색만.
 
+### 3-5. 전적 기록 DB (PostgreSQL) 및 재학습 데이터 루프
+
+인게임 오버레이(`GET /overlay`)가 게임 도중 실시간 코칭을 담당한다면, 웹 페이지(`GET /`)는 OP.GG처럼 **경기 후 전적 기록을 조회하고, 전처리된 실측 피처·승패 결과를 PostgreSQL에 축적해 모델 재학습에 쓰는 데이터 루프(Flywheel)** 역할을 담당한다.
+
+| 구성 요소 | 계약 | 이유 |
+|---|---|---|
+| **DB 엔진** | `PostgreSQL 16` (`compose.yml`의 `postgres:16-alpine`, `shared_buffers=64MB`, `max_connections=30`) | 정형 피처(인덱싱)와 코칭·아이템 JSON(`JSONB`)을 한 번에 저장하고, 동시 기록과 학습 추출 간 락 경합이 없다. 2 GB Lightsail 인스턴스 보호를 위해 메모리를 제한한다 |
+| **연결 설정** | 환경변수 `DATABASE_URL` (`postgresql://...` 이면 PostgreSQL, 테스트/미설정 시 동일 인터페이스의 경량 SQLite 폴백) | 로컬 단위 테스트(`pytest`)와 CI가 외부 DB 없이도 빠르게 돌게 하기 위해서다 |
+| **저장 엔드포인트** | `POST /matches` (챔피언, 상대 위협, 10분 환산 피처 8종, 예측 승률, 실제 승패 `win`, 코칭·빌드 `JSONB`) | 개인 식별자(소환사명·계정 ID)는 저장하지 않고 전처리된 수치와 챔피언·빌드만 적재한다 |
+| **조회·추출** | `GET /matches` (최근 전적 목록·챔피언 필터), `GET /matches/export` (`training` 재학습용 JSON/CSV 내보내기) | 웹 대시보드(`GET /`) 전적 테이블 표시와 `model.yml` 재학습 입력 데이터 확장에 쓴다 |
+
 ## 4. 출력 계약
 
 ### `GET /health`
