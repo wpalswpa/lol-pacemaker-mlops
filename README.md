@@ -7,7 +7,7 @@ API 계약, 검증 기준 수치, 승격·되돌리기 절차의 정본은 [AGEN
 ## 현재 상태
 
 <!-- STATUS:START -->
-- **완료(로컬 실측 확인)**: API(`/health`, `/predict`, `/coach`), 4종 예측 구현체(`rule`·`sklearn`·`dl`·`onnx`), 성능 게이트(`validate_model.py`), ONNX 변환(`export_onnx.py`), 서버 간 일치 검사(`check_parity.py`), 빌드 가이드(`build_advice`), 로컬 승격·실패 자동 복구·되돌리기(`deploy/local_e2e.sh`), 뮤테이션 확인 3건(모두 테스트가 잡음), 브리지 챔피언 자동 추출과 알림 ON/OFF(`--effect`·`--tts`), 웹 시뮬레이터 시각 코칭 화면(테두리 이펙트 ON/OFF, 아이템·챔피언 아이콘, 스킬 키캡, 3단계 행동 카드) 및 단위·계약 테스트 246건 전체 통과.
+- **완료(로컬 실측 확인)**: API(`/health`, `/predict`, `/coach`), 4종 예측 구현체(`rule`·`sklearn`·`dl`·`onnx`), 성능 게이트(`validate_model.py`), ONNX 변환(`export_onnx.py`), 서버 간 일치 검사(`check_parity.py`), 빌드 가이드(`build_advice`), 로컬 승격·실패 자동 복구·되돌리기(`deploy/local_e2e.sh`), 뮤테이션 확인 3건(모두 테스트가 잡음), 브리지 챔피언 자동 추출과 알림 ON/OFF(`--effect`·`--tts`), 웹 시뮬레이터 시각 코칭 화면(테두리 이펙트 ON/OFF, 아이템·챔피언 아이콘, 스킬 키캡, 3단계 행동 카드) 및 단위·계약 테스트 297건 전체 통과.
 - **클라우드 배포 확인(2026-11-18)**: 태그 `v1.0`의 `ci.yml`(실행 44255436869)이 `test` → `build`(학습·게이트·ONNX·Parity·GHCR 이미지, Actions 아티팩트 없이) → `deploy`(Lightsail 러너) 모두 성공. 서버 `/health` = `{"status":"ok","model":"onnx","app_version":"v1.0","model_version":"baked"}`.
 - **모델 판 승격·되돌리기 확인(2026-11-18)**: `model.yml` 2회(실행 44256625358: `DATA_N` 500·seed 0 → `m20261118-1`, 44256928140: 5,000·seed 1 → `m20261118-2`)와 `rollback.yml` 2회(44257135715: → `m20261118-1` 잡 **16초**, 44257191599: → `m20261118-2` 15초) 모두 성공. 매번 서버 `/health`의 `model_version`이 그 판이고 `app_version`은 `v1.0` 그대로.
 - **미완료(다음 단계)**: Docker 가 되는 PC 에서 로컬 E2E 전체 재실행, 판을 바꾸는 동안 요청이 끊기는지 실측(11절).
@@ -51,6 +51,8 @@ API 계약, 검증 기준 수치, 승격·되돌리기 절차의 정본은 [AGEN
 2. **AI 코칭 에이전트(음성 비서, 디스코드 봇)**: 언어 모델이 승률을 어림하면 그럴듯한 숫자를 지어낸다. 원본 프로젝트의 정성 시험(SC-7)에서도 언어 모델이 킬 수만 보고 틀린 조언을 냈다. 에이전트가 `/openapi.json`의 도구(`predict_pace`, `coach_targets`)를 부르면 승률·요인·위치·목표가 담긴 JSON을 받아 그 숫자로만 말한다. 응답의 `model_version`으로 어느 판의 계산인지도 남긴다. 이 과정을 `client/agent_demo.py`가 그대로 보여 준다(도구 정의 변환 → `coach_targets` 호출 → 응답 숫자만으로 브리핑, 언어 모델 키 없이 재생).
 3. **게임 중 오버레이(`GET /overlay`, `client/bridge.py --overlay --launch-popup`)**: OP.GG 데스크톱 앱처럼 게임 창 우측 상단에 항상 떠 있는 380×560 HUD다. 브리지가 2초마다 점수판·레벨·인벤토리를 읽어 지금 시각의 누적 값을 10분 페이스로 환산해 `/coach`를 부르고(AGENTS.md 3-4절), HUD 는 `실시간 게임 중 승률`, 전술 배지, 한 줄 목표, 시작·상황별 아이템, 구매 순서(이미 산 것은 `✓ 보유 완료`)와 **지금 살 아이템(금색)·이번 레벨에 찍을 스킬 키(청록)에 빛나는 강조 테두리**를 보여 준다. 상단 버튼으로 이펙트를 끈다. 브리지가 없으면 `초반 우세 06:30`·`중반 박빙 14:20`·`후반 열세 23:10` 데모로 단독 시연한다. 관전·리플레이·연습 모드용이다.
 4. **발표·연습용 웹 시뮬레이터(`GET /`)**: 게임 클라이언트가 없어도 점수판 값과 챔피언을 프리셋·슬라이더·목록으로 바꿔 보는 어두운 카드 화면이다. 초보자가 글을 읽지 않고 따라 하도록 그림으로 보여 준다. 상태에 따라 화면 가장자리와 결과 카드 테두리가 초록(우세 · 적극 교전 가능)·노랑(접전 · 파밍 집중)·빨강(열세 · 1대1 싸움 금지)으로 빛나고 상단 버튼으로 끈다. 티어 분포 막대에는 지금 위치 ●와 첫 목표를 채웠을 때 위치 ★, 그 아래 3단계 행동 카드(예: 🛡️ 1대1 싸움 멈추기 → 🌾 포탑 앞에서 미니언 챙기기 + 첫 목표 → 🏃 아군 강세 라인 합류), Data Dragon 실제 아이콘으로 그린 내 챔피언 대 상대 위협과 아이템 카드 3장(신발 → 하위템 → 코어, 가격과 이유), 스킬 키캡 `[Q] ▶ [E] ▶ [W]`가 나온다. 행동 카드는 상태별 고정 문구이고 아이템·스킬은 규칙표다(AGENTS.md 3-3절).
+
+5. **경기 뒤 전적 기록과 재학습 데이터 루프(`POST·GET /matches`, `GET /matches/export`)**: 오버레이가 게임 중 코칭을 맡는다면, 웹(`GET /`)은 OP.GG 처럼 경기 뒤 기록을 남긴다. 웹 맨 아래 "최근 코칭 전적 기록 (DB)" 표에서 승·패를 고르고 `전적 저장`을 누르거나, 브리지 `--overlay --save-match`가 경기가 끝날 때(GameEnd 이벤트) 한 번 올린다. 서버는 받은 점수판으로 8개 피처·승률·코칭 요약을 **직접 다시 계산해** 저장하고(클라이언트 값을 믿지 않는다), 소환사명·Riot ID 같은 칸은 422로 거절한다. 운영 서버는 PostgreSQL 16(`compose.yml`의 `db`, `shared_buffers=64MB`, `max_connections=30`), 로컬·테스트는 같은 함수의 SQLite 폴백이다. 승패가 정해진 기록은 원본 Kaggle CSV 와 같은 열 이름으로 내보내 `training/data.py`가 그대로 읽는다(학습에 섞을지는 사람이 정한다). AI 에이전트 도구에는 이 쓰기 경로를 내놓지 않는다.
 
 **입력을 어디서 얻나(합법적 경계)**: 사람이 웹 화면에 넣거나, 브리지가 Riot 공식 로컬 API(`127.0.0.1:2999/liveclientdata/allgamedata`)를 관전·리플레이·연습 모드에서 읽는다. 점수판과 오브젝트 이벤트만 쓰고, 랭크 게임 중에는 쓰지 않는다. Data Dragon 아이템 가격표로 계산한 양 팀 아이템 골드는 참고 값으로 로그에만 남기고 모델에 넣지 않는다. 학습 데이터의 골드(쓰지 않은 골드 포함 총골드)와 정의가 달라 섞으면 학습과 서빙이 어긋나기 때문이다.
 
@@ -178,6 +180,12 @@ python3 -m client.bridge --server http://<고정 IP> --insecure-local --overlay 
 # 게임 없이: 저장한 응답 + 로컬 서버 (HUD: http://127.0.0.1:8083/overlay, 상태: http://127.0.0.1:8765/bridge/state)
 uv run python -m client.bridge --server http://127.0.0.1:8083 --file client/tests/fixtures/allgamedata_10min.json --overlay --launch-popup
 
+# 전적 DB (AGENTS.md 3-5절). DATABASE_URL 이 없으면 data/matches.db (SQLite), postgresql:// 이면 PostgreSQL
+DATABASE_URL=sqlite:///data/matches.db MODEL_IMPL=onnx uv run uvicorn api.app:app --port 8083   # 웹 맨 아래 "최근 코칭 전적 기록" 표
+uv run python -m client.bridge --server http://127.0.0.1:8083 --file client/tests/fixtures/allgamedata_10min.json --overlay --save-match
+curl -s "http://127.0.0.1:8083/matches?limit=5"                       # 최근 전적
+curl -s "http://127.0.0.1:8083/matches/export?format=csv" -o data/matches_export.csv   # 승패가 정해진 기록 → 원본 CSV 와 같은 열
+
 # 서빙 지연시간·부하 실측 (순차 100건 + 동시 20, /predict·/coach). 원격 주소는 JSON 에 <원격 서버>로 가려 적는다
 uv run python scripts/benchmark_serving.py --url http://127.0.0.1:8083 --requests 100 --concurrency 20 --out docs/benchmark_summary.json
 # 모델 판 비교 m1(500경기) vs m2(5,000경기): LogLoss·AUC·규칙 대비 개선율·게이트·피처 가중치 (artifacts/ 는 안 건드림)
@@ -197,10 +205,11 @@ lol-pace-mlops/
 ├── 인수인계.md               다음 세션 이어받기용 상태·수치·남은 일 기록
 ├── 계획서.md                 기획 배경·기능·아키텍처·일정 (LoL 페이스메이커(페이커) 계획서)
 ├── 발표대본.md               11/24 5분 발표 대본, 시연 순서, 예상 질문
-├── pyproject.toml, uv.lock   기본(서빙): fastapi·uvicorn·numpy·onnxruntime / train 그룹: pandas·scikit-learn·torch·onnx
+├── pyproject.toml, uv.lock   기본(서빙): fastapi·uvicorn·numpy·onnxruntime·psycopg[binary] / train 그룹: pandas·scikit-learn·torch·onnx
 ├── api/
-│   ├── app.py                GET /health, POST /predict, POST /coach, GET / (웹 시뮬레이터), GET /overlay (게임 중 오버레이 HUD), GET /slides (발표 슬라이드), GET /meta/champions (숨은 경로)
-│   ├── contract.py           입력·출력 모델과 422 규칙, 피처 변환
+│   ├── app.py                GET /health, POST /predict, POST /coach, GET / (웹 시뮬레이터), GET /overlay (게임 중 오버레이 HUD), GET /slides (발표 슬라이드), POST·GET /matches, GET /matches/export (전적 DB), GET /meta/champions (숨은 경로)
+│   ├── contract.py           입력·출력 모델과 422 규칙, 피처 변환 (MatchIn: 전적 저장 본문)
+│   ├── db.py                 전적 DB: PostgreSQL(psycopg 3) 또는 SQLite 폴백, init_db·save_match·list_matches·export_matches
 │   ├── service.py            요인 분해·백분위·코칭·티어 비교 (모든 구현체 공통)
 │   ├── build.py              우세·열세 상태 및 상대 위협 맞춤 아이템·스킬 가이드 계산
 │   ├── build_rules.json      사람이 정한 상태·계열·위협별 아이템·스킬 규칙표
@@ -232,7 +241,7 @@ lol-pace-mlops/
 ├── scripts/
 │   └── benchmark_serving.py  /predict·/coach 순차·동시 부하 실측 (성공률, p50/p95/p99, RPS, 표준 라이브러리만)
 ├── docs/                     benchmark_summary.json · model_comparison.json · model_comparison.md (실측 결과), images/
-├── tests/                    부하 실측 백분위·모델 판 비교 계산 테스트 (학습 라이브러리 없이)
+├── tests/                    부하 실측 백분위·모델 판 비교·전적 DB 저장 계층 테스트 (학습 라이브러리 없이)
 ├── deploy/
 │   ├── lightsail/            launch-script-lightsail.sh · compose.yml · Caddyfile · server.sh
 │   ├── tests/                server.sh 테스트 (가짜 docker·curl)
@@ -249,6 +258,7 @@ lol-pace-mlops/
 2. Docker 가 되는 PC 에서 `deploy/local_e2e.sh` 전체 재실행(이번 PC 에서는 학습·게이트·ONNX·Parity 단계까지만 확인).
 3. 발표 리허설(`발표대본.md`, 5분).
 4. 화면에 로그인한 Mac 에서 오버레이 팝업이 실제로 게임 위에 뜨는지 확인하고 시연 영상 녹화(이번 PC 계정은 화면 세션이 없어 창을 띄우지 못했다).
+5. 전적 DB 를 실제 PostgreSQL 16 에서 확인: 서버에서 `server.sh status`로 `db` 가 healthy 인지, 웹에서 `전적 저장` 후 `/matches`에 보이는지, `docker compose restart api` 뒤에도 남는지. 이 PC 에서는 Docker·PostgreSQL 을 쓸 수 없어 SQLite 와 가짜 연결로만 확인했다. 다음 `model.yml`·`rollback.yml`·태그 배포 때 새 `compose.yml`이 서버에 처음 올라가고 `server.sh`가 `POSTGRES_PASSWORD`를 만든다.
 <!-- TODO:END -->
 
 ## 12. 검증 결과
@@ -279,5 +289,6 @@ lol-pace-mlops/
 | 모델 판 비교 m1 vs m2 | `training/compare_models.py`, 고정 평가셋 1,976경기 | 규칙 Brier 0.1917·LogLoss 0.5676·AUC 0.7987 / m1(500): 0.1891·0.5555·0.7853 / m2(5,000): **0.1824·0.5385·0.8005**. 규칙 대비 개선율 Brier 1.34% → 4.84%, LogLoss 2.12% → 5.11%. 가중치 1위 평균 레벨 → 킬, CS 7위 → 3위. 위 `model.yml` 기록과 같은 값. m1 은 게이트를 통과했지만 AUC 는 규칙보다 낮다(`docs/model_comparison.md`) | 통과 |
 | 서빙 지연시간·부하 | `scripts/benchmark_serving.py`, 로컬 ONNX 서버(uvicorn 1개, `m20261118-1`), 순차 100 + 동시 20 × 100 | `/predict` 순차 p50 0.55ms·p95 0.73ms·p99 0.76ms, 동시 p95 7.1ms·2,998 RPS / `/coach` 순차 p95 0.79ms, 동시 p95 10.6ms·2,056 RPS. 400건 성공률 100%, 실패 0 (`docs/benchmark_summary.json`). 같은 PC 안이라 네트워크 시간은 빠져 있다 | 통과 |
 | 실측 스크립트 테스트 | `tests/` 29건 (학습 라이브러리를 막고도 통과) | 백분위 보간(5개·100개·빈 값·1개), 성공률·RPS, 원격 주소 가리기, 단계별 호출 수, 개선율·게이트 경계(`<`·`≥`)·가중치 순위. 뮤테이션 4건(백분위 반올림, 실패 지연 빼기, Brier `<=`, 부호 있는 정렬) 모두 검출 | 통과 |
+| 전적 DB `/matches` (Issue #13) | `tests/test_db.py` 21건, `api/tests/test_app.py` 새 17건, 브리지 새 11건, `deploy/tests` 새 2건, 헤드리스 Chromium 1280·400·360px | SQLite 저장·최신순·챔피언 필터(한국어 이름도 영문 ID 로)·`limit` 1~100, 승패 확정분만 내보내기와 블루 기준 `blueWins` 4가지, 내보낸 CSV 를 `training/data.py`가 읽어 같은 8개 피처, 개인 식별자 칸·범위 밖 값 422 후 아무것도 안 적힘, DB 끊김 503 이어도 `/health`·`/predict` 200, PostgreSQL 이 안 떠도 앱 기동. PostgreSQL SQL 은 가짜 연결로 확인(실제 PostgreSQL 서버 대조는 남은 일). 화면: 저장 2건 → 표 2줄(열세 색, 승·패), 모르는 챔피언 422 문구, 가로 넘침 0, 콘솔 오류 0 | 통과 |
 | 로컬 승격·복구·롤백 | `deploy/local_e2e.sh` (서빙 이미지 430MB) | `baked` → `m20261118-1` → `m20261118-2` 승격, 깨진 판(`m20261118-3`) 투입 시 `m20261118-2`로 자동 복구, `m20261118-1` 롤백 **2초** 완료 (`app_version` `v1.0` 유지) | 통과 |
 <!-- RESULT:END -->

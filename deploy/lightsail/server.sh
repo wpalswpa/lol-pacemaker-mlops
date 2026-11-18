@@ -1,17 +1,26 @@
 #!/bin/bash
 # 서버에서 도는 배포 스크립트 (AGENTS.md 10절). 서버가 바라는 상태는 $LOL_HOME/.env 에 적는다.
+# .env 의 POSTGRES_PASSWORD 는 처음 실행 때 여기서 만든다 (3-5절 전적 DB).
 #   server.sh image <태그> <이미지 경로>   stdin 으로 GHCR 토큰 한 줄. 빈 줄이면 로그인 없이 (로컬에 있거나 공개 이미지)
 #   server.sh model <모델 판>              $LOL_HOME/models/<판>/ 의 모델로 바꾼다 (승격·되돌리기 공통)
 #   server.sh status
 # 실패하면 이전 판으로 스스로 되돌리고 exit 1 (워크플로가 거기서 멈춘다)
 set -euo pipefail
+umask 077   # .env 에 전적 DB 비밀번호가 있으므로 이 스크립트가 만드는 파일은 소유자만 읽는다
 export LOL_HOME=${LOL_HOME:-/srv/lol}
 cd "$LOL_HOME"
 touch .env
+chmod 600 .env
 
 getenv() { { grep "^$1=" .env || true; } | tail -n 1 | cut -d= -f2-; }
 setenv() { { grep -v "^$1=" .env || true; } > .env.new; echo "$1=$2" >> .env.new; mv .env.new .env; }
 delenv() { { grep -v "^$1=" .env || true; } > .env.new; mv .env.new .env; }
+
+# 전적 DB 비밀번호 (AGENTS.md 3-5절): 없을 때 서버 안에서 한 번만 무작위로 만든다. 저장소·워크플로·변수에는 없다.
+# pg_data 볼륨은 처음 만든 비밀번호로 초기화되므로 이후에는 바꾸지 않는다
+if [ -z "$(getenv POSTGRES_PASSWORD)" ]; then
+    setenv POSTGRES_PASSWORD "$(od -An -N24 -tx1 /dev/urandom | tr -d ' \n')"
+fi
 
 API_PORT=$(getenv API_PORT)
 HEALTH_URL=${HEALTH_URL:-http://127.0.0.1:${API_PORT:-8080}/health}

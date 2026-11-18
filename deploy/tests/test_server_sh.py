@@ -157,3 +157,34 @@ def test_image_rejects_bad_tag(srv, tag):
 def test_unknown_command(srv):
     home, env, tmp = srv
     assert run(env, "nope").returncode == 2
+
+
+def test_db_password_made_once_and_private(srv):
+    """전적 DB 비밀번호 (AGENTS.md 3-5절): 처음 한 번 만들고, 다음 실행에서 바꾸지 않고, .env 는 소유자만 읽는다."""
+    import re
+    import stat
+
+    home, env, _ = srv
+    make_version(home, "m20261118-1")
+    assert run(env, "model", "m20261118-1").returncode == 0
+    pw = dotenv(home)["POSTGRES_PASSWORD"]
+    assert re.fullmatch(r"[0-9a-f]{48}", pw)                 # 24바이트 무작위, URL 에 그대로 넣을 수 있는 글자
+    assert stat.S_IMODE((home / ".env").stat().st_mode) == 0o600
+    assert run(env, "status").returncode == 0
+    assert dotenv(home)["POSTGRES_PASSWORD"] == pw           # 볼륨이 처음 비밀번호로 초기화되므로 그대로
+    assert stat.S_IMODE((home / ".env").stat().st_mode) == 0o600   # setenv 로 다시 써도 0600
+
+
+def test_compose_db_service():
+    """compose.yml 의 db 서비스 계약 (AGENTS.md 3-5절): 메모리 제한, 볼륨, 상태 확인, 포트 비공개, api 연결."""
+    import pathlib
+    text = (pathlib.Path(__file__).resolve().parents[1] / "lightsail" / "compose.yml").read_text(encoding="utf-8")
+    db = text.split("\n  db:\n", 1)[1].split("\n  caddy:\n", 1)[0]
+    assert "image: postgres:16-alpine" in db
+    assert 'command: ["postgres", "-c", "shared_buffers=64MB", "-c", "max_connections=30"]' in db
+    assert "pg_data:/var/lib/postgresql/data" in db and "pg_isready -U lol -d lol" in db
+    assert "ports:" not in db                                # 밖으로 열지 않는다
+    api = text.split("\n  api:\n", 1)[1].split("\n  db:\n", 1)[0]
+    assert "DATABASE_URL: postgresql://lol:${POSTGRES_PASSWORD:?" in api and "@db:5432/lol" in api
+    assert '"127.0.0.1:${API_PORT:-8080}:8080"' in api       # 상태 확인 길은 그대로
+    assert "\n  pg_data: {}" in text

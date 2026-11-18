@@ -22,6 +22,7 @@
 | `MODEL_DIR` | `artifacts` | 모델 판 폴더. `model.json`·`baseline.json`과 구현체별 모델 파일이 있다 |
 | `ONNX_FILE` | `model_sklearn.onnx` | `MODEL_IMPL=onnx`일 때 읽을 파일 이름 |
 | `APP_VERSION` | `dev` | 코드 판. 이미지를 만들 때 git 태그(`v1.0` 등)가 들어간다 |
+| `DATABASE_URL` | 없음 | 전적 DB(3-5절). `postgresql://`·`postgres://`면 PostgreSQL, `sqlite:///<경로>`면 그 파일, `sqlite://`면 메모리, 없으면 `data/matches.db`(쓸 수 없으면 메모리) |
 
 - 모든 구현체(`api/predictors/<이름>.py`)는 `load(model_dir)` 하나만 제공하고, 이 함수가 `predict_proba(X) -> P(블루 승)`를 돌려준다. `X`는 `float32 [N, 8]`, 열 순서는 3절의 `FEATURES`, 단위는 원래 값(정규화 전)이다. 정규화는 모델 안에 있다.
 - 모델 파일은 앱이 시작할 때 `load`로 한 번 읽는다. 학습 스크립트가 `WithNormalize`를 가져오기만 해도 모델 파일을 읽는 일이 없게 하기 위해서다.
@@ -98,6 +99,7 @@
 
 | 칸 | 무엇을 보고 | 어떻게 보여 주나 |
 |---|---|---|
+| 최근 코칭 전적 기록 (DB) | `GET /matches?limit=10`, `POST /matches` (3-5절) | 맨 아래 표: 번호, 저장 시각, 내 챔피언(한국어 이름), 상대 위협, 승률, 전술 상태(우세·접전·열세 색), 승패. 승·패·모름을 고르고 `전적 저장`을 누르면 지금 입력을 `game_time_sec` 600으로 저장하고 표를 다시 읽는다. 422는 칸 이름이 든 문구, 503은 "전적 DB에 연결하지 못했어요"(코칭은 계속). 승패가 정해진 기록은 재학습용 CSV 링크로 받는다. 글자는 textContent로만 넣는다 |
 | 결과 카드 제목 | 고정 | `실시간 게임 중 승률 예측`(입력은 10분 페이스 기준 점수판). 위쪽에 오버레이(`/overlay`)·발표 슬라이드(`/slides`) 링크 |
 | 테두리 이펙트 | `build_advice.state` | 뷰포트 가장자리와 결과 카드 테두리를 초록(`ahead`, 문구 `우세 · 적극 교전 가능`)·노랑(`even`, `접전 · 파밍 집중`)·빨강(`behind`, `열세 · 1대1 싸움 금지`)으로 빛나게 한다. 상단의 **[테두리 이펙트 ON/OFF]** 버튼으로 바로 끄고 켠다(`aria-pressed`, 브라우저에 기억, 저장이 안 되는 환경에서도 동작). 동작 줄이기 설정(`prefers-reduced-motion`)이면 깜빡임 없이 색만 |
 | 분포 막대 | `tier_percentile.overall_top_pct`, `coaching[0].overall_top_pct_after` | 현재 위치 ●, 첫 목표를 채웠을 때 위치 ★ |
@@ -196,6 +198,26 @@ LoL은 "테두리 없는 창 모드"여야 위에 뜬다. 전체 화면 독점 �
 | **연결 설정** | 환경변수 `DATABASE_URL` (`postgresql://...` 이면 PostgreSQL, 테스트/미설정 시 동일 인터페이스의 경량 SQLite 폴백) | 로컬 단위 테스트(`pytest`)와 CI가 외부 DB 없이도 빠르게 돌게 하기 위해서다 |
 | **저장 엔드포인트** | `POST /matches` (챔피언, 상대 위협, 10분 환산 피처 8종, 예측 승률, 실제 승패 `win`, 코칭·빌드 `JSONB`) | 개인 식별자(소환사명·계정 ID)는 저장하지 않고 전처리된 수치와 챔피언·빌드만 적재한다 |
 | **조회·추출** | `GET /matches` (최근 전적 목록·챔피언 필터), `GET /matches/export` (`training` 재학습용 JSON/CSV 내보내기) | 웹 대시보드(`GET /`) 전적 테이블 표시와 `model.yml` 재학습 입력 데이터 확장에 쓴다 |
+
+**저장 계층 `api/db.py`**: 함수 `init_db()`, `save_match(...)`, `list_matches(limit=20, champion=None)`, `export_matches()`. 두 엔진이 같은 함수·같은 결과 모양을 쓴다.
+
+| 열 | PostgreSQL | SQLite | 뜻 |
+|---|---|---|---|
+| `id` | `BIGINT GENERATED ALWAYS AS IDENTITY` | `INTEGER PRIMARY KEY AUTOINCREMENT` | 저장 순서 번호 |
+| `created_at` | `TIMESTAMPTZ DEFAULT now()` | UTC ISO 문자열 | 응답은 `2026-11-18T08:00:00+00:00` 꼴 |
+| `game_time_sec` | `INTEGER` 0~7200 | 같음 | 저장한 시점의 게임 시각. 오버레이 값이면 피처는 10분 페이스 환산값이다(3-4절) |
+| `my_champion` | `TEXT NULL` | 같음 | Data Dragon 영문 ID(`Ahri`) 또는 역할군(`AD`·`AP`·`TANK`·`SUPPORT`). 한국어 이름으로 받아도 ID로 바꿔 저장 |
+| `enemy_top_threat` | `TEXT NULL` | 같음 | 챔피언 영문 ID 또는 `AD`·`AP`·`HEAL`·`TANK` |
+| `my_win_prob` | `DOUBLE PRECISION` 0~1 | `REAL` | 저장할 때 서버 모델이 계산한 내 팀 승률 |
+| `win` | `BOOLEAN NULL` | `INTEGER NULL` (0·1) | 내 팀(`my_side`)이 실제로 이겼는지. 모르면 null |
+| `features_json` | `JSONB` | `TEXT`(JSON) | `{"names": FEATURES, "values": [8개, 블루 − 레드], "blue": {...}, "red": {...}, "first_blood", "my_side"}` |
+| `coach_json` | `JSONB` | `TEXT`(JSON) | 서버가 같은 입력으로 `/coach`를 계산한 요약: `pace`, `state`(`ahead`·`even`·`behind`), `posture`, `top_goal`(첫 코칭 문구 또는 null), `item_ids`(추천 3단계), `skill_order`, `model_version` |
+
+- **개인 식별자를 받지 않는다.** 요청 본문은 3절 입력 + `game_time_sec`·`win`뿐이고 그 밖의 칸(소환사명·Riot ID·계정 ID 등)은 422로 거절한다. 피처와 코칭 요약은 서버가 직접 계산하므로 클라이언트가 보낸 자유 문자열이 DB에 들어가지 않는다(챔피언 칸은 목록에 있는 이름만 통과).
+- 앱은 시작할 때 `init_db()`를 한 번 부른다. PostgreSQL이 아직 안 떴거나 끊겨도 앱은 뜬다(`/health`·`/predict`·`/coach`는 DB와 무관). 그때 `/matches` 세 경로는 다음 요청에서 다시 연결을 시도하고, 실패하면 503 `{"detail": "전적 DB에 연결하지 못했다"}`(연결 주소·비밀번호는 응답·기록에 남기지 않는다).
+- `/matches` 세 경로는 `include_in_schema=False`다. AI 에이전트 도구(`/openapi.json`)에는 쓰기 경로를 내놓지 않는다.
+- **재학습 루프**: `GET /matches/export?format=csv`는 원본 Kaggle CSV와 같은 열 이름을 쓴다. `training/data.py`의 `CSV_COLUMNS`로 읽으면 같은 8개 피처가 나온다. 학습 데이터에 섞을지는 사람이 정한다(오버레이 환산값은 검증 안 된 가정이라 `gameTimeSec`로 걸러 쓸 수 있게 열을 남긴다). 고정 평가셋은 바꾸지 않는다.
+- **서버 구성**: `compose.yml`의 `db` 서비스(`postgres:16-alpine`, 밖으로 포트를 열지 않음, `pg_data` 볼륨, `pg_isready` 상태 확인). 비밀번호 `POSTGRES_PASSWORD`는 `server.sh`가 `.env`에 없을 때 서버 안에서 한 번 무작위로 만들고 `.env`를 0600으로 둔다. 저장소·워크플로·변수에는 없다. api는 `DATABASE_URL=postgresql://lol:<비밀번호>@db:5432/lol`을 받고, db가 늦게 떠도 api 상태 확인은 영향받지 않는다.
 
 ## 4. 출력 계약
 
@@ -304,6 +326,39 @@ LoL은 "테두리 없는 창 모드"여야 위에 뜬다. 전체 화면 독점 �
 ```
 
 `champions`는 `game_data.json`의 모든 챔피언, 한국어 이름 순. `roles`는 규칙표 `role_class`의 키, `threat_types`는 규칙표 `threat_types` 그대로다.
+
+### `POST /matches` (전적 저장, `include_in_schema=False`)
+
+본문은 3절 입력(`blue`, `red`, `first_blood`, `my_side`, 선택 `my_champion`·`enemy_top_threat`)에 두 칸을 더한다. 검증 규칙은 3절과 같다(범위 밖·모르는 칸·모르는 챔피언 422).
+
+| 칸 | 기본값 | 규칙 |
+|---|---|---|
+| `game_time_sec` | 600 | 정수 0~7200 (strict) |
+| `win` | null | `true`·`false`·null. 내 팀 기준 |
+
+응답 201: `{"id": 1, "created_at": "...", "my_win_prob": 0.4312, "model_version": "..."}`. `my_win_prob`는 `/predict`와 같은 값(반올림 안 함).
+
+### `GET /matches` (최근 전적, `include_in_schema=False`)
+
+쿼리 `limit`(1~100, 기본 20), `champion`(선택. 저장할 때와 같이 영문 ID로 바꿔 비교, 모르는 이름 422). 최신순(`id` 내림차순).
+
+```json
+{"count": 1, "matches": [{"id": 1, "created_at": "...", "game_time_sec": 600, "my_champion": "Ahri",
+  "enemy_top_threat": "Zed", "my_win_prob": 0.4312, "win": false,
+  "features": {"names": [...], "values": [...], "blue": {...}, "red": {...}, "first_blood": "red", "my_side": "blue"},
+  "coach": {"pace": "열세 페이스", "state": "behind", "posture": "...", "top_goal": "...", "item_ids": [3020, 1033, 3157],
+            "skill_order": "Q > W > E", "model_version": "..."}}]}
+```
+
+### `GET /matches/export` (재학습 입력, `include_in_schema=False`)
+
+`win`이 null이 아닌 기록만, `id` 오름차순. `format=json`(기본) 또는 `format=csv`(`text/csv`, 첫 줄 열 이름). 열은 원본 CSV와 같은 이름이다.
+
+`matchId, gameTimeSec, blueWins, blueFirstBlood, blueKills, blueAssists, blueTotalMinionsKilled, blueTotalJungleMinionsKilled, blueAvgLevel, blueDragons, blueHeralds, blueTowersDestroyed, redFirstBlood, red…(블루와 같은 7열)`
+
+- `blueWins` = `my_side`가 블루면 `win`, 레드면 `not win` (0·1). `blueFirstBlood` = `first_blood`가 블루면 1, `redFirstBlood`는 그 반대.
+- CS는 점수판 값 하나라 `TotalMinionsKilled`에 전부 넣고 `TotalJungleMinionsKilled`는 0. `training/data.py`는 둘을 더하므로 같은 값이 된다.
+- JSON: `{"count": n, "columns": [위 순서], "rows": [{열: 값}]}`.
 
 ### `GET /overlay` (게임 중 오버레이 HUD, `include_in_schema=False`)
 

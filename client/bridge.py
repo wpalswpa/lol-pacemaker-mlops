@@ -33,6 +33,7 @@
 게임 중 오버레이 (AGENTS.md 3-4절). 2초마다 읽어 10분 페이스로 환산해 /coach 를 부르고,
 127.0.0.1:<--listen-port>/bridge/state 로 HUD(GET /overlay)에 넘긴다. --launch-popup 이면 항상 위 팝업을 띄운다.
   uv run python -m client.bridge --server http://127.0.0.1:8083 --insecure-local --overlay --launch-popup
+  uv run python -m client.bridge --server http://127.0.0.1:8083 --file client/tests/fixtures/allgamedata_10min.json --overlay --save-match
 """
 import argparse
 import hashlib
@@ -287,19 +288,38 @@ def _order_of(coach: dict | None) -> str | None:
     return (((coach or {}).get("build_advice") or {}).get("skill_order") or {}).get("order")
 
 
+def game_result(data: dict) -> bool | None:
+    """이벤트의 GameEnd 로 내 팀(활성 플레이어 기준) 승패. 아직 안 끝났으면 None."""
+    for ev in (data.get("events") or {}).get("Events") or []:
+        if ev.get("EventName") == "GameEnd" and ev.get("Result") in ("Win", "Lose"):
+            return ev["Result"] == "Win"
+    return None
+
+
+def match_payload(features: dict, game_time: float, win: bool | None) -> dict:
+    """POST /matches 본문 (AGENTS.md 3-5절). 3절 입력 칸 + 게임 시각 + 승패만. 소환사명 등은 넣지 않는다."""
+    return {**features, "game_time_sec": int(min(max(game_time, 0), 7200)), "win": win}
+
+
 class OverlayBridge:
-    """게임 API 를 읽을 때마다 상태를 갱신한다. HTTP 서버는 snapshot() 만 읽는다."""
+    """게임 API 를 읽을 때마다 상태를 갱신한다. HTTP 서버는 snapshot() 만 읽는다.
+    save 를 주면(--save-match) 경기가 끝났을 때(GameEnd) 한 번, 저장한 응답(--file)이면 처음 읽었을 때 한 번 POST /matches."""
 
     def __init__(self, fetch: Callable[[], dict], coach: Callable[[dict], dict], side: str | None = None,
-                 prices: dict | None = None, source: str = "live", clock: Callable[[], float] = time.time):
+                 prices: dict | None = None, source: str = "live", clock: Callable[[], float] = time.time,
+                 save: Callable[[dict], dict] | None = None):
         self.fetch, self.coach, self.side, self.prices, self.clock = fetch, coach, side, prices, clock
+        self.source, self.save = source, save
+        self.saved = False
+        self.last_save_try: float | None = None
         self.lock = threading.Lock()
         self.last_coach_at: float | None = None
         self.last_coach_input: dict | None = None
         self.state = {"connected": False, "source": source, "in_game": False, "game_time_sec": 0.0,
                       "minutes": None, "pace_scale": None, "updated_at": None, "champion": None, "level": None,
                       "owned_items": [], "next_skill": None, "next_skill_when": None, "features": None,
-                      "raw_features": None, "coach": None, "coach_error": None, "error": None}
+                      "raw_features": None, "coach": None, "coach_error": None, "error": None,
+                      "saved_match": None, "save_error": None}
 
     def snapshot(self) -> dict:
         with self.lock:
@@ -331,12 +351,25 @@ class OverlayBridge:
                 coach_error = f"{type(e).__name__}: {e}"[:200]
                 self.last_coach_at = now
         skill, when = next_skill(level, _order_of(coach), _abilities(data))
+        saved_match, save_error = self.state["saved_match"], self.state["save_error"]
+        if self.save and not self.saved:
+            result = game_result(data)
+            ready = result is not None or self.source == "file"
+            if ready and (self.last_save_try is None or now - self.last_save_try > COACH_MIN_SECONDS):
+                self.last_save_try = now
+                try:
+                    out = coach_with_fallback(self.save, match_payload(features, gt, result))
+                    self.saved, save_error = True, None
+                    saved_match = {"id": out.get("id"), "created_at": out.get("created_at"), "win": result}
+                except Exception as e:  # noqa: BLE001  저장이 안 돼도 코칭은 계속한다. 5초 뒤 다시
+                    save_error = f"{type(e).__name__}: {e}"[:200]
         with self.lock:
             self.state.update(
                 connected=True, in_game=gt > 0, game_time_sec=gt, minutes=minutes, pace_scale=k, updated_at=now,
                 champion=champion_of(me) if me else None, level=level, owned_items=extract_owned_items(data),
                 next_skill=skill, next_skill_when=when, features=features, raw_features=raw, coach=coach,
-                coach_error=coach_error if due else self.state["coach_error"], error=None)
+                coach_error=coach_error if due else self.state["coach_error"], error=None,
+                saved_match=saved_match, save_error=save_error)
         return self.snapshot()
 
 
@@ -542,11 +575,20 @@ def fetch_live(base: str, cafile: str | None, insecure_local: bool = False) -> d
         return json.load(r)
 
 
-def post_coach(api: str, state: dict) -> dict:
-    req = urllib.request.Request(api.rstrip("/") + "/coach", data=json.dumps(state).encode(),
+def post_json(api: str, path: str, body: dict) -> dict:
+    req = urllib.request.Request(api.rstrip("/") + path, data=json.dumps(body).encode(),
                                  headers={"Content-Type": "application/json"})
     with urllib.request.urlopen(req, timeout=5) as r:
         return json.load(r)
+
+
+def post_coach(api: str, state: dict) -> dict:
+    return post_json(api, "/coach", state)
+
+
+def post_match(api: str, payload: dict) -> dict:
+    """전적 저장 (AGENTS.md 3-5절). 201 이면 {"id", "created_at", ...}."""
+    return post_json(api, "/matches", payload)
 
 
 def speak(lines: list[str]) -> None:
@@ -640,7 +682,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--overlay", action="store_true", help="게임 중 계속 판단해 /bridge/state 로 HUD 에 넘긴다")
     ap.add_argument("--listen-port", type=int, default=8765, help="오버레이 상태 서버 포트 (127.0.0.1)")
     ap.add_argument("--launch-popup", action="store_true", help="항상 위 오버레이 팝업 창을 띄운다 (--overlay 포함)")
+    ap.add_argument("--save-match", action="store_true",
+                    help="오버레이 모드에서 경기가 끝나면(--file 이면 바로) 전처리 피처를 POST /matches 로 한 번 저장")
     a = ap.parse_args(argv)
+    if a.save_match and not (a.overlay or a.launch_popup):
+        ap.error("--save-match 는 --overlay(또는 --launch-popup)와 함께 쓴다")
     try:
         effect_on, tts_on = alert_switches(a.effect, a.tts)
     except ValueError as e:
@@ -661,7 +707,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if a.overlay or a.launch_popup:
         bridge = OverlayBridge(fetch, lambda s: post_coach(a.api, s), a.side, prices,
-                               source="file" if a.file else "live")
+                               source="file" if a.file else "live",
+                               save=(lambda p: post_match(a.api, p)) if a.save_match else None)
         run_overlay(bridge, a.listen_port, a.api if a.launch_popup else None)
         return 0
 

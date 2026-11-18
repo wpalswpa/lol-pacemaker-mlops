@@ -3,16 +3,21 @@
 MODEL_IMPL 로 구현체를 고르고(rule·sklearn·dl·onnx), MODEL_DIR 의 모델 판을 시작할 때 한 번 읽는다.
 모델 파일이 없거나 깨졌으면 여기서 예외가 나 프로세스가 뜨지 않는다 → /health 실패 → server.sh 가 이전 판으로.
 """
+import csv
 import importlib
+import io
 import json
+import logging
 import os
+from typing import Annotated, Literal
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Query, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 
-from api.build import GAME, RULES
-from api.contract import CoachResponse, GameState, Health, PredictResponse
+from api import db
+from api.build import GAME, RULES, resolve_my, resolve_threat
+from api.contract import FEATURES, CoachResponse, GameState, Health, MatchIn, PredictResponse, to_features
 from api.service import STEPS_PATH, PaceService, load_json
 
 IMPLS = ("rule", "sklearn", "dl", "onnx")
@@ -37,6 +42,17 @@ app = FastAPI(
 _INDEX = os.path.join(os.path.dirname(__file__), "static", "index.html")
 _SLIDES = os.path.join(os.path.dirname(__file__), "static", "slides.html")
 _OVERLAY = os.path.join(os.path.dirname(__file__), "static", "overlay.html")
+
+# 전적 DB (AGENTS.md 3-5절). PostgreSQL 이 아직 안 떴어도 앱은 뜬다. /matches 가 다음 요청에서 다시 연결한다
+try:
+    db.init_db()
+except db.DBUnavailable:
+    logging.getLogger("lol.db").warning("전적 DB 연결 실패. /matches 요청 때 다시 시도한다")
+
+
+@app.exception_handler(db.DBUnavailable)
+async def _db_down(_: Request, __: db.DBUnavailable) -> JSONResponse:
+    return JSONResponse(status_code=503, content={"detail": "전적 DB에 연결하지 못했다"})
 
 
 @app.exception_handler(RequestValidationError)
@@ -103,3 +119,68 @@ def overlay() -> FileResponse:
 def slides() -> FileResponse:
     """5분 발표 슬라이드(AGENTS.md 4절). 외부 자원 없이 한 파일로 완결."""
     return FileResponse(_SLIDES, media_type="text/html; charset=utf-8")
+
+
+# ── 전적 기록 (AGENTS.md 3-5절, 4절). 쓰기 경로라 AI 에이전트 도구에는 내놓지 않는다 ──
+def _canon_my(v: str | None) -> str | None:
+    if v is None:
+        return None
+    r = resolve_my(v)
+    return r["champion_id"] or v.strip().upper()
+
+
+def _canon_threat(v: str | None) -> str | None:
+    if v is None:
+        return None
+    r = resolve_threat(v)
+    return r["champion_id"] or r["threat"]
+
+
+def _coach_summary(c: dict) -> dict:
+    b = c["build_advice"]
+    return {"pace": c["pace"], "state": b["state"], "posture": b["posture"],
+            "top_goal": c["coaching"][0]["message"] if c["coaching"] else None,
+            "item_ids": [i["item_id"] for i in b["recommended_items"]], "skill_order": b["skill_order"]["order"],
+            "model_version": MODEL_VERSION}
+
+
+@app.post("/matches", status_code=201, include_in_schema=False)
+def save_match(m: MatchIn) -> dict:
+    """전적 한 건 저장. 피처·승률·코칭 요약은 서버가 같은 입력으로 계산한다(클라이언트 값을 믿지 않는다)."""
+    state = GameState(**m.model_dump(exclude={"game_time_sec", "win"}))
+    c = service.coach(state)
+    features = {"names": FEATURES, "values": [round(float(v), 4) for v in to_features(state)],
+                "blue": m.blue.model_dump(), "red": m.red.model_dump(),
+                "first_blood": m.first_blood, "my_side": m.my_side}
+    saved = db.save_match(game_time_sec=m.game_time_sec, my_champion=_canon_my(m.my_champion),
+                          enemy_top_threat=_canon_threat(m.enemy_top_threat), my_win_prob=float(c["my_win_prob"]),
+                          win=m.win, features=features, coach=_coach_summary(c))
+    return {**saved, "my_win_prob": float(c["my_win_prob"]), "model_version": MODEL_VERSION}
+
+
+@app.get("/matches", include_in_schema=False)
+def list_matches(limit: Annotated[int, Query(ge=1, le=100)] = 20,
+                 champion: Annotated[str | None, Query(max_length=40)] = None):
+    """최근 전적 (최신순). champion 은 저장할 때와 같이 영문 ID 로 바꿔 비교한다."""
+    if champion is not None:
+        try:
+            champion = _canon_my(champion)
+        except ValueError as e:
+            return JSONResponse(status_code=422, content={"detail": [
+                {"loc": ["query", "champion"], "msg": str(e), "type": "value_error"}]})
+    rows = db.list_matches(limit=limit, champion=champion)
+    return {"count": len(rows), "matches": rows}
+
+
+@app.get("/matches/export", include_in_schema=False)
+def export_matches(format: Literal["json", "csv"] = "json"):  # noqa: A002  쿼리 이름이 format 이다
+    """승패가 정해진 기록을 원본 CSV 와 같은 열로 (재학습 입력)."""
+    rows = [db.training_row(r) for r in db.export_matches()]
+    if format == "csv":
+        buf = io.StringIO()
+        w = csv.DictWriter(buf, fieldnames=db.EXPORT_COLUMNS, lineterminator="\n")
+        w.writeheader()
+        w.writerows(rows)
+        return Response(buf.getvalue(), media_type="text/csv; charset=utf-8",
+                        headers={"Content-Disposition": 'attachment; filename="matches_export.csv"'})
+    return {"count": len(rows), "columns": db.EXPORT_COLUMNS, "rows": rows}

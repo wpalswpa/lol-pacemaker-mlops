@@ -87,6 +87,13 @@ class GameState(BaseModel):
         return v
 
 
+class MatchIn(GameState):
+    """POST /matches 본문 (AGENTS.md 3-5절·4절). 3절 입력 + 게임 시각 + 실제 승패. 그 밖의 칸(소환사명 등)은 422."""
+
+    game_time_sec: Annotated[int, Field(strict=True, ge=0, le=7200, description="저장 시점 게임 시각(초)")] = 600
+    win: Annotated[bool | None, Field(strict=True, description="내 팀이 이겼는지. 모르면 null")] = None
+
+
 def to_features(state: GameState) -> np.ndarray:
     """요청을 모델 입력 한 줄(float32 [8])로 바꾼다. first_blood 는 블루면 1, 나머지는 블루 − 레드."""
     row = [1.0 if state.first_blood == "blue" else 0.0]

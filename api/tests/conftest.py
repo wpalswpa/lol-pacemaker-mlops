@@ -13,6 +13,7 @@ def app_module():
     os.environ["MODEL_IMPL"] = "rule"
     os.environ["MODEL_DIR"] = FIXTURES
     os.environ.pop("APP_VERSION", None)
+    os.environ["DATABASE_URL"] = "sqlite://"  # 전적 DB 는 메모리 SQLite (파일·외부 DB 없이)
     import api.app
 
     return importlib.reload(api.app)

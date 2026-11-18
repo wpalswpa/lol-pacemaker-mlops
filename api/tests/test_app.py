@@ -426,6 +426,11 @@ def test_index_page(client):
     assert res.status_code == 200 and "text/html" in res.headers["content-type"]
     assert "/coach" in res.text  # 화면이 같은 API 를 부른다
     assert "/meta/champions" in res.text
+    # 최근 코칭 전적 기록 (3-5절): 표, 승패 고르기, 전적 저장 버튼, 같은 /matches 경로
+    for want in ("최근 코칭 전적 기록 (DB)", 'id="histBody"', 'id="saveMatch"', ">전적 저장<", 'data-win="true"',
+                 'data-win="false"', 'fetch("/matches?limit=10")', 'fetch("/matches", { method: "POST"',
+                 "/matches/export?format=csv"):
+        assert want in res.text, want
 
 
 def test_slides_page(client, app_module):
@@ -475,3 +480,130 @@ def test_request_not_mutated_between_calls(client):
     a = client.post("/coach", json=copy.deepcopy(body)).json()
     b = client.post("/coach", json=copy.deepcopy(body)).json()
     assert a == b
+
+
+# ── 전적 기록 /matches (AGENTS.md 3-5절, 4절) ──
+MATCH = {
+    "blue": {"kills": 5, "assists": 6, "cs": 250, "avg_level": 6.8, "dragons": 0, "heralds": 0, "towers": 0},
+    "red": {"kills": 7, "assists": 9, "cs": 268, "avg_level": 7.0, "dragons": 1, "heralds": 0, "towers": 0},
+    "first_blood": "red", "my_side": "blue",
+}
+
+
+@pytest.fixture
+def fresh_db(app_module):
+    from api import db
+
+    db.init_db("sqlite://")  # 테스트마다 빈 메모리 DB
+    return db
+
+
+def test_post_match_201_and_server_side_features(client, fresh_db):
+    body = MATCH | {"my_champion": "아리", "enemy_top_threat": "zed", "win": False, "game_time_sec": 610}
+    res = client.post("/matches", json=body)
+    assert res.status_code == 201
+    out = res.json()
+    assert out["id"] == 1 and out["created_at"].endswith("+00:00")
+    # 규칙 식(5절): 골드 환산 300×(−2) + 20×(−18) + 300×(−1) = −1260 → 블루(내 팀) 승률
+    assert out["my_win_prob"] == pytest.approx(rule_p(diffs(MATCH)), abs=1e-6)
+    assert out["model_version"] == client.get("/health").json()["model_version"]
+    rec = client.get("/matches").json()["matches"][0]
+    assert (rec["my_champion"], rec["enemy_top_threat"]) == ("Ahri", "Zed")   # 한국어·소문자도 영문 ID 로
+    assert (rec["win"], rec["game_time_sec"]) == (False, 610)
+    f = rec["features"]
+    assert f["names"] == FEATURES
+    assert f["values"] == [0.0, -2.0, -3.0, -18.0, -0.2, -1.0, 0.0, 0.0]          # 첫 킬 레드 0, 블루 − 레드
+    assert f["blue"] == MATCH["blue"] and f["red"] == MATCH["red"] and f["my_side"] == "blue"
+    c = rec["coach"]
+    coach = client.post("/coach", json=MATCH | {"my_champion": "아리", "enemy_top_threat": "zed"}).json()
+    assert c["state"] == coach["build_advice"]["state"] and c["pace"] == coach["pace"]
+    assert c["item_ids"] == [i["item_id"] for i in coach["build_advice"]["recommended_items"]]
+    assert c["top_goal"] == (coach["coaching"][0]["message"] if coach["coaching"] else None)
+
+
+@pytest.mark.parametrize("extra", [
+    {"summoner_name": "someone"},          # 개인 식별자 칸은 받지 않는다
+    {"riot_id": "x#KR1"},
+    {"my_win_prob": 0.9},                  # 승률은 서버가 계산한다
+    {"game_time_sec": 7201}, {"game_time_sec": -1}, {"game_time_sec": "600"}, {"game_time_sec": 600.5},
+    {"win": "true"}, {"win": 1},
+    {"my_champion": "없는챔피언"},
+])
+def test_post_match_422(client, fresh_db, extra):
+    assert client.post("/matches", json=MATCH | extra).status_code == 422
+    assert client.get("/matches").json()["count"] == 0   # 아무것도 적히지 않았다
+
+
+def test_post_match_defaults(client, fresh_db):
+    out = client.post("/matches", json=MATCH).json()
+    rec = client.get("/matches").json()["matches"][0]
+    assert rec["id"] == out["id"]
+    assert (rec["game_time_sec"], rec["win"], rec["my_champion"], rec["enemy_top_threat"]) == (600, None, None, None)
+
+
+def test_get_matches_limit_and_champion(client, fresh_db):
+    for champ in ("Ahri", "Jinx", "아리", "ad"):
+        assert client.post("/matches", json=MATCH | {"my_champion": champ}).status_code == 201
+    rows = client.get("/matches").json()
+    assert rows["count"] == 4 and [m["id"] for m in rows["matches"]] == [4, 3, 2, 1]
+    assert rows["matches"][0]["my_champion"] == "AD"                          # 역할군은 대문자
+    assert [m["id"] for m in client.get("/matches?limit=2").json()["matches"]] == [4, 3]
+    assert [m["id"] for m in client.get("/matches", params={"champion": "아리"}).json()["matches"]] == [3, 1]
+    assert client.get("/matches?champion=Zed").json() == {"count": 0, "matches": []}
+    for bad in ("limit=0", "limit=101", "champion=없는챔피언"):
+        assert client.get(f"/matches?{bad}").status_code == 422
+
+
+def test_export_json_and_csv(client, fresh_db):
+    client.post("/matches", json=MATCH | {"win": None})
+    client.post("/matches", json=MATCH | {"win": True})
+    client.post("/matches", json=MATCH | {"my_side": "red", "win": True, "game_time_sec": 900})
+    res = client.get("/matches/export")
+    assert res.status_code == 200
+    out = res.json()
+    assert out["count"] == 2 and out["columns"][:3] == ["matchId", "gameTimeSec", "blueWins"]
+    a, b = out["rows"]
+    assert (a["matchId"], a["blueWins"], b["matchId"], b["blueWins"], b["gameTimeSec"]) == (2, 1, 3, 0, 900)
+    assert (a["blueFirstBlood"], a["redFirstBlood"], a["blueKills"], a["redKills"]) == (0, 1, 5, 7)
+    assert (a["blueTotalMinionsKilled"], a["blueTotalJungleMinionsKilled"], a["redDragons"]) == (250, 0, 1)
+    csv_res = client.get("/matches/export?format=csv")
+    assert csv_res.status_code == 200 and csv_res.headers["content-type"].startswith("text/csv")
+    lines = csv_res.text.strip().split("\n")
+    assert lines[0].split(",") == out["columns"] and len(lines) == 3
+    assert lines[1].split(",")[:4] == ["2", "600", "1", "0"]
+    assert client.get("/matches/export?format=xml").status_code == 422
+
+
+def test_matches_hidden_from_agent_tools(app_module):
+    paths = app_module.app.openapi()["paths"]
+    assert not any(p.startswith("/matches") for p in paths)
+
+
+def test_matches_503_when_db_down(client, fresh_db, monkeypatch):
+    def down(*a, **k):
+        raise fresh_db.DBUnavailable("전적 DB에 연결하지 못했다")
+    monkeypatch.setattr(fresh_db, "list_matches", down)
+    monkeypatch.setattr(fresh_db, "save_match", down)
+    res = client.get("/matches")
+    assert res.status_code == 503 and res.json() == {"detail": "전적 DB에 연결하지 못했다"}
+    assert client.post("/matches", json=MATCH).status_code == 503
+    assert client.get("/health").status_code == 200                            # 예측·상태 확인은 DB 와 무관
+    assert client.post("/predict", json=MATCH).status_code == 200
+
+
+def test_app_starts_when_postgres_unreachable(monkeypatch):
+    """PostgreSQL 이 아직 안 떴어도 앱은 뜬다 (server.sh 상태 확인이 DB 때문에 실패하지 않게)."""
+    import importlib
+
+    from api import db
+
+    def unreachable(url=None):
+        raise db.DBUnavailable("전적 DB에 연결하지 못했다")
+    monkeypatch.setattr(db, "init_db", unreachable)
+    monkeypatch.setattr(db, "_store", None)   # 처음 뜨는 상태
+    import api.app
+    mod = importlib.reload(api.app)
+    from fastapi.testclient import TestClient
+    c = TestClient(mod.app)
+    assert c.get("/health").status_code == 200
+    assert c.get("/matches").status_code == 503

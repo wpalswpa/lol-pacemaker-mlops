@@ -1,4 +1,5 @@
 # 서버의 바라는 상태는 .env : IMAGE, TAG, MODEL_VERSION, MODEL_DIR (+ SITE_ADDRESS, API_PORT, HTTP_PORT, HTTPS_PORT)
+#   POSTGRES_PASSWORD 는 server.sh 가 처음 한 번 서버 안에서 만든다 (저장소·워크플로에 없음)
 # 프로젝트 이름을 lol 로 고정해 같은 서버의 다른 Compose 프로젝트(실습용 eta 등)와 섞이지 않게 한다
 name: lol
 
@@ -10,11 +11,32 @@ services:
       MODEL_IMPL: onnx
       # 모델 판이 없으면(baked) 이미지에 구운 모델을 쓴다
       MODEL_DIR: ${MODEL_DIR:-artifacts}
+      # 전적 DB (AGENTS.md 3-5절). db 가 늦게 뜨거나 끊겨도 api 는 뜨고 /health 는 영향받지 않는다(/matches 만 503)
+      DATABASE_URL: postgresql://lol:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD 가 .env 에 없다 (server.sh 가 만든다)}@db:5432/lol
+    depends_on: [db]
     volumes:
       - ./models:/models:ro
     ports:
       # 호스트 안에서만 연다. server.sh 가 컨테이너 자체의 상태를 확인하는 길이다
       - "127.0.0.1:${API_PORT:-8080}:8080"
+
+  db:
+    # 전적 기록·재학습 피처 (AGENTS.md 3-5절). 2 GB 서버를 지키려고 메모리·연결 수를 줄이고, 밖으로 포트를 열지 않는다
+    image: postgres:16-alpine
+    restart: unless-stopped
+    command: ["postgres", "-c", "shared_buffers=64MB", "-c", "max_connections=30"]
+    environment:
+      POSTGRES_DB: lol
+      POSTGRES_USER: lol
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD 가 .env 에 없다 (server.sh 가 만든다)}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lol -d lol"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
 
   caddy:
     # 80·443 은 Caddy 가 혼자 맡고, 밖에서 api 로 가는 길은 내부망 api:8080 하나다 (AGENTS.md 11절)
@@ -33,5 +55,6 @@ services:
       - caddy_config:/config
 
 volumes:
+  pg_data: {}
   caddy_data: {}
   caddy_config: {}

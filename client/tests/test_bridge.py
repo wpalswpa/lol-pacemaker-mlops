@@ -466,3 +466,103 @@ def test_popup_command_choice():
         assert how == "chrome" and f"--app={url}" in cmd and "--window-size=380,560" in cmd
     how, cmd = popup_command(url, "Linux", which=lambda n: None, exists=lambda p: False)
     assert (how, cmd) == ("browser", None)
+
+
+# ── 전적 저장 --save-match (AGENTS.md 3-5절) ──
+from client.bridge import game_result, match_payload  # noqa: E402
+
+
+def ended(seconds: float, result: str) -> dict:
+    d = at(seconds)
+    d.setdefault("events", {}).setdefault("Events", []).append(
+        {"EventID": 99, "EventName": "GameEnd", "EventTime": seconds, "Result": result})
+    return d
+
+
+@pytest.mark.parametrize("data, want", [
+    (at(900.0), None), (ended(1500.0, "Win"), True), (ended(1500.0, "Lose"), False), ({}, None),
+])
+def test_game_result(data, want):
+    assert game_result(data) is want
+
+
+def test_match_payload_has_only_contract_fields():
+    feats = extract_features_from_liveclient(at(900.0))
+    p = match_payload(feats, 900.4, True)
+    assert set(p) == {"blue", "red", "first_blood", "my_side", "my_champion", "enemy_top_threat",
+                      "game_time_sec", "win"}                             # 소환사명·Riot ID 없음
+    assert (p["game_time_sec"], p["win"]) == (900, True)
+    assert match_payload(feats, 9000.0, None)["game_time_sec"] == 7200   # 계약 상한
+    assert match_payload(feats, -1.0, None)["game_time_sec"] == 0
+
+
+def test_payload_is_saved_by_api(client):
+    from api import db
+    db.init_db("sqlite://")
+    res = client.post("/matches", json=match_payload(extract_features_from_liveclient(ended(1500.0, "Win")), 1500.0, True))
+    assert res.status_code == 201
+    rec = client.get("/matches").json()["matches"][0]
+    assert (rec["my_champion"], rec["enemy_top_threat"], rec["win"], rec["game_time_sec"]) == ("Ahri", "Zed", True, 1500)
+
+
+def save_bridge(frames, clock, saves, source="live", fail_times=0):
+    calls = []
+    b = make_bridge(frames, clock, calls)
+    state = {"fails": fail_times}
+
+    def save(payload):
+        if state["fails"]:
+            state["fails"] -= 1
+            raise urllib.error.URLError("서버 꺼짐")
+        saves.append(payload)
+        return {"id": len(saves), "created_at": "t", "my_win_prob": 0.5, "model_version": "x"}
+    b.save, b.source = save, source
+    return b
+
+
+def test_overlay_saves_once_at_game_end():
+    clock, saves, frames = Clock(), [], [at(900.0)]
+    b = save_bridge(frames, clock, saves)
+    st = b.step()
+    assert saves == [] and st["saved_match"] is None            # 아직 안 끝남
+    frames[0] = ended(1500.0, "Lose")
+    clock.t += 6
+    st = b.step()
+    assert len(saves) == 1
+    assert saves[0] == extract_features_from_liveclient(ended(1500.0, "Lose")) | {"game_time_sec": 1500, "win": False}
+    assert st["saved_match"] == {"id": 1, "created_at": "t", "win": False} and st["save_error"] is None
+    clock.t += 60
+    b.step()
+    assert len(saves) == 1                                      # 한 경기에 한 번만
+
+
+def test_overlay_file_source_saves_first_read():
+    clock, saves = Clock(), []
+    st = save_bridge([at(600.0)], clock, saves, source="file").step()
+    assert len(saves) == 1 and saves[0]["win"] is None and saves[0]["game_time_sec"] == 600
+    assert st["saved_match"]["id"] == 1
+
+
+def test_overlay_save_failure_retries_after_interval():
+    clock, saves, frames = Clock(), [], [ended(1500.0, "Win")]
+    b = save_bridge(frames, clock, saves, fail_times=1)
+    st = b.step()
+    assert saves == [] and "서버 꺼짐" in st["save_error"] and st["coach"] is not None   # 코칭은 계속
+    clock.t += 3
+    b.step()
+    assert saves == []                                          # 5초 안에는 다시 안 보낸다
+    clock.t += 3
+    st = b.step()
+    assert len(saves) == 1 and st["save_error"] is None and st["saved_match"]["win"] is True
+
+
+def test_overlay_without_save_never_posts():
+    clock, calls = Clock(), []
+    st = make_bridge([ended(1500.0, "Win")], clock, calls).step()
+    assert st["saved_match"] is None and st["save_error"] is None
+
+
+def test_save_match_requires_overlay(capsys):
+    with pytest.raises(SystemExit):
+        main(["--file", FIX, "--save-match"])
+    assert "--overlay" in capsys.readouterr().err

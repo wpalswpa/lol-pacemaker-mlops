@@ -158,7 +158,25 @@
   .err { color: var(--warn); margin-top: 12px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; overflow-wrap: anywhere; }
   .pick-err { margin: -4px 0 12px; }
   .note { color: var(--dim); font-size: 12px; margin-top: 12px; }
+  /* 최근 코칭 전적 기록 (AGENTS.md 3-5절) */
+  .hist-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .hist-head h2 { margin: 0; }
+  .hist-save { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .wl { padding: 4px 12px; font-size: 13px; }
+  .wl[aria-pressed="true"] { border-color: var(--gold); color: var(--gold); }
+  .savebtn { font-weight: 700; border-color: var(--gold); }
+  .savebtn:disabled { opacity: .5; cursor: wait; }
+  .tblwrap { overflow-x: auto; margin-top: 12px; }
+  .hist { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+  .hist th, .hist td { text-align: left; padding: 7px 8px; border-top: 1px solid var(--line); white-space: nowrap; }
+  .hist th { color: var(--dim); font-weight: 600; border-top: 0; font-size: 12px; }
+  .hist .st-ahead { color: var(--good); } .hist .st-even { color: var(--warn); } .hist .st-behind { color: var(--red); }
+  .hist .win { color: var(--good); font-weight: 700; } .hist .lose { color: var(--red); font-weight: 700; }
+  .hist .empty td { color: var(--dim); text-align: center; white-space: normal; }
+  #histMsg:empty { display: none; }
+  #history .note a { color: var(--gold); }
   @media (max-width: 640px) {
+    .hist .opt { display: none; }
     .cols, .pick, .steps { grid-template-columns: 1fr; } .prob { font-size: 44px; }
     .items { grid-template-columns: 1fr; } .items .to { justify-self: center; transform: rotate(90deg); }
     .item { flex-direction: row; text-align: left; align-items: center; flex-wrap: wrap; }
@@ -263,6 +281,28 @@
       <span class="head">지표</span><span class="head b">블루</span><span class="head r">레드</span>
     </div>
     <p class="note">점수판(Tab)에 보이는 값만 씁니다. 목표 승률은 과거 경기에서 그 수치를 더 가졌던 경우의 승률이에요. 그렇게 하면 반드시 이긴다는 뜻은 아니에요. 아이템·스킬·행동 카드는 사람이 정한 규칙표와 상태별 원칙이고, 모델은 우세·접전·열세만 정합니다.</p>
+  </section>
+
+  <section class="card" id="history" aria-labelledby="histTitle">
+    <div class="hist-head">
+      <h2 id="histTitle">최근 코칭 전적 기록 (DB)</h2>
+      <div class="hist-save">
+        <div class="quick" role="group" aria-label="실제 승패" style="margin:0">
+          <button type="button" class="wl" data-win="true" aria-pressed="false">승</button>
+          <button type="button" class="wl" data-win="false" aria-pressed="false">패</button>
+          <button type="button" class="wl" data-win="" aria-pressed="true">모름</button>
+        </div>
+        <button type="button" class="savebtn" id="saveMatch">전적 저장</button>
+      </div>
+    </div>
+    <p class="note" id="histMsg" role="status"></p>
+    <div class="tblwrap">
+      <table class="hist">
+        <thead><tr><th>#</th><th class="opt">저장 시각</th><th>내 챔피언</th><th class="opt">상대 위협</th><th>승률</th><th>전술 상태</th><th>승패</th></tr></thead>
+        <tbody id="histBody"><tr class="empty"><td colspan="7">불러오는 중</td></tr></tbody>
+      </table>
+    </div>
+    <p class="note">지금 위에 넣은 10분 점수판을 그대로 저장합니다. 소환사명 같은 개인 정보는 받지 않고, 승률과 전술 상태는 서버가 같은 입력으로 다시 계산해요. 승패를 고른 기록만 <a href="/matches/export?format=csv">재학습용 CSV</a>에 들어갑니다.</p>
   </section>
 </main>
 <script>
@@ -492,7 +532,71 @@ async function refresh() {
 document.addEventListener("input", (e) => { if (e.target.type !== "text") refresh(); });
 document.addEventListener("change", (e) => { if (e.target.type === "text") refresh(); });
 $("retry").onclick = refresh;
-loadMeta().then(() => applyPreset("CS·드래곤 밀림"));
+
+// ── 최근 코칭 전적 기록 (AGENTS.md 3-5절). 모든 글자는 textContent 로만 넣는다 ──
+const STATE_KO = { ahead: "우세", even: "접전", behind: "열세" };
+let pickedWin = null;
+function nameOf(v, ko) {
+  if (!v) return "기본값";
+  const c = META.champions.find((x) => x.id === v);
+  return c ? c.name : (ko[v] || v);
+}
+function cell(tr, text, cls) {
+  const td = document.createElement("td"); td.textContent = text; if (cls) td.className = cls; tr.appendChild(td); return td;
+}
+function histMessage(text) { $("histMsg").textContent = text; }
+async function loadHistory() {
+  const body = $("histBody");
+  try {
+    const res = await fetch("/matches?limit=10");
+    if (!res.ok) throw new Error(res.status === 503 ? "전적 DB에 연결하지 못했어요. 코칭은 그대로 쓸 수 있어요." : `전적을 불러오지 못했어요 (${res.status}).`);
+    const { matches } = await res.json();
+    body.replaceChildren();
+    if (!matches.length) {
+      const tr = document.createElement("tr"); tr.className = "empty"; cell(tr, "아직 저장한 전적이 없어요. 위 점수판으로 계산한 뒤 전적 저장을 눌러 보세요.").colSpan = 7; body.appendChild(tr);
+      return;
+    }
+    for (const m of matches) {
+      const tr = document.createElement("tr");
+      const when = new Date(m.created_at);
+      cell(tr, String(m.id));
+      cell(tr, isNaN(when) ? m.created_at : when.toLocaleString("ko-KR", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }), "opt");
+      cell(tr, nameOf(m.my_champion, ROLE_KO));
+      cell(tr, nameOf(m.enemy_top_threat, THREAT_KO), "opt");
+      cell(tr, pct(m.my_win_prob));
+      const st = (m.coach || {}).state;
+      cell(tr, STATE_KO[st] || "-", st ? `st-${st}` : "");
+      cell(tr, m.win === true ? "승" : m.win === false ? "패" : "-", m.win === true ? "win" : m.win === false ? "lose" : "");
+      body.appendChild(tr);
+    }
+  } catch (e) {
+    body.replaceChildren();
+    const tr = document.createElement("tr"); tr.className = "empty";
+    cell(tr, e.name === "TypeError" ? "API에 연결하지 못했어요." : e.message).colSpan = 7; body.appendChild(tr);
+  }
+}
+for (const b of document.querySelectorAll(".wl")) {
+  b.onclick = () => {
+    pickedWin = b.dataset.win === "" ? null : b.dataset.win === "true";
+    for (const x of document.querySelectorAll(".wl")) x.setAttribute("aria-pressed", String(x === b));
+  };
+}
+$("saveMatch").onclick = async () => {
+  const btn = $("saveMatch"), sent = { ...readState(), game_time_sec: 600, win: pickedWin };
+  btn.disabled = true; histMessage("저장하는 중");
+  try {
+    const res = await fetch("/matches", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(sent) });
+    if (res.status === 422) throw new Error(await explain422(res, sent));
+    if (res.status === 503) throw new Error("전적 DB에 연결하지 못했어요. 잠시 뒤 다시 눌러 주세요.");
+    if (!res.ok) throw new Error(`저장하지 못했어요 (${res.status}).`);
+    const out = await res.json();
+    histMessage(`#${out.id} 저장했어요. 승률 ${pct(out.my_win_prob)}, 승패 ${pickedWin === null ? "모름" : pickedWin ? "승" : "패"}.`);
+    await loadHistory();
+  } catch (e) {
+    histMessage(e.name === "TypeError" ? "API에 연결하지 못했어요." : e.message);
+  } finally { btn.disabled = false; }
+};
+loadMeta().then(() => { applyPreset("CS·드래곤 밀림"); loadHistory(); });
 </script>
 </body>
 </html>
