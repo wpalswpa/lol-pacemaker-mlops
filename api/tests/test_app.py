@@ -674,3 +674,61 @@ def test_enemy_items_dynamic_coaching_and_t1_orange_theme(client):
     dl = client.get("/download")
     assert dl.status_code == 200
     assert "#ff5a1f" in dl.text
+
+
+def test_coach_briefing_fallback_and_llm_mock(client, monkeypatch):
+    payload = {
+        "blue": {"kills": 5, "assists": 6, "cs": 230, "avg_level": 8.0, "dragons": 0, "heralds": 0, "towers": 0},
+        "red": {"kills": 7, "assists": 9, "cs": 250, "avg_level": 8.4, "dragons": 1, "heralds": 0, "towers": 1},
+        "first_blood": "red",
+        "my_side": "blue",
+        "my_champion": "Ahri",
+        "enemy_top_threat": "Zed",
+        "enemy_items": [3153],
+    }
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
+    monkeypatch.setenv("LLM_API_URL", "https://api.openai.com/v1/chat/completions")
+    res = client.post("/coach/briefing", json=payload)
+    assert res.status_code == 200
+    body = res.json()
+    assert body["source"] == "fallback_rule"
+    assert "승률" in body["briefing"]
+
+    import io
+    import json
+    from api import llm_coach
+
+    class FakeResp:
+        def __init__(self, data):
+            self._b = json.dumps(data).encode("utf-8")
+
+        def read(self):
+            return self._b
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    monkeypatch.setenv("LLM_API_KEY", "test-key")
+    monkeypatch.setenv("LLM_MODEL", "qwen2.5:3b")
+    monkeypatch.setattr(
+        llm_coach.urllib.request,
+        "urlopen",
+        lambda req, timeout=3.0: FakeResp({"choices": [{"message": {"content": "치유 감소 하위템부터 챙기고 1대1 교전을 피하세요."}}]}),
+    )
+    res2 = client.post("/coach/briefing", json=payload)
+    assert res2.status_code == 200
+    b2 = res2.json()
+    assert b2["source"] == "llm"
+    assert b2["llm_model"] == "qwen2.5:3b"
+    assert "치유 감소" in b2["briefing"]
+
+    def _boom(req, timeout=3.0):
+        raise TimeoutError("timeout")
+
+    monkeypatch.setattr(llm_coach.urllib.request, "urlopen", _boom)
+    res3 = client.post("/coach/briefing", json=payload)
+    assert res3.status_code == 200
+    assert res3.json()["source"] == "fallback_rule"

@@ -17,7 +17,7 @@ from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, Response
 
-from api import db
+from api import db, llm_coach
 from api.build import GAME, RULES, resolve_my, resolve_threat
 from api.contract import FEATURES, CoachResponse, GameState, Health, MatchIn, PredictResponse, to_features
 from api.service import STEPS_PATH, PaceService, load_json
@@ -92,6 +92,13 @@ def predict(state: GameState) -> dict:
 def coach(state: GameState) -> dict:
     """/predict 의 근거 수치에 더해, 다음 몇 분 동안 채우면 승률이 오르는 정량 목표를 돌려준다."""
     return _tag(service.coach(state))
+
+
+@app.post("/coach/briefing", include_in_schema=False)
+def coach_briefing(state: GameState) -> dict:
+    """ONNX + 규칙표 분석 JSON을 경량 LLM(Qwen/Haiku 등)에 전달해 2문장 프로 감독 브리핑을 생성한다."""
+    coach_res = _tag(service.coach(state))
+    return {**coach_res, **llm_coach.generate_briefing(coach_res)}
 
 
 # 웹 시뮬레이터의 챔피언 선택·초상화용 (AGENTS.md 4절 GET /meta/champions). 도구 스키마에는 넣지 않는다
