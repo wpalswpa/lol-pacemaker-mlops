@@ -8,7 +8,8 @@ API 계약, 검증 기준 수치, 승격·되돌리기 절차의 정본은 [AGEN
 
 <!-- STATUS:START -->
 - **완료(로컬 실측 확인)**: API(`/health`, `/predict`, `/coach`), 4종 예측 구현체(`rule`·`sklearn`·`dl`·`onnx`), 성능 게이트(`validate_model.py`), ONNX 변환(`export_onnx.py`), 서버 간 일치 검사(`check_parity.py`), 빌드 가이드(`build_advice`), 로컬 승격·실패 자동 복구·되돌리기(`deploy/local_e2e.sh`), 뮤테이션 확인 3건(모두 테스트가 잡음), 브리지 챔피언 자동 추출과 알림 ON/OFF(`--effect`·`--tts`), 웹 시뮬레이터 시각 코칭 화면(테두리 이펙트 ON/OFF, 아이템·챔피언 아이콘, 스킬 키캡, 3단계 행동 카드) 및 단위·계약 테스트 181건 전체 통과.
-- **미완료(다음 단계)**: 로컬 E2E 재실행(이번 변경 뒤), 실제 AWS Lightsail·GitHub Actions 클라우드 실배포(사용자 승인 후 진행).
+- **클라우드 배포 확인(2026-11-18)**: 태그 `v1.0`의 `ci.yml`(실행 44255436869)이 `test` → `build`(학습·게이트·ONNX·Parity·GHCR 이미지, Actions 아티팩트 없이) → `deploy`(Lightsail 러너) 모두 성공. 서버 `/health` = `{"status":"ok","model":"onnx","app_version":"v1.0","model_version":"baked"}`.
+- **미완료(다음 단계)**: `model.yml`로 첫 모델 판 승격과 `rollback.yml` 되돌리기 실측, Docker 가 되는 PC 에서 로컬 E2E 전체 재실행.
 <!-- STATUS:END -->
 
 ## 1. 문제와 목적
@@ -173,10 +174,12 @@ E2E_DIR="$HOME/Library/Caches/lol-mlops-e2e" bash deploy/local_e2e.sh
 ## 10. 파일 구조
 
 ```
-미니프로젝트5_lol-mlops/
+lol-pace-mlops/
 ├── README.md                 기획·설계 이유·흐름·실행 방법 (이 문서)
 ├── AGENTS.md                 API 계약·검증 기준·승격 절차의 정본
 ├── 인수인계.md               다음 세션 이어받기용 상태·수치·남은 일 기록
+├── 계획서.md                 기획 배경·기능·아키텍처·일정 (LoL 페이스메이커(페이커) 계획서)
+├── 발표대본.md               11/24 5분 발표 대본, 시연 순서, 예상 질문
 ├── pyproject.toml, uv.lock   기본(서빙): fastapi·uvicorn·numpy·onnxruntime / train 그룹: pandas·scikit-learn·torch·onnx
 ├── api/
 │   ├── app.py                GET /health, POST /predict, POST /coach, GET / (웹 시뮬레이터), GET /meta/champions (숨은 경로)
@@ -207,7 +210,7 @@ E2E_DIR="$HOME/Library/Caches/lol-mlops-e2e" bash deploy/local_e2e.sh
 │   ├── lightsail/            launch-script-lightsail.sh · compose.yml · Caddyfile · server.sh
 │   ├── tests/                server.sh 테스트 (가짜 docker·curl)
 │   └── local_e2e.sh          로컬에서 승격·실패 복구·되돌리기 전 과정을 재현
-└── .github/workflows/        ci.yml · model.yml · rollback.yml
+└── .github/workflows/        ci.yml(test → build 한 잡 → deploy) · model.yml(train 한 잡 → promote) · rollback.yml
 ```
 
 이 폴더를 별도 GitHub 저장소의 루트로 올려야 워크플로가 돈다(GitHub는 저장소 루트의 `.github/workflows/`만 읽는다).
@@ -215,8 +218,9 @@ E2E_DIR="$HOME/Library/Caches/lol-mlops-e2e" bash deploy/local_e2e.sh
 ## 11. 남은 일
 
 <!-- TODO:START -->
-1. 로컬 E2E 재실행(`deploy/local_e2e.sh`, 브리지·화면 변경 뒤 한 번 더).
-2. 사용자 승인 후 AWS Lightsail 인스턴스·버킷 생성, 셀프 호스티드 러너·변수 등록 및 실서버 배포 확인.
+1. `model.yml` 실행(잡 출력으로 넘긴 세 파일 → 버킷 승격, 서버 `/health`의 `model_version`이 새 판인지), 이어 `rollback.yml`로 이전 판 되돌리기 실측.
+2. Docker 가 되는 PC 에서 `deploy/local_e2e.sh` 전체 재실행(이번 PC 에서는 학습·게이트·ONNX·Parity 단계까지만 확인).
+3. 발표 리허설(`발표대본.md`, 5분).
 <!-- TODO:END -->
 
 ## 12. 검증 결과
@@ -230,6 +234,8 @@ E2E_DIR="$HOME/Library/Caches/lol-mlops-e2e" bash deploy/local_e2e.sh
 | 뮤테이션 ① | `rule.py` 확률식을 `(gold + 1) / SCALE`로 | 6건 실패(`test_predict_win_prob_follows_rule`, `test_predict_red_side_flips`, `test_top_factors_are_three_sorted_by_impact`, `test_even_game_is_close_pace`, `test_coach_targets_follow_rule`, `test_coach_red_side`) | 잡음 |
 | 뮤테이션 ② | `service.py` `impact_pp`의 `sign *` 제거 | 1건 실패(`test_predict_red_side_flips`) | 잡음 |
 | 뮤테이션 ③ | `server.sh` 실패 복구를 `/models/$VER`로 | 1건 실패(`deploy/tests/test_server_sh.py::test_model_failure_restores_previous_dir`) | 잡음 |
+| CI/CD `v1.0` (GitHub Actions) | 실행 44255436869, 아티팩트 없이 한 잡 `build` | `test` 성공 → `build` 성공(데이터 받기·게이트·ONNX·Parity·GHCR 푸시) → `deploy` 성공. 서버 `/health`: `status ok`, `onnx`, `v1.0`, `model_version baked` | 통과 |
+| 로컬 E2E 재실행 (2차 PC) | `E2E_DIR=$HOME/Library/Caches/lol-mlops-e2e` | 0단계 테스트 181 passed, 학습 2회(500/0 → m20261118-1, 5000/1 → m20261118-2) 게이트·ONNX(1.19e-07)·Parity(23건 1.19e-07) 통과 후 버킷 폴더에 올림. 2단계 `docker build`에서 이 PC 계정에 Docker 가 없어 exit 127로 멈춤(1차 PC 실행은 exit 0, 위 행) | 일부 |
 | 웹 시뮬레이터 화면 | 헤드리스 Chromium, 1280px·400px | 가로 넘침 0(`scrollWidth` = 화면 폭), Data Dragon 아이콘 5장 로드, 우세·접전·열세 테두리 색, ON/OFF 토글과 새로고침 뒤 유지, 모르는 챔피언 422 때 칸 이름이 든 오류 문구 | 통과 |
 | 규칙 기준선 (`rule`) | 고정 평가셋 1,976경기 | 정확도 **0.7151** · Brier **0.1917** · LogLoss **0.5676** | 기준선 |
 | 성능 게이트 (`DATA_N=500, SEED=0`) | `sklearn` / `dl` | `sklearn`: 정확도 **0.7090**, Brier **0.1891**, LogLoss **0.5555**<br>`dl`: 정확도 **0.7100**, Brier **0.1887**, LogLoss **0.5566** | 통과 |
