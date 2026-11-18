@@ -7,7 +7,8 @@ API 계약, 검증 기준 수치, 승격·되돌리기 절차의 정본은 [AGEN
 ## 현재 상태
 
 <!-- STATUS:START -->
-설계 확정, 구현 진행 중. 로컬 검증 결과는 구현이 끝나면 이 절에 적는다.
+- **완료(로컬 실측 확인)**: API(`/health`, `/predict`, `/coach`), 4종 예측 구현체(`rule`·`sklearn`·`dl`·`onnx`), 성능 게이트(`validate_model.py`), ONNX 변환(`export_onnx.py`), 서버 간 일치 검사(`check_parity.py`), 빌드 가이드(`build_advice`), 로컬 승격·실패 자동 복구·되돌리기(`deploy/local_e2e.sh`) 및 단위·계약 테스트 163건 전체 통과.
+- **미완료(다음 단계)**: 뮤테이션 버그 주입 확인 3건, 브리지 챔피언 자동 추출, 웹 시뮬레이터의 챔피언·아이템 시각 표시 칸 추가, 실제 AWS Lightsail·GitHub Actions 클라우드 실배포(사용자 승인 후 진행).
 <!-- STATUS:END -->
 
 ## 1. 문제와 목적
@@ -29,10 +30,10 @@ API 계약, 검증 기준 수치, 승격·되돌리기 절차의 정본은 [AGEN
 
 | 기능 | 무엇을 돌려주나 | 예(응답을 사람 말로 옮긴 것) |
 |---|---|---|
-| ① 페이스 진단 `/predict` | 내 팀 승률, 페이스 구간, 같은 티어 경기 중 내 위치(상위 몇 %) | "승률 43% · 열세 페이스 · 티어 상위 68%" |
-| ② 격차 요인 `top_factors`, `tier_percentile` | 승률에 가장 크게 작용하는 지표 3개와 그 몫(%p), 지표별 티어 내 위치 | "승률을 깎는 1순위는 CS 격차 −18개(−6.4%p), CS 격차는 상위 78%" |
-| ③ 목표 수치 `/coach` | 다음 3분 동안 채우면 승률이 오르는 목표, 오르는 폭, 목표를 채웠을 때 옮겨 갈 위치 | "CS 20개 더 → 상위 78%에서 45%로 (승률 43.0% → 53.2%, +10.2%p)" |
-| ④ 상대 맞춤 운영·아이템·스킬 가이드 `build_advice` | 현재 우세·열세 상태 + 상대 급성장 위협 유형에 맞춘 라인전 운영 전환 지시(`macro_order`), 상성 대응 전략, 추천 아이템·스킬 순서 | "라인 열세(43%) + 상대 마법 위협 급성장 → 1대1 라인전 조기 종료 후 웨이브만 지우고 강세 라인 합류, 헤르메스·마법저항 하위템 선구매 및 클리어 스킬 우선 마스터" |
+| ① 페이스 진단 `/predict` | 내 팀 승률, 페이스 구간, 같은 티어 경기 중 내 위치(상위 몇 %) | "승률 26% · 열세 페이스 · 티어 상위 76%" |
+| ② 격차 요인 `top_factors`, `tier_percentile` | 승률에 가장 크게 작용하는 지표 3개와 그 몫(%p), 지표별 티어 내 위치 | "승률을 깎는 1순위는 CS 격차 -18개(-6.4%p), CS 격차는 상위 70%" |
+| ③ 목표 수치 `/coach` | 다음 3분 동안 채우면 승률이 오르는 목표, 오르는 폭, 목표를 채웠을 때 옮겨 갈 위치 | "킬 2개 더 → 상위 70%에서 50%로 (승률 26.5% → 37.2%, +10.7%p)" |
+| ④ 상황별 아이템·스킬 가이드 `build_advice` | 현재 우세·열세 상태와 내 챔피언·상대 위협 유형에 맞춘 빌드 방향(`posture`), 추천 아이템 3단계, 스킬 마스터 원칙 | "열세 + 상대 마법 위협 → 헤르메스의 발걸음(1,200G) → 마법무효화의 망토(400G) → 맬모셔스의 아귀, 라인 클리어·생존기 우선" |
 
 예의 수치는 형식을 보여 주는 예시다. 실제 값은 검증 결과 절(아래 12절)에 적는다.
 
@@ -144,7 +145,25 @@ Lightsail 고정 IP → 인스턴스 lol-mini (Docker Compose 프로젝트 lol)
 ## 9. 실행 방법
 
 <!-- RUN:START -->
-구현과 검증이 끝나면 실제로 돌린 명령만 적는다.
+```bash
+# 1. 의존성 설치 및 계약·단위 테스트 (원본 CSV·Docker 없이 실행 가능)
+uv sync --all-groups
+uv run pytest -q
+
+# 2. 학습 · 성능 게이트 · ONNX 변환 · 모델 카드 생성 (data/high_diamond_ranked_10min.csv 필요)
+DATA_N=500 DATA_SEED=0 uv run --group train python -m training.train_sklearn
+uv run python -m training.validate_model sklearn
+DATA_N=500 DATA_SEED=0 uv run --group train python -m training.train_dl
+uv run python -m training.validate_model dl
+uv run --group train python -m training.export_onnx
+MODEL_VERSION=m20261118-1 uv run python -m training.model_card
+
+# 3. ONNX 서빙 서버 실행 (웹 시뮬레이터: http://127.0.0.1:8083/)
+MODEL_IMPL=onnx uv run uvicorn api.app:app --port 8083
+
+# 4. 로컬 전 과정 재현 (승격 m20261118-1 → -2, 깨진 판 자동 복구, 되돌리기)
+E2E_DIR="$HOME/Library/Caches/lol-mlops-e2e" bash deploy/local_e2e.sh
+```
 <!-- RUN:END -->
 
 ## 10. 파일 구조
@@ -153,11 +172,15 @@ Lightsail 고정 IP → 인스턴스 lol-mini (Docker Compose 프로젝트 lol)
 미니프로젝트5_lol-mlops/
 ├── README.md                 기획·설계 이유·흐름·실행 방법 (이 문서)
 ├── AGENTS.md                 API 계약·검증 기준·승격 절차의 정본
+├── 인수인계.md               다음 세션 이어받기용 상태·수치·남은 일 기록
 ├── pyproject.toml, uv.lock   기본(서빙): fastapi·uvicorn·numpy·onnxruntime / train 그룹: pandas·scikit-learn·torch·onnx
 ├── api/
 │   ├── app.py                GET /health, POST /predict, POST /coach, GET / (웹 시뮬레이터)
 │   ├── contract.py           입력·출력 모델과 422 규칙, 피처 변환
 │   ├── service.py            요인 분해·백분위·코칭·티어 비교 (모든 구현체 공통)
+│   ├── build.py              우세·열세 상태 및 상대 위협 맞춤 아이템·스킬 가이드 계산
+│   ├── build_rules.json      사람이 정한 상태·계열·위협별 아이템·스킬 규칙표
+│   ├── game_data.json        Data Dragon 16.23.1 챔피언·아이템 검증 데이터
 │   ├── coach_steps.json      코칭 단계(올릴 지표와 양, 연쇄 지표)
 │   ├── predictors/           rule · sklearn · dl · onnx (load → predict_proba)
 │   ├── static/index.html     웹 시뮬레이터 (분포 막대, 프리셋·슬라이더)
@@ -168,6 +191,7 @@ Lightsail 고정 IP → 인스턴스 lol-mini (Docker Compose 프로젝트 lol)
 │   └── tests/                변환 테스트와 고정 자료
 ├── training/
 │   ├── data.py               CSV 읽기, 고정 평가셋, DATA_N·DATA_SEED 표본, 기준선·분위수 계산
+│   ├── ddragon.py            Data Dragon 최신 판에서 game_data.json 갱신 및 규칙표 대조
 │   ├── evaluate.py           정확도·Brier·LogLoss 계산 (게이트와 학습이 같이 쓴다)
 │   ├── train_sklearn.py      학습 + 지표 + baseline.json
 │   ├── train_dl.py           WithNormalize 신경망 학습 + 지표
@@ -176,7 +200,7 @@ Lightsail 고정 IP → 인스턴스 lol-mini (Docker Compose 프로젝트 lol)
 │   ├── model_card.py         model.json (판 이름, 커밋, 데이터, 성능)
 │   └── check_parity.py       원본 서버 vs ONNX 서버 응답 비교
 ├── deploy/
-│   ├── lightsail/            launch-script-lightsail.sh · compose.yml · Caddyfile · server.sh
+│   ├── lightsail/            launch-script-lightsail.sh · compose.yml · Caddyfile · server.sh · models.py
 │   ├── tests/                server.sh 테스트 (가짜 docker·curl)
 │   └── local_e2e.sh          로컬에서 승격·실패 복구·되돌리기 전 과정을 재현
 └── .github/workflows/        ci.yml · model.yml · rollback.yml
@@ -187,11 +211,25 @@ Lightsail 고정 IP → 인스턴스 lol-mini (Docker Compose 프로젝트 lol)
 ## 11. 남은 일
 
 <!-- TODO:START -->
-구현과 검증이 끝나면 적는다.
+1. 뮤테이션 확인 3종(`rule.py`, `service.py`, `server.sh`에 의도적 버그 주입 후 `pytest` 실패 확인 및 원복).
+2. 브리지(`client/bridge.py`)에서 내 챔피언과 상대 최다 킬 위협 챔피언 자동 추출 및 테스트 추가.
+3. 웹 시뮬레이터(`api/static/index.html`)에 챔피언 선택, 테두리 이펙트 ON/OFF, 추천 아이템·스킬 시각 표시 칸 추가.
+4. 사용자 승인 후 AWS Lightsail 인스턴스·버킷 생성, 셀프 호스티드 러너·변수 등록 및 실서버 배포 확인.
 <!-- TODO:END -->
 
 ## 12. 검증 결과
 
 <!-- RESULT:START -->
-구현과 검증이 끝나면 실제 출력에서 옮겨 적는다.
+2026-11-18 로컬 실측 결과(고정 평가셋 1,976경기, 시드 42):
+
+| 검증 항목 | 실행 명령 / 조건 | 실측 결과 | 판정 |
+|---|---|---|---|
+| 단위·계약 테스트 | `uv run pytest -q` (api·client·deploy) | **163 passed, skipped 0** | 통과 |
+| 규칙 기준선 (`rule`) | 고정 평가셋 1,976경기 | 정확도 **0.7151** · Brier **0.1917** · LogLoss **0.5676** | 기준선 |
+| 성능 게이트 (`DATA_N=500, SEED=0`) | `sklearn` / `dl` | `sklearn`: 정확도 **0.7090**, Brier **0.1891**, LogLoss **0.5555**<br>`dl`: 정확도 **0.7100**, Brier **0.1887**, LogLoss **0.5566** | 통과 |
+| 성능 게이트 (`DATA_N=5000, SEED=1`) | `sklearn` / `dl` | `sklearn`: 정확도 **0.7156**, Brier **0.1824**, LogLoss **0.5385**<br>`dl`: 정확도 **0.7136**, Brier **0.1837**, LogLoss **0.5424** | 통과 |
+| 게이트 차단 확인 | 조기 종료 없이 `dl` 400회 과적합 | Brier **0.2197** (> 0.1917), 정확도 **0.6721** (< 0.68) → `exit 1` 차단 확인 | 통과 |
+| ONNX 변환 오차 | `training.export_onnx` (평가셋 앞 200건) | `sklearn`·`dl` 모두 원본 대비 최대 오차 **1.19e-07** (< `1e-4`) | 통과 |
+| 서버 간 Parity | `training.check_parity` (23건) | `sklearn` 원본 서버 vs `onnx` 서버 최대 오차 **1.19e-07** 통과 (대조군 `dl` 서버 투입 시 오차 0.241로 실패 검출 확인) | 통과 |
+| 로컬 승격·복구·롤백 | `deploy/local_e2e.sh` (서빙 이미지 430MB) | `baked` → `m20261118-1` → `m20261118-2` 승격, 깨진 판(`m20261118-3`) 투입 시 `m20261118-2`로 자동 복구, `m20261118-1` 롤백 **2초** 완료 (`app_version` `v1.0` 유지) | 통과 |
 <!-- RESULT:END -->
