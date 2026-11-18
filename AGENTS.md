@@ -219,6 +219,16 @@ LoL은 "테두리 없는 창 모드"여야 위에 뜬다. 전체 화면 독점 �
 - **재학습 루프**: `GET /matches/export?format=csv`는 원본 Kaggle CSV와 같은 열 이름을 쓴다. `training/data.py`의 `CSV_COLUMNS`로 읽으면 같은 8개 피처가 나온다. 학습 데이터에 섞을지는 사람이 정한다(오버레이 환산값은 검증 안 된 가정이라 `gameTimeSec`로 걸러 쓸 수 있게 열을 남긴다). 고정 평가셋은 바꾸지 않는다.
 - **서버 구성**: `compose.yml`의 `db` 서비스(`postgres:16-alpine`, 밖으로 포트를 열지 않음, `pg_data` 볼륨, `pg_isready` 상태 확인). 비밀번호 `POSTGRES_PASSWORD`는 `server.sh`가 `.env`에 없을 때 서버 안에서 한 번 무작위로 만들고 `.env`를 0600으로 둔다. 저장소·워크플로·변수에는 없다. api는 `DATABASE_URL=postgresql://lol:<비밀번호>@db:5432/lol`을 받고, db가 늦게 떠도 api 상태 확인은 영향받지 않는다.
 
+### 3-6. 원클릭 인게임 런처 다운로드 (`GET /download/launcher`, `GET /download/bridge.py`)
+
+어떤 컴퓨터에서든 `git clone`이나 긴 CLI 명령 입력 없이 **웹 접속 -> 런처 다운로드 -> 더블클릭 자동 실행**이 되도록 서버가 실행기를 생성해 내려준다.
+
+| 엔드포인트 | 동작 | 보안 · 호환 규칙 |
+|---|---|---|
+| `GET /download/bridge.py` | `client/bridge.py` 원본을 `text/x-python; charset=utf-8`으로 반환 | 표준 라이브러리만 사용하므로 추가 패키지 설치가 필요 없다 |
+| `GET /download/overlay_popup.swift` | `client/overlay_popup.swift` 원본을 `text/plain; charset=utf-8`으로 반환 | macOS에서 `swiftc` Always-On-Top 패널 컴파일에 쓴다 |
+| `GET /download/launcher?os=windows\|mac` | 요청 `Host` 헤더(및 `X-Forwarded-Proto`)를 서버 URL로 자동 삽입한 `lol-pacemaker-overlay.bat`(Windows) 또는 `lol-pacemaker-overlay.command`(Mac) 생성 다운로드 | `Host`는 영숫자·`.`·`:`·`-`·`[]`만 허용해 명령 주입을 막고, 잘못된 `os`는 422. 내려받은 스크립트는 `%TEMP%` 또는 `~/.cache`에 최신 `bridge.py`를 받아 `--insecure-local --overlay --launch-popup --save-match`를 자동 실행한다 (Python 미설치 시 안내) |
+
 ## 4. 출력 계약
 
 ### `GET /health`
