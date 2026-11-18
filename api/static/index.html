@@ -201,6 +201,16 @@
   .nav-links a:hover, .nav-links a.active { color: #fff; }
   .nav-cta { padding: 7px 14px; border-radius: 999px; background: #ff5a1f; color: #fff; font-size: 12.5px; font-weight: 700; text-decoration: none; }
   .nav-cta:hover { background: #ff7340; }
+  /* 상단 메뉴 모바일: 중복 CTA·브랜드 글자를 숨기고 네 링크를 한 줄로 (넘치면 메뉴 안에서만 가로 스크롤) */
+  .nl-x { display: inline; }
+  @media (max-width: 640px) {
+    .nav-cta { display: none !important; }
+    .brand > span:not(.brand-badge) { display: none; }
+    .nl-x { display: none; }
+    .nav-links { display: flex !important; gap: 12px; font-size: 12.5px; min-width: 0; overflow-x: auto; white-space: nowrap; scrollbar-width: none; }
+    .nav-links::-webkit-scrollbar { display: none; }
+    .nav-links a { flex: none; }
+  }
 </style>
 </head>
 <body>
@@ -209,9 +219,9 @@
   <div class="sitenav-in">
     <a class="brand" href="/"><span class="brand-badge">FAKER</span><span>Desktop</span></a>
     <nav class="nav-links" aria-label="주 메뉴">
-      <a href="/" class="active">웹 시뮬레이터 · 전적</a>
+      <a href="/" class="active">웹 시뮬레이터<span class="nl-x"> · 전적</span></a>
       <a href="/overlay">인게임 HUD</a>
-      <a href="/slides">발표 슬라이드</a>
+      <a href="/slides"><span class="nl-x">발표 </span>슬라이드</a>
       <a href="/download">다운로드</a>
     </nav>
     <a class="nav-cta" href="/download">다운로드</a>
