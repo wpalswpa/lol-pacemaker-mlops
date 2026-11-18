@@ -22,6 +22,10 @@
 | `MODEL_DIR` | `artifacts` | 모델 판 폴더. `model.json`·`baseline.json`과 구현체별 모델 파일이 있다 |
 | `ONNX_FILE` | `model_sklearn.onnx` | `MODEL_IMPL=onnx`일 때 읽을 파일 이름 |
 | `APP_VERSION` | `dev` | 코드 판. 이미지를 만들 때 git 태그(`v1.0` 등)가 들어간다 |
+| `LLM_API_URL` | `https://api.openai.com/v1/chat/completions` | `/coach/briefing`(4절)이 부르는 OpenAI 호환 대화 API 주소. 로컬 Ollama면 `http://127.0.0.1:11434/v1/chat/completions` 등 |
+| `LLM_API_KEY` | 없음 | 그 API의 키. 비어 있고 주소가 `localhost`·`127.0.0.1`·`host.docker.internal`이 아니면 LLM을 부르지 않고 규칙 브리핑으로 답한다. 저장소·문서에 쓰지 않고 서버 `.env`에만 둔다 |
+| `LLM_MODEL` | `qwen2.5:3b` | 요청에 넣을 모델 이름. Claude Haiku 계열처럼 OpenAI 호환 엔드포인트가 있는 경량 모델이면 바꿔 쓴다 |
+| `LLM_TIMEOUT_SEC` | `3.0` | LLM 응답을 기다리는 최대 초. 넘으면 규칙 브리핑으로 답한다 |
 | `DATABASE_URL` | 없음 | 전적 DB(3-5절). `postgresql://`·`postgres://`면 PostgreSQL, `sqlite:///<경로>`면 그 파일, `sqlite://`면 메모리, 없으면 `data/matches.db`(쓸 수 없으면 메모리) |
 
 - 모든 구현체(`api/predictors/<이름>.py`)는 `load(model_dir)` 하나만 제공하고, 이 함수가 `predict_proba(X) -> P(블루 승)`를 돌려준다. `X`는 `float32 [N, 8]`, 열 순서는 3절의 `FEATURES`, 단위는 원래 값(정규화 전)이다. 정규화는 모델 안에 있다.
@@ -327,6 +331,36 @@ LoL은 "테두리 없는 창 모드"여야 위에 뜬다. 전체 화면 독점 �
 1. `api/coach_steps.json`의 단계마다 내 팀 지표에 `add`를 더한다(블루면 차이 `+add`, 레드면 `−add`). 더한 값이 3절 허용 범위를 넘으면 그 단계는 뺀다.
 2. **연쇄 반영**: 단계에 적힌 `with` 지표도 함께 움직인다. 움직이는 양은 `add × slope[stat][with]`이고, `slope`는 학습 데이터 차이값의 단순 회귀 기울기(`cov / var`)로 `baseline.json`에 저장된다. 예를 들어 킬을 2개 더 하면 어시스트와 평균 레벨도 과거 경기에서 함께 늘어난 만큼 올린다. 킬만 올리고 어시스트를 고정하는 것은 실제로 없는 상황이기 때문이다(원본 프로젝트의 골드 연쇄 보정과 같은 원리).
 3. 바뀐 입력으로 `predict_proba`를 다시 불러 승률 변화를 잰다.
+
+### `POST /coach/briefing` (감독 브리핑, `include_in_schema=False`)
+
+입력은 3절과 같다(`enemy_items` 포함). 응답은 `/coach` 응답 전체에 세 칸을 더한 것이다. 구현은 `api/llm_coach.py`.
+
+```json
+{"...": "POST /coach 응답 그대로",
+ "briefing": "현재 승률 17%(behind)입니다. … 권장 빌드는 [마법사의 신발 -> 망각의 구 -> 라바돈의 죽음모자] 순입니다.",
+ "source": "fallback_rule",
+ "llm_model": null}
+```
+
+**역할 분리**
+
+| 단계 | 누가 | 무엇을 정하나 |
+|---|---|---|
+| 1단계 수치 | ONNX 모델 + 규칙표(`service.coach`) | `my_win_prob`, `build_advice`(`state`·`tactical_tip`·`recommended_items`·`skill_order`), `coaching[0]`(핵심 목표). 모든 숫자와 아이템 이름은 여기서만 나온다 |
+| 2단계 문장 | 경량 LLM(`LLM_MODEL`) | 1단계 결과를 줄인 JSON(`build_prompt_payload`: `win_prob_pct`, `state`, `my_champion`, `enemy_top_threat`, `threat_type`, `tactical_tip`, `top_goal`, `recommended_items` 이름, `skill_order`)만 받아 한국어 2문장 이내 운영 브리핑으로 옮긴다. 새 수치·아이템을 만들지 않는다 |
+
+| 칸 | 뜻 |
+|---|---|
+| `briefing` | 보여 줄 문장 |
+| `source` | `"llm"`(LLM이 만든 문장) 또는 `"fallback_rule"`(규칙 문장) |
+| `llm_model` | `source`가 `llm`이면 쓴 모델 이름. 키가 없어 부르지 않았으면 `null`, 불렀다가 실패했으면 그 모델 이름 |
+
+**규칙 문장(`fallback_briefing`)으로 답하는 경우**: 키 미설정(위 2절 조건), 응답이 `LLM_TIMEOUT_SEC` 초과, 네트워크·HTTP 오류, 응답 형식 오류, 빈 문장. 규칙 문장은 `현재 승률 {반올림 %}({state})입니다. {tactical_tip 또는 posture} 핵심 목표는 '{coaching[0].message}'이며, 권장 빌드는 [{아이템 이름 -> …}] 순입니다.`로 만든다. 그래서 LLM이 없어도 `/coach/briefing`은 항상 200이다.
+
+**요청 설정**: `temperature` 0.2, `max_tokens` 160, 시스템 문장은 "분석 JSON에 있는 값만 근거로 2문장 이내, JSON에 없는 아이템·수치를 지어내지 말 것".
+
+**지금의 한계와 다음 일**: "2문장 이내"와 "지어내지 않음"은 지금 시스템 문장으로 부탁만 하고 응답을 검사하지 않는다. 응답 검사기(`validate_briefing_output`: 분석 JSON에 없는 아이템 이름이나 다른 승률 숫자가 있으면 `fallback_rule`로 내림)와 같은 상황의 반복 호출을 막는 짧은 캐시는 Issue #16에서 이 절을 먼저 고친 뒤 넣는다. 실서버는 키가 없어 `fallback_rule`로 답하는 것까지 확인했다(2026-11-18).
 
 ### `GET /meta/champions` (웹 시뮬레이터용, `include_in_schema=False`)
 
