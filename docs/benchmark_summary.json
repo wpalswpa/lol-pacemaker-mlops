@@ -1,0 +1,82 @@
+{
+  "generated_at": "2026-11-18T08:05:14+00:00",
+  "target": "http://127.0.0.1:8000",
+  "health": {
+    "status": "ok",
+    "model": "onnx",
+    "app_version": "dev",
+    "model_version": "m20261118-1"
+  },
+  "settings": {
+    "requests": 100,
+    "concurrency": 20,
+    "warmup": 5,
+    "timeout_s": 10.0
+  },
+  "results": [
+    {
+      "endpoint": "POST /predict",
+      "mode": "순차",
+      "concurrency": 1,
+      "total": 100,
+      "ok": 100,
+      "failed": 0,
+      "success_rate": 100.0,
+      "p50_ms": 0.549,
+      "p95_ms": 0.728,
+      "p99_ms": 0.76,
+      "mean_ms": 0.578,
+      "max_ms": 0.761,
+      "rps": 1709.11,
+      "elapsed_s": 0.059
+    },
+    {
+      "endpoint": "POST /predict",
+      "mode": "동시",
+      "concurrency": 20,
+      "total": 100,
+      "ok": 100,
+      "failed": 0,
+      "success_rate": 100.0,
+      "p50_ms": 6.287,
+      "p95_ms": 7.102,
+      "p99_ms": 7.813,
+      "mean_ms": 6.139,
+      "max_ms": 7.999,
+      "rps": 2998.22,
+      "elapsed_s": 0.033
+    },
+    {
+      "endpoint": "POST /coach",
+      "mode": "순차",
+      "concurrency": 1,
+      "total": 100,
+      "ok": 100,
+      "failed": 0,
+      "success_rate": 100.0,
+      "p50_ms": 0.712,
+      "p95_ms": 0.788,
+      "p99_ms": 0.807,
+      "mean_ms": 0.712,
+      "max_ms": 0.819,
+      "rps": 1387.33,
+      "elapsed_s": 0.072
+    },
+    {
+      "endpoint": "POST /coach",
+      "mode": "동시",
+      "concurrency": 20,
+      "total": 100,
+      "ok": 100,
+      "failed": 0,
+      "success_rate": 100.0,
+      "p50_ms": 9.321,
+      "p95_ms": 10.566,
+      "p99_ms": 10.948,
+      "mean_ms": 9.09,
+      "max_ms": 11.162,
+      "rps": 2055.57,
+      "elapsed_s": 0.049
+    }
+  ]
+}

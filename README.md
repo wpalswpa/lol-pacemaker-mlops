@@ -7,9 +7,10 @@ API 계약, 검증 기준 수치, 승격·되돌리기 절차의 정본은 [AGEN
 ## 현재 상태
 
 <!-- STATUS:START -->
-- **완료(로컬 실측 확인)**: API(`/health`, `/predict`, `/coach`), 4종 예측 구현체(`rule`·`sklearn`·`dl`·`onnx`), 성능 게이트(`validate_model.py`), ONNX 변환(`export_onnx.py`), 서버 간 일치 검사(`check_parity.py`), 빌드 가이드(`build_advice`), 로컬 승격·실패 자동 복구·되돌리기(`deploy/local_e2e.sh`), 뮤테이션 확인 3건(모두 테스트가 잡음), 브리지 챔피언 자동 추출과 알림 ON/OFF(`--effect`·`--tts`), 웹 시뮬레이터 시각 코칭 화면(테두리 이펙트 ON/OFF, 아이템·챔피언 아이콘, 스킬 키캡, 3단계 행동 카드) 및 단위·계약 테스트 181건 전체 통과.
+- **완료(로컬 실측 확인)**: API(`/health`, `/predict`, `/coach`), 4종 예측 구현체(`rule`·`sklearn`·`dl`·`onnx`), 성능 게이트(`validate_model.py`), ONNX 변환(`export_onnx.py`), 서버 간 일치 검사(`check_parity.py`), 빌드 가이드(`build_advice`), 로컬 승격·실패 자동 복구·되돌리기(`deploy/local_e2e.sh`), 뮤테이션 확인 3건(모두 테스트가 잡음), 브리지 챔피언 자동 추출과 알림 ON/OFF(`--effect`·`--tts`), 웹 시뮬레이터 시각 코칭 화면(테두리 이펙트 ON/OFF, 아이템·챔피언 아이콘, 스킬 키캡, 3단계 행동 카드) 및 단위·계약 테스트 246건 전체 통과.
 - **클라우드 배포 확인(2026-11-18)**: 태그 `v1.0`의 `ci.yml`(실행 44255436869)이 `test` → `build`(학습·게이트·ONNX·Parity·GHCR 이미지, Actions 아티팩트 없이) → `deploy`(Lightsail 러너) 모두 성공. 서버 `/health` = `{"status":"ok","model":"onnx","app_version":"v1.0","model_version":"baked"}`.
-- **미완료(다음 단계)**: `model.yml`로 첫 모델 판 승격과 `rollback.yml` 되돌리기 실측, Docker 가 되는 PC 에서 로컬 E2E 전체 재실행.
+- **모델 판 승격·되돌리기 확인(2026-11-18)**: `model.yml` 2회(실행 44256625358: `DATA_N` 500·seed 0 → `m20261118-1`, 44256928140: 5,000·seed 1 → `m20261118-2`)와 `rollback.yml` 2회(44257135715: → `m20261118-1` 잡 **16초**, 44257191599: → `m20261118-2` 15초) 모두 성공. 매번 서버 `/health`의 `model_version`이 그 판이고 `app_version`은 `v1.0` 그대로.
+- **미완료(다음 단계)**: Docker 가 되는 PC 에서 로컬 E2E 전체 재실행, 판을 바꾸는 동안 요청이 끊기는지 실측(11절).
 <!-- STATUS:END -->
 
 ## 1. 문제와 목적
@@ -177,6 +178,11 @@ python3 -m client.bridge --server http://<고정 IP> --insecure-local --overlay 
 # 게임 없이: 저장한 응답 + 로컬 서버 (HUD: http://127.0.0.1:8083/overlay, 상태: http://127.0.0.1:8765/bridge/state)
 uv run python -m client.bridge --server http://127.0.0.1:8083 --file client/tests/fixtures/allgamedata_10min.json --overlay --launch-popup
 
+# 서빙 지연시간·부하 실측 (순차 100건 + 동시 20, /predict·/coach). 원격 주소는 JSON 에 <원격 서버>로 가려 적는다
+uv run python scripts/benchmark_serving.py --url http://127.0.0.1:8083 --requests 100 --concurrency 20 --out docs/benchmark_summary.json
+# 모델 판 비교 m1(500경기) vs m2(5,000경기): LogLoss·AUC·규칙 대비 개선율·게이트·피처 가중치 (artifacts/ 는 안 건드림)
+uv run --group train python -m training.compare_models --out docs/model_comparison.json --md docs/model_comparison.md
+
 # 6. 로컬 전 과정 재현 (승격 m20261118-1 → -2, 깨진 판 자동 복구, 되돌리기)
 E2E_DIR="$HOME/Library/Caches/lol-mlops-e2e" bash deploy/local_e2e.sh
 ```
@@ -221,7 +227,12 @@ lol-pace-mlops/
 │   ├── validate_model.py     성능 게이트 (미달이면 exit 1)
 │   ├── export_onnx.py        ONNX 변환 + 원본 대비 오차 확인
 │   ├── model_card.py         model.json (판 이름, 커밋, 데이터, 성능)
+│   ├── compare_models.py     모델 판 비교(학습 표본 수별 LogLoss·AUC·개선율·게이트·가중치) → docs/model_comparison.*
 │   └── check_parity.py       원본 서버 vs ONNX 서버 응답 비교
+├── scripts/
+│   └── benchmark_serving.py  /predict·/coach 순차·동시 부하 실측 (성공률, p50/p95/p99, RPS, 표준 라이브러리만)
+├── docs/                     benchmark_summary.json · model_comparison.json · model_comparison.md (실측 결과), images/
+├── tests/                    부하 실측 백분위·모델 판 비교 계산 테스트 (학습 라이브러리 없이)
 ├── deploy/
 │   ├── lightsail/            launch-script-lightsail.sh · compose.yml · Caddyfile · server.sh
 │   ├── tests/                server.sh 테스트 (가짜 docker·curl)
@@ -234,7 +245,7 @@ lol-pace-mlops/
 ## 11. 남은 일
 
 <!-- TODO:START -->
-1. `model.yml` 실행(잡 출력으로 넘긴 세 파일 → 버킷 승격, 서버 `/health`의 `model_version`이 새 판인지), 이어 `rollback.yml`로 이전 판 되돌리기 실측.
+1. 판을 바꾸는 동안 요청이 끊기는지 실측: `rollback.yml`을 돌리는 동안 다른 창에서 `scripts/benchmark_serving.py --url https://<내 도메인> --requests 2000 --concurrency 4`를 돌려 `failed`를 센다. `server.sh`는 `docker compose up -d`로 컨테이너를 새로 띄우므로 몇 초 끊길 수 있고, 아직 재지 않았다(그래서 "무중단"이라고 쓰지 않는다).
 2. Docker 가 되는 PC 에서 `deploy/local_e2e.sh` 전체 재실행(이번 PC 에서는 학습·게이트·ONNX·Parity 단계까지만 확인).
 3. 발표 리허설(`발표대본.md`, 5분).
 4. 화면에 로그인한 Mac 에서 오버레이 팝업이 실제로 게임 위에 뜨는지 확인하고 시연 영상 녹화(이번 PC 계정은 화면 세션이 없어 창을 띄우지 못했다).
@@ -264,5 +275,9 @@ lol-pace-mlops/
 | 게이트 차단 확인 | 조기 종료 없이 `dl` 400회 과적합 | Brier **0.2197** (> 0.1917), 정확도 **0.6721** (< 0.68) → `exit 1` 차단 확인 | 통과 |
 | ONNX 변환 오차 | `training.export_onnx` (평가셋 앞 200건) | `sklearn`·`dl` 모두 원본 대비 최대 오차 **1.19e-07** (< `1e-4`) | 통과 |
 | 서버 간 Parity | `training.check_parity` (23건) | `sklearn` 원본 서버 vs `onnx` 서버 최대 오차 **1.19e-07** 통과 (대조군 `dl` 서버 투입 시 오차 0.241로 실패 검출 확인) | 통과 |
+| 클라우드 모델 판 승격·롤백 | GitHub Actions `model.yml`·`rollback.yml` (Lightsail 러너) | `model.yml` 2회(실행 44256625358: `DATA_N` 500·seed 0 → `m20261118-1`, 44256928140: 5,000·seed 1 → `m20261118-2`)와 `rollback.yml` 2회(44257135715: → `m20261118-1` 잡 **16초**, 44257191599: → `m20261118-2` 15초). 승격 잡 19초(그중 서버에서 판 받아 띄우기 5~6초), 롤백 잡 16초·15초(띄우기 5초). 승격 실행마다 게이트 3조건 PASS, Parity 23건 최대 오차 `1.79e-07`·`1.19e-07` (< `1e-4`) | 통과 |
+| 모델 판 비교 m1 vs m2 | `training/compare_models.py`, 고정 평가셋 1,976경기 | 규칙 Brier 0.1917·LogLoss 0.5676·AUC 0.7987 / m1(500): 0.1891·0.5555·0.7853 / m2(5,000): **0.1824·0.5385·0.8005**. 규칙 대비 개선율 Brier 1.34% → 4.84%, LogLoss 2.12% → 5.11%. 가중치 1위 평균 레벨 → 킬, CS 7위 → 3위. 위 `model.yml` 기록과 같은 값. m1 은 게이트를 통과했지만 AUC 는 규칙보다 낮다(`docs/model_comparison.md`) | 통과 |
+| 서빙 지연시간·부하 | `scripts/benchmark_serving.py`, 로컬 ONNX 서버(uvicorn 1개, `m20261118-1`), 순차 100 + 동시 20 × 100 | `/predict` 순차 p50 0.55ms·p95 0.73ms·p99 0.76ms, 동시 p95 7.1ms·2,998 RPS / `/coach` 순차 p95 0.79ms, 동시 p95 10.6ms·2,056 RPS. 400건 성공률 100%, 실패 0 (`docs/benchmark_summary.json`). 같은 PC 안이라 네트워크 시간은 빠져 있다 | 통과 |
+| 실측 스크립트 테스트 | `tests/` 29건 (학습 라이브러리를 막고도 통과) | 백분위 보간(5개·100개·빈 값·1개), 성공률·RPS, 원격 주소 가리기, 단계별 호출 수, 개선율·게이트 경계(`<`·`≥`)·가중치 순위. 뮤테이션 4건(백분위 반올림, 실패 지연 빼기, Brier `<=`, 부호 있는 정렬) 모두 검출 | 통과 |
 | 로컬 승격·복구·롤백 | `deploy/local_e2e.sh` (서빙 이미지 430MB) | `baked` → `m20261118-1` → `m20261118-2` 승격, 깨진 판(`m20261118-3`) 투입 시 `m20261118-2`로 자동 복구, `m20261118-1` 롤백 **2초** 완료 (`app_version` `v1.0` 유지) | 통과 |
 <!-- RESULT:END -->

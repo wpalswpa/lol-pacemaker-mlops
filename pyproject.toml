@@ -30,7 +30,7 @@ train = [
 default-groups = ["dev"]
 
 [tool.pytest.ini_options]
-testpaths = ["api/tests", "client/tests", "deploy/tests"]
+testpaths = ["api/tests", "client/tests", "deploy/tests", "tests"]
 addopts = "-ra"
 
 [tool.pyright]

@@ -349,9 +349,9 @@ p_blue   = 1 / (1 + exp(−gold_est / 2500))
 - **ONNX Runtime 받기**: 버전은 `uv.lock`의 `onnxruntime` 값을 읽고(숫자를 적지 않는다), `github.com/microsoft/onnxruntime/releases` 받기가 실패(404)하면 NuGet `https://www.nuget.org/api/v2/package/Microsoft.ML.OnnxRuntime/${ORT_VERSION}`(zip 형식, `runtimes/<os-arch>/native/`)에서 받는다.
 - **입력 오류는 모두 422**로 맞추고, `training/check_parity.py`의 `TARGETS`에 넣어 Python 원본과 같은 답을 내는지 확인한다.
 
-## 7. 테스트 작성 규칙 (`api/tests/`, `client/tests/`, `deploy/tests/`)
+## 7. 테스트 작성 규칙 (`api/tests/`, `client/tests/`, `deploy/tests/`, `tests/`)
 
-- **범위**: `/predict`·`/coach`의 응답 형식과 계산 정의, 규칙 기준선 값, 백분위 계산(보간·동점 구간·표 밖), 입력 검증(422 목록 전부), `/health`, `/openapi.json`의 도구 이름, 레드 기준 뒤집기, 경계값(허용 범위의 끝, 하나 밖). 빌드 가이드의 규칙표 적용 순서(상태·계열·위협 조합)와 선택 칸 해석(이름·역할군·생략·없는 이름 422). `GET /meta/champions`의 형식과 스키마 숨김, `GET /slides`·`GET /overlay`가 HTML을 돌려주는지(오버레이는 강조 테두리·토글·브리지 폴링·`게임 중` 표시 포함). 빌드 가이드의 `starter_items`·`situational_items`. 오버레이 모드의 10분 페이스 환산(3분·15분·1분 미만·10분), 보유 아이템 추출, 다음 스킬 계획, `/coach` 호출 간격, 로컬 상태 서버의 JSON·CORS 헤더·게임 API 실패 때 `connected: false`, 팝업 실행 방식 선택. `client/agent_demo.py`의 도구 정의 변환(`$ref` 풀기, 두 도구), 브리핑에 응답의 승률·목표·아이템·`model_version`·`basis`가 들어가고 응답에 없는 숫자가 없는지. 브리지의 응답 변환, 내 챔피언·상대 최다 킬(동률이면 최다 CS) 챔피언 찾기, 422 때 두 칸 빼고 한 번 다시 부르기, 10분 한 번 호출, `--effect`·`--tts` 옵션과 환경 변수의 우선순위. `server.sh`의 판 형식 검사와 실패 시 되돌리기.
+- **범위**: `/predict`·`/coach`의 응답 형식과 계산 정의, 규칙 기준선 값, 백분위 계산(보간·동점 구간·표 밖), 입력 검증(422 목록 전부), `/health`, `/openapi.json`의 도구 이름, 레드 기준 뒤집기, 경계값(허용 범위의 끝, 하나 밖). 빌드 가이드의 규칙표 적용 순서(상태·계열·위협 조합)와 선택 칸 해석(이름·역할군·생략·없는 이름 422). `GET /meta/champions`의 형식과 스키마 숨김, `GET /slides`·`GET /overlay`가 HTML을 돌려주는지(오버레이는 강조 테두리·토글·브리지 폴링·`게임 중` 표시 포함). 빌드 가이드의 `starter_items`·`situational_items`. 오버레이 모드의 10분 페이스 환산(3분·15분·1분 미만·10분), 보유 아이템 추출, 다음 스킬 계획, `/coach` 호출 간격, 로컬 상태 서버의 JSON·CORS 헤더·게임 API 실패 때 `connected: false`, 팝업 실행 방식 선택. `client/agent_demo.py`의 도구 정의 변환(`$ref` 풀기, 두 도구), 브리핑에 응답의 승률·목표·아이템·`model_version`·`basis`가 들어가고 응답에 없는 숫자가 없는지. 브리지의 응답 변환, 내 챔피언·상대 최다 킬(동률이면 최다 CS) 챔피언 찾기, 422 때 두 칸 빼고 한 번 다시 부르기, 10분 한 번 호출, `--effect`·`--tts` 옵션과 환경 변수의 우선순위. `server.sh`의 판 형식 검사와 실패 시 되돌리기. 부하 실측의 백분위·성공률·RPS 계산과 원격 주소 가리기, 모델 판 비교의 개선율·게이트 판정·가중치 순위 변화(`tests/`, 학습 라이브러리 없이 돈다).
 - **범위 밖**: 학습한 모델의 성능(`training/validate_model.py` 담당), 원본과 ONNX의 일치(`training/check_parity.py` 담당), 실제 Docker 컨테이너 기동(`deploy/local_e2e.sh` 담당).
 - **기대값의 출처**: 5절 규칙 식과 4절 정의, 고정 자료 `api/tests/fixtures/baseline.json`에서 테스트 안에서 손으로 계산한다. **현재 코드의 출력을 정답으로 옮겨 적지 않는다.** 옮겨 적으면 버그도 정답이 된다.
 - API 테스트는 `MODEL_IMPL=rule`, `MODEL_DIR=api/tests/fixtures`로 돌린다. 학습 산출물·Docker가 없어도 돌아야 하고, **skipped는 0건**이어야 한다.
@@ -378,6 +378,21 @@ p_blue   = 1 / (1 + exp(−gold_est / 2500))
 - **고정 평가셋**: 전체 CSV를 `random_state=42`, 20% 층화 추출로 한 번 나눈 평가셋이다. `DATA_N`·`DATA_SEED`는 나머지 80%(학습 풀)에서만 뽑는다. 판이 바뀌어도 같은 시험지로 비교해야 "새 판이 더 낫다"를 말할 수 있다.
 - **정확도 0.68의 근거**: 사전 분석에서 규칙 기준선의 평가셋 정확도가 약 0.71이고, 공개 지표 로지스틱 회귀도 약 0.71이었다. 정확도로는 둘이 비슷하므로 주 기준은 확률 품질(Brier·LogLoss)로 두고, 정확도는 "규칙보다 3%p 넘게 떨어진 고장 난 모델"을 막는 하한으로만 쓴다.
 - **Brier를 주 기준으로 두는 이유**: 이 서비스는 "승률 43%", "+10.2%p"처럼 확률을 숫자로 보여 준다. 맞힌 비율보다 확률이 실제 빈도와 맞는지가 중요하다.
+
+**서빙 부하 실측 `scripts/benchmark_serving.py`**
+
+- 대상: `POST /predict`, `POST /coach`. 본문은 3절 예시 입력 하나로 고정한다. 측정 전에 엔드포인트마다 `--warmup`건(기본 5)을 보내고 버린다.
+- 단계: 엔드포인트마다 ① 순차 `--requests`건(기본 100) ② `--concurrency`개(기본 20) 동시 스레드로 `--requests`건.
+- 지표: `total`, `ok`(HTTP 200), `failed`(그 밖의 상태 코드·연결 오류·`--timeout` 초과, 기본 10초), `success_rate = ok / total × 100`. 지연시간은 요청을 보내기 시작해 응답 본문을 다 읽을 때까지(ms, 실패 포함). `p50`·`p95`·`p99`는 선형 보간 백분위로, 정렬한 값에서 `(n − 1) × q / 100` 위치를 앞뒤 값 사이에서 보간한다(numpy 기본과 같다). 값이 없으면 `null`. `mean_ms`, `max_ms`, `rps = total / 그 단계 경과 초`.
+- 출력: 터미널 표와 `--out` JSON(기본 `docs/benchmark_summary.json`). JSON의 `target`은 `127.0.0.1`·`localhost`면 주소 그대로, 그 밖이면 `<원격 서버>`로 가려 적는다(1절). 대상의 `/health`(`model`·`model_version`·`app_version`)를 함께 적는다.
+- 통과 기준 숫자는 두지 않는다. 같은 PC·같은 조건끼리만 비교한다.
+
+**모델 판 비교 `training/compare_models.py`**
+
+- 두 학습 조건을 sklearn 파이프라인으로 다시 학습해 같은 고정 평가셋에서 비교한다. 기본값은 `model.yml` 두 실행과 같은 조건이다: `m1` = `DATA_N` 500·`DATA_SEED` 0(`m20261118-1`), `m2` = 5,000·1(`m20261118-2`).
+- 지표: 정확도, Brier, LogLoss, AUC, 규칙 기준선 대비 개선율 `(규칙 − 모델) / 규칙 × 100`(Brier·LogLoss, 클수록 좋음), 위 표의 게이트 통과 여부.
+- 피처 가중치: 로지스틱 회귀 계수(정규화 뒤라 1표준편차당 로그 오즈). `|계수|` 순위, 두 판 사이 계수 변화와 순위 변화.
+- 출력: `--out` JSON(기본 `docs/model_comparison.json`)과 `--md` 요약(기본 `docs/model_comparison.md`). 다시 학습만 하고 `artifacts/`는 건드리지 않는다.
 
 ## 10. 판 이름과 승격·되돌리기 절차
 
