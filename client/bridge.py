@@ -386,6 +386,23 @@ def overlay_url(server: str, port: int) -> str:
 
 SWIFT_SRC = os.path.join(os.path.dirname(__file__), "overlay_popup.swift")
 CHROME_MAC = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+CHROME_WIN_PATHS = (
+    r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+    r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+    r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+    r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+)
+
+
+def _find_app_browser(system: str, which: Callable[[str], str | None], exists: Callable[[str], bool]) -> str | None:
+    if system == "Darwin" and exists(CHROME_MAC):
+        return CHROME_MAC
+    if system == "Windows":
+        local_chrome = os.path.join(os.environ.get("LOCALAPPDATA", ""), r"Google\Chrome\Application\chrome.exe")
+        for candidate in (local_chrome, *CHROME_WIN_PATHS):
+            if candidate and exists(candidate):
+                return candidate
+    return next((c for c in (which("google-chrome"), which("chrome"), which("chromium"), which("msedge")) if c), None)
 
 
 def popup_command(url: str, system: str | None = None, which: Callable[[str], str | None] = shutil.which,
@@ -398,8 +415,7 @@ def popup_command(url: str, system: str | None = None, which: Callable[[str], st
         binary = (build or build_swift_popup)()
         if binary:
             return "swift", [binary, url, str(w), str(h)]
-    chrome = (CHROME_MAC if system == "Darwin" and exists(CHROME_MAC) else None) or next(
-        (c for c in (which("google-chrome"), which("chrome"), which("chromium"), which("msedge")) if c), None)
+    chrome = _find_app_browser(system, which, exists)
     if chrome:
         return "chrome", [chrome, f"--app={url}", f"--window-size={w},{h}", "--window-position=9999,0",
                           "--user-data-dir=" + os.path.join(_cache_dir(), "chrome-profile")]
@@ -436,12 +452,51 @@ def build_swift_popup() -> str | None:
     return out
 
 
+def _pin_windows_topmost_async(pid: int) -> None:
+    """Windows 에서 띄운 --app 창을 항상 위(HWND_TOPMOST)로 고정한다."""
+    if platform.system() != "Windows":
+        return
+
+    def _worker() -> None:
+        import ctypes
+        from ctypes import wintypes
+
+        user32 = ctypes.windll.user32
+        hwnd_topmost = -1
+        flags = 0x0001 | 0x0002 | 0x0010  # SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE
+        enum_proc = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+
+        for _ in range(25):
+            matched = []
+
+            def _cb(hwnd: int, _lparam: int) -> bool:
+                if user32.IsWindowVisible(hwnd):
+                    proc_id = wintypes.DWORD()
+                    user32.GetWindowThreadProcessId(hwnd, ctypes.byref(proc_id))
+                    if proc_id.value == pid or user32.GetWindowTextLengthW(hwnd) > 0:
+                        buf = ctypes.create_unicode_buffer(256)
+                        user32.GetWindowTextW(hwnd, buf, 256)
+                        if proc_id.value == pid or "LoL" in buf.value or "페이스메이커" in buf.value:
+                            matched.append(hwnd)
+                return True
+
+            user32.EnumWindows(enum_proc(_cb), 0)
+            if matched:
+                for h in matched:
+                    user32.SetWindowPos(h, hwnd_topmost, 0, 0, 0, 0, flags)
+                return
+            time.sleep(0.25)
+
+    threading.Thread(target=_worker, daemon=True).start()
+
+
 def launch_popup(server: str, port: int) -> str:
     """항상 위 팝업을 띄우고 쓴 방식을 돌려준다."""
     url = overlay_url(server, port)
     how, cmd = popup_command(url)
     if cmd:
-        subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        _pin_windows_topmost_async(proc.pid)
     else:
         webbrowser.open(url)
     print(f"오버레이 팝업({how}): {url}")
