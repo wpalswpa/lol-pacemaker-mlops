@@ -1,6 +1,6 @@
 # LoL 페이스메이커 (페이커)
 
-마라톤 선수 옆에서 속도와 목표를 잡아 주는 **페이스메이커**처럼, 게임 도중 10분 시점에 내 팀의 페이스를 진단하고 다음 행동을 알려 주는 **AI 리그 오브 레전드(LoL) 감독·코치 서비스**다. 줄여서 **페이커**라고 부른다. 기획 배경과 일정은 [계획서.md](계획서.md)에 있다. 경기 10분 시점에 점수판에 공개된 수치만으로 **지금 승률 페이스와 티어 내 위치, 승률을 깎는 요인, 다음 3분 동안 채울 성장 목표, 그리고 우세·열세 및 상대 조합에 맞춘 아이템·스킬 가이드**를 바로 지시해 준다. 끝난 경기를 복기하던 기존 프로젝트(`lol-win-prediction`)를 게임 중에 쓰는 감독·코치 서비스로 바꾸고, 2주마다 바뀌는 패치에 맞춰 모델만 다시 학습해 승격하고 되돌리는 운영 구조(MLOps)를 붙였다.
+마라톤 선수 옆에서 속도와 목표를 잡아 주는 **페이스메이커**처럼, 게임 도중 10분 시점에 내 팀의 페이스를 진단하고 다음 행동을 알려 주는 **AI 리그 오브 레전드(LoL) 감독·코치 서비스**다. 줄여서 **페이커**라고 부른다. 경기 10분 시점에 점수판에 공개된 수치만으로 **지금 승률 페이스와 티어 내 위치, 승률을 깎는 요인, 다음 3분 동안 채울 성장 목표, 그리고 우세·열세 및 상대 조합에 맞춘 아이템·스킬 가이드**를 바로 지시해 준다. 끝난 경기를 복기하던 기존 프로젝트(`lol-win-prediction`)를 게임 중에 쓰는 감독·코치 서비스로 바꾸고, 2주마다 바뀌는 패치에 맞춰 모델만 다시 학습해 승격하고 되돌리는 운영 구조(MLOps)를 붙였다.
 
 API 계약, 검증 기준 수치, 승격·되돌리기 절차의 정본은 [AGENTS.md](AGENTS.md)다. 이 문서는 기획, 설계 이유, 흐름, 실행 방법을 다룬다.
 
@@ -203,8 +203,6 @@ lol-pace-mlops/
 ├── README.md                 기획·설계 이유·흐름·실행 방법 (이 문서)
 ├── AGENTS.md                 API 계약·검증 기준·승격 절차의 정본
 ├── 인수인계.md               다음 세션 이어받기용 상태·수치·남은 일 기록
-├── 계획서.md                 기획 배경·기능·아키텍처·일정 (LoL 페이스메이커(페이커) 계획서)
-├── 발표대본.md               11/24 5분 발표 대본, 시연 순서, 예상 질문
 ├── pyproject.toml, uv.lock   기본(서빙): fastapi·uvicorn·numpy·onnxruntime·psycopg[binary] / train 그룹: pandas·scikit-learn·torch·onnx
 ├── api/
 │   ├── app.py                GET /health, POST /predict, POST /coach, GET / (웹 시뮬레이터), GET /overlay (게임 중 오버레이 HUD), GET /slides (발표 슬라이드), POST·GET /matches, GET /matches/export (전적 DB), GET /meta/champions (숨은 경로)
@@ -256,7 +254,7 @@ lol-pace-mlops/
 <!-- TODO:START -->
 1. 판을 바꾸는 동안 요청이 끊기는지 실측: `rollback.yml`을 돌리는 동안 다른 창에서 `scripts/benchmark_serving.py --url https://<내 도메인> --requests 2000 --concurrency 4`를 돌려 `failed`를 센다. `server.sh`는 `docker compose up -d`로 컨테이너를 새로 띄우므로 몇 초 끊길 수 있고, 아직 재지 않았다(그래서 "무중단"이라고 쓰지 않는다).
 2. Docker 가 되는 PC 에서 `deploy/local_e2e.sh` 전체 재실행(이번 PC 에서는 학습·게이트·ONNX·Parity 단계까지만 확인).
-3. 발표 리허설(`발표대본.md`, 5분).
+3. 발표 리허설 (5분, `/slides` 기반).
 4. 화면에 로그인한 Mac 에서 오버레이 팝업이 실제로 게임 위에 뜨는지 확인하고 시연 영상 녹화(이번 PC 계정은 화면 세션이 없어 창을 띄우지 못했다).
 5. 전적 DB 를 실제 PostgreSQL 16 에서 확인: 서버에서 `server.sh status`로 `db` 가 healthy 인지, 웹에서 `전적 저장` 후 `/matches`에 보이는지, `docker compose restart api` 뒤에도 남는지. 이 PC 에서는 Docker·PostgreSQL 을 쓸 수 없어 SQLite 와 가짜 연결로만 확인했다. 다음 `model.yml`·`rollback.yml`·태그 배포 때 새 `compose.yml`이 서버에 처음 올라가고 `server.sh`가 `POSTGRES_PASSWORD`를 만든다.
 <!-- TODO:END -->
