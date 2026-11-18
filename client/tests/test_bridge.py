@@ -802,7 +802,7 @@ def test_422_retry_also_drops_enemy_items():
 
 
 # ── Windows --app 창 항상 위 고정 (AGENTS.md 3-4절 "Windows 항상 위 고정"). 가짜 user32·ctypes 로 ──
-from client.bridge import (CHROME_CLASS, HWND_TOPMOST, PIN_FLAGS, PIN_TRIES, SWP_NOACTIVATE,  # noqa: E402
+from client.bridge import (CHROME_CLASS, HWND_TOPMOST, PIN_FLAGS, PIN_SETTLE_SEC, PIN_SETTLE_TIMES, PIN_TRIES, SWP_NOACTIVATE,  # noqa: E402
                            Win32Windows, _pin_windows_topmost_async, find_overlay_windows, launch_popup, pin_topmost)
 
 
@@ -874,6 +874,7 @@ def pins(u32):
 
 def run_pin(windows, **kw):
     u32, reports, slept = FakeUser32(windows), [], []
+    kw.setdefault("settle", 0)  # 처음 굳히기 재고정은 따로 본다(test_settle_*)
     pin_topmost(Win32Windows(u32, FakeCT), PID, PORT, reports.append, sleep=slept.append, **kw)
     return u32, reports, slept
 
@@ -918,7 +919,7 @@ def test_pin_found_after_a_few_tries():
         if len(slept) == 3:  # 0.75초 뒤 창이 뜬다
             windows[2] = (PID, "페이커 오버레이", CHROME_CLASS, True)
 
-    pin_topmost(Win32Windows(u32, FakeCT), PID, PORT, reports.append, sleep=sleep)
+    pin_topmost(Win32Windows(u32, FakeCT), PID, PORT, reports.append, sleep=sleep, settle=0)
     assert slept == [0.25] * 3 and pins(u32) == [2] and reports[-1]["status"] == "pinned"
 
 
@@ -933,7 +934,8 @@ def test_repin_interval_count_and_lost_window():
         if len(slept) == 3:
             windows[5] = (777, "페이커 오버레이", CHROME_CLASS, True)  # 다시 열림 (다른 프로세스)
 
-    pin_topmost(Win32Windows(u32, FakeCT), PID, PORT, reports.append, sleep=sleep, repin_sec=3.0, max_repins=4)
+    pin_topmost(Win32Windows(u32, FakeCT), PID, PORT, reports.append, sleep=sleep, repin_sec=3.0, max_repins=4,
+                settle=0)
     assert slept == [3.0] * 4
     assert pins(u32) == [2, 2, 5, 5]  # 처음 1 + 재고정 4번 중 창이 있던 3번
     assert [(r["status"], r["repins"]) for r in reports[1:]] == [
@@ -955,6 +957,35 @@ def test_setwindowpos_failure_is_reported():
     u32, reports = FakeUser32({2: (PID, "페이커 오버레이", CHROME_CLASS, True)}, set_ok=False), []
     pin_topmost(Win32Windows(u32, FakeCT), PID, PORT, reports.append, sleep=lambda s: None)
     assert (reports[-1]["status"], reports[-1]["error"]) == ("failed", "SetWindowPos 가 실패했다")
+
+
+def test_settle_repins_ten_times_one_second_apart_by_default():
+    # --repin-sec 를 안 줘도 띄운 직후 10초 동안 1초마다 다시 고정한다(게임 창을 눌러 풀리는 경우)
+    u32, reports, slept = FakeUser32({2: (777, "페이커 오버레이", CHROME_CLASS, True)}), [], []
+    pin_topmost(Win32Windows(u32, FakeCT), PID, PORT, reports.append, sleep=slept.append)
+    assert (PIN_SETTLE_TIMES, PIN_SETTLE_SEC) == (10, 1.0)
+    assert slept == [1.0] * 10  # 그 뒤엔 멈춘다
+    assert pins(u32) == [2] * 11  # 처음 1 + 굳히기 10
+    assert [r["repins"] for r in reports[1:]] == list(range(11))
+    assert all(r["status"] == "pinned" and r["method"] == "title" for r in reports[1:])
+    assert all(c[1] == HWND_TOPMOST and c[6] == PIN_FLAGS for c in u32.calls)
+
+
+def test_settle_then_periodic_repin_and_lost_during_settle():
+    windows = {2: (PID, "페이커 오버레이", CHROME_CLASS, True)}
+    u32, reports, slept = FakeUser32(windows), [], []
+
+    def sleep(sec):
+        slept.append(sec)
+        if len(slept) == 2:
+            del windows[2]  # 굳히는 중에 창이 잠깐 사라짐
+        if len(slept) == 3:
+            windows[2] = (PID, "페이커 오버레이", CHROME_CLASS, True)
+
+    pin_topmost(Win32Windows(u32, FakeCT), PID, PORT, reports.append, sleep=sleep, repin_sec=3.0, max_repins=12)
+    assert slept == [1.0] * 10 + [3.0] * 2  # 굳히기 10번 뒤 --repin-sec 간격
+    assert [r["status"] for r in reports[1:4]] == ["pinned", "pinned", "lost"]
+    assert len(u32.calls) == 12  # 처음 1 + 재고정 12번 중 창이 있던 11번
 
 
 def test_find_order_unit():

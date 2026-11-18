@@ -627,6 +627,7 @@ PIN_FLAGS = SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE
 OVERLAY_TITLES = ("페이커 오버레이", "LoL 페이스메이커")
 CHROME_CLASS = "Chrome_WidgetWin_1"
 PIN_TRIES, PIN_INTERVAL = 25, 0.25
+PIN_SETTLE_TIMES, PIN_SETTLE_SEC = 10, 1.0  # 첫 고정 직후 1초 간격 10번 다시 고정
 
 
 class Win32Windows:
@@ -686,8 +687,11 @@ def find_overlay_windows(win: Win32Windows, pid: int, port: int) -> tuple[str | 
 
 def pin_topmost(win: Win32Windows, pid: int, port: int, report: Callable[[dict], None],
                 sleep: Callable[[float], None] = time.sleep, repin_sec: float = 0.0,
-                tries: int = PIN_TRIES, max_repins: int | None = None) -> None:
-    """창을 찾아 항상 위로 고정하고 결과를 report 로 알린다. repin_sec > 0 이면 그 간격으로 다시 고정."""
+                tries: int = PIN_TRIES, max_repins: int | None = None, settle: int = PIN_SETTLE_TIMES) -> None:
+    """창을 찾아 항상 위로 고정하고 결과를 report 로 알린다.
+
+    첫 고정 뒤 settle 번은 PIN_SETTLE_SEC 간격으로 다시 고정하고(게임 창을 눌러 풀리는 경우),
+    그 뒤 repin_sec > 0 이면 그 간격으로 계속 다시 고정한다. max_repins 는 전체 재고정 횟수 상한."""
     report({"status": "searching"})
     how, hwnds = None, []
     for i in range(tries):
@@ -705,8 +709,8 @@ def pin_topmost(win: Win32Windows, pid: int, port: int, report: Callable[[dict],
     report({"status": "pinned" if pinned else "failed", "method": how, "windows": len(pinned), "repins": 0,
             "error": None if pinned else "SetWindowPos 가 실패했다"})
     n = 0
-    while repin_sec > 0 and (max_repins is None or n < max_repins):
-        sleep(repin_sec)
+    while (n < settle or repin_sec > 0) and (max_repins is None or n < max_repins):
+        sleep(PIN_SETTLE_SEC if n < settle else repin_sec)
         n += 1
         how, hwnds = find_overlay_windows(win, pid, port)
         if not hwnds:
@@ -921,7 +925,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--listen-port", type=int, default=8765, help="오버레이 상태 서버 포트 (127.0.0.1)")
     ap.add_argument("--launch-popup", action="store_true", help="항상 위 오버레이 팝업 창을 띄운다 (--overlay 포함)")
     ap.add_argument("--repin-sec", type=float, default=0.0,
-                    help="Windows 에서 N초마다 팝업을 다시 항상 위로 고정 (기본 0 = 끔)")
+                    help="Windows 에서 처음 10초(1초 간격) 재고정 뒤에도 N초마다 다시 항상 위로 고정 (기본 0 = 처음 10초만)")
     ap.add_argument("--save-match", action="store_true",
                     help="오버레이 모드에서 경기가 끝나면(--file 이면 바로) 전처리 피처를 POST /matches 로 한 번 저장")
     a = ap.parse_args(argv)

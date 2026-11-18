@@ -200,7 +200,8 @@
 | 창 찾기 순서 | 보이는 창(`EnumWindows` + `IsWindowVisible`) 가운데 ① 띄운 프로세스 PID 의 창 ② 제목에 `페이커 오버레이`(HUD 의 `<title>`) 또는 `LoL 페이스메이커`가 든 창 ③ 클래스명 `Chrome_WidgetWin_1`이면서 제목에 `127.0.0.1:<포트>`가 든 창(페이지 제목이 뜨기 전 Chrome 은 주소를 제목으로 쓴다). 앞 단계에서 찾으면 뒤 단계는 보지 않는다. Chrome·Edge 가 이미 켜져 있으면 `--app` 창이 기존 프로세스에 합쳐져 ①이 비므로 ②③이 필요하다. 클래스명만으로는 찾지 않는다(사용자의 평소 브라우저 창까지 항상 위로 올리게 되므로) |
 | 처음 찾기 | 0.25초 간격 최대 25번(약 6초) |
 | 고정 | 찾은 창마다 `SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOSIZE \| SWP_NOMOVE \| SWP_NOACTIVATE)`. 모든 호출에 `SWP_NOACTIVATE`를 넣어 게임에서 입력 초점을 빼앗지 않는다 |
-| 주기적 재고정(선택) | `--repin-sec N`(기본 0 = 끔). 켜면 N초마다 같은 순서로 다시 찾아 같은 플래그로 다시 고정한다(게임이 앞으로 나오며 항상 위가 풀리는 경우). 다시 못 찾으면 `lost`로 적고 계속 시도한다 |
+| 처음 굳히기 재고정(항상) | 첫 고정 직후 1초 간격으로 10번(약 10초) 같은 순서로 다시 찾아 같은 플래그로 다시 고정한다(`PIN_SETTLE_TIMES`·`PIN_SETTLE_SEC`). 띄운 직후 게임 창을 눌러 항상 위가 풀리는 경우를 막는다. 다시 못 찾으면 `lost`로 적고 남은 횟수를 계속 시도한다. `repins`는 이 10번부터 센다 |
+| 주기적 재고정(선택) | `--repin-sec N`(기본 0 = 처음 굳히기 10번 뒤 멈춤). 켜면 처음 굳히기 뒤 N초마다 같은 순서로 다시 찾아 같은 플래그로 다시 고정한다(게임이 앞으로 나오며 항상 위가 풀리는 경우). 다시 못 찾으면 `lost`로 적고 계속 시도한다 |
 | 조용한 실패 금지 | 결과를 브리지 상태의 `popup`에 적는다(아래 표). 못 찾으면 `failed`와 이유(찾은 단계와 횟수)를 `error`에 남기고 터미널에도 한 줄 찍는다. Chrome·Edge 가 없어 기본 브라우저로 열었으면 `failed`, `error`는 "Chrome·Edge 가 없어 항상 위로 고정할 수 없다" |
 
 브리지 상태 `popup` (팝업을 안 띄웠으면 `null`): `how`(`swift`·`chrome`·`browser`), `status`(`not_windows`·`searching`·`pinned`·`lost`·`failed`), `method`(`pid`·`title`·`class` 또는 `null`), `windows`(고정한 창 수), `repins`(재고정 횟수), `error`(없으면 `null`).
