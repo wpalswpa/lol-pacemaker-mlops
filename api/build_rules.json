@@ -1,0 +1,57 @@
+{
+  "about": "사람이 정한 빌드 규칙표. 모델은 상태(ahead·even·behind)만 정한다. 아이템 ID는 training/ddragon.py 가 Data Dragon 판과 대조한다. 패치마다 사람이 다시 확인한다.",
+  "role_class": {"AD": "marksman", "AP": "mage", "TANK": "tank", "SUPPORT": "support"},
+  "tag_class": {"Marksman": "marksman", "Fighter": "fighter", "Assassin": "assassin", "Mage": "mage", "Tank": "tank", "Support": "support"},
+  "threat_types": ["AD", "AP", "HEAL", "TANK"],
+  "heal_champions": ["Aatrox", "Soraka", "Vladimir", "Sylas", "Yuumi", "Sona", "Nami", "DrMundo", "Warwick", "Fiddlesticks", "Swain"],
+  "posture": {
+    "ahead": "우세: 벌어 둔 골드로 피해 코어를 먼저 완성해 격차를 굴린다",
+    "even": "접전: 무난한 신발과 피해 하위템으로 코어를 향해 간다",
+    "behind": "열세: 상대 위협에 맞춘 방어 신발과 값싼 하위템을 먼저 사서 버틴다"
+  },
+  "boots": {
+    "defensive": {"AD": 3047, "AP": 3111},
+    "by_class": {"marksman": 3006, "fighter": 3047, "assassin": 3006, "mage": 3020, "tank": 3047, "support": 3158}
+  },
+  "anti_heal": {"AD": 3123, "AP": 3916, "tank": 3076},
+  "anti_tank": {"AD": 3035, "AP": 4630, "tank": 1028},
+  "defensive_component": {"AD": 1029, "AP": 1033},
+  "damage_component": {"marksman": 1038, "fighter": 1037, "assassin": 1037, "mage": 1058, "tank": 1028, "support": 1028},
+  "core": {
+    "ahead": {"marksman": 3031, "fighter": 3071, "assassin": 3142, "mage": 3089, "tank": 3068, "support": 3050},
+    "behind": {
+      "AD": {"marksman": 3026, "fighter": 3053, "assassin": 3026, "mage": 3157, "tank": 3068, "support": 3190},
+      "AP": {"marksman": 3156, "fighter": 3156, "assassin": 3814, "mage": 3102, "tank": 4401, "support": 3190}
+    }
+  },
+  "why": {
+    "boots_defensive": "상대 위협의 피해를 줄이는 신발",
+    "boots_class": "내 계열에 맞는 신발",
+    "anti_heal": "상대 치유를 줄인다",
+    "anti_tank": "단단한 상대를 뚫는다",
+    "defensive_component": "값싸게 먼저 사서 버티는 방어 하위템",
+    "damage_component": "코어로 이어지는 피해 하위템",
+    "core_ahead": "격차를 굴리는 피해 코어",
+    "core_behind": "상대 위협을 버티는 생존 코어"
+  },
+  "skill_focus": {
+    "ahead": "교전 피해가 큰 스킬을 먼저 마스터한다",
+    "even": "주력 피해 스킬을 먼저 마스터한다",
+    "behind": "라인을 빨리 지우는 스킬과 생존기를 먼저 챙긴다"
+  },
+  "skill_orders_note": "여러 패치에서 흔히 쓰인 마스터 순서를 사람이 적은 표다. 실제 플레이 통계로 확인하지 않았다.",
+  "skill_orders": {
+    "Ahri": "Q > W > E",
+    "Annie": "Q > W > E",
+    "Ashe": "W > Q > E",
+    "Caitlyn": "Q > W > E",
+    "Darius": "Q > E > W",
+    "Garen": "E > Q > W",
+    "Jinx": "Q > W > E",
+    "LeeSin": "Q > W > E",
+    "Lux": "E > Q > W",
+    "MissFortune": "Q > E > W",
+    "Yasuo": "Q > E > W",
+    "Zed": "Q > E > W"
+  }
+}

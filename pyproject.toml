@@ -1,0 +1,38 @@
+[project]
+name = "lol-pace-api"
+version = "1.0.0"
+description = "LoL 10분 시점 페이스 진단·목표 수치 API (MLOps 미니프로젝트 5)"
+requires-python = ">=3.12"
+# 서빙 이미지에 들어가는 것만 기본 의존성에 둔다 (scikit-learn·torch 는 학습 그룹)
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+    "numpy>=2.0",
+    "onnxruntime>=1.20",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "httpx>=0.27",
+]
+train = [
+    "pandas>=2.2",
+    "scikit-learn>=1.5",
+    "joblib>=1.4",
+    "torch>=2.6",
+    "onnx>=1.17",
+    "onnxscript>=0.2",
+    "skl2onnx>=1.18",
+]
+
+[tool.uv]
+default-groups = ["dev"]
+
+[tool.pytest.ini_options]
+testpaths = ["api/tests", "client/tests", "deploy/tests"]
+addopts = "-ra"
+
+[tool.pyright]
+venvPath = "."
+venv = ".venv"

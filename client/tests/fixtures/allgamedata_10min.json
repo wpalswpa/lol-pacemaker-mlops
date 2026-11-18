@@ -1,0 +1,268 @@
+{
+ "activePlayer": {
+  "riotId": "A1#KR1",
+  "riotIdGameName": "A1",
+  "summonerName": "A1",
+  "level": 7,
+  "currentGold": 812.0
+ },
+ "allPlayers": [
+  {
+   "championName": "ChampA1",
+   "level": 7,
+   "team": "ORDER",
+   "position": "",
+   "riotId": "A1#KR1",
+   "riotIdGameName": "A1",
+   "summonerName": "A1",
+   "isBot": false,
+   "isDead": false,
+   "items": [
+    {
+     "itemID": 1055,
+     "price": 450,
+     "count": 1,
+     "displayName": "item1055"
+    }
+   ],
+   "scores": {
+    "kills": 2,
+    "deaths": 0,
+    "assists": 1,
+    "creepScore": 70,
+    "wardScore": 0.0
+   }
+  },
+  {
+   "championName": "ChampA2",
+   "level": 7,
+   "team": "ORDER",
+   "position": "",
+   "riotId": "A2#KR1",
+   "riotIdGameName": "A2",
+   "summonerName": "A2",
+   "isBot": false,
+   "isDead": false,
+   "items": [],
+   "scores": {
+    "kills": 1,
+    "deaths": 0,
+    "assists": 2,
+    "creepScore": 50,
+    "wardScore": 0.0
+   }
+  },
+  {
+   "championName": "ChampA3",
+   "level": 7,
+   "team": "ORDER",
+   "position": "",
+   "riotId": "A3#KR1",
+   "riotIdGameName": "A3",
+   "summonerName": "A3",
+   "isBot": false,
+   "isDead": false,
+   "items": [],
+   "scores": {
+    "kills": 1,
+    "deaths": 0,
+    "assists": 1,
+    "creepScore": 60,
+    "wardScore": 0.0
+   }
+  },
+  {
+   "championName": "ChampA4",
+   "level": 6,
+   "team": "ORDER",
+   "position": "",
+   "riotId": "A4#KR1",
+   "riotIdGameName": "A4",
+   "summonerName": "A4",
+   "isBot": false,
+   "isDead": false,
+   "items": [],
+   "scores": {
+    "kills": 1,
+    "deaths": 0,
+    "assists": 1,
+    "creepScore": 10,
+    "wardScore": 0.0
+   }
+  },
+  {
+   "championName": "ChampA5",
+   "level": 7,
+   "team": "ORDER",
+   "position": "",
+   "riotId": "A5#KR1",
+   "riotIdGameName": "A5",
+   "summonerName": "A5",
+   "isBot": false,
+   "isDead": false,
+   "items": [],
+   "scores": {
+    "kills": 0,
+    "deaths": 0,
+    "assists": 1,
+    "creepScore": 60,
+    "wardScore": 0.0
+   }
+  },
+  {
+   "championName": "ChampB1",
+   "level": 7,
+   "team": "CHAOS",
+   "position": "",
+   "riotId": "B1#KR1",
+   "riotIdGameName": "B1",
+   "summonerName": "B1",
+   "isBot": false,
+   "isDead": false,
+   "items": [
+    {
+     "itemID": 1036,
+     "price": 350,
+     "count": 2,
+     "displayName": "item1036"
+    }
+   ],
+   "scores": {
+    "kills": 3,
+    "deaths": 0,
+    "assists": 2,
+    "creepScore": 75,
+    "wardScore": 0.0
+   }
+  },
+  {
+   "championName": "ChampB2",
+   "level": 7,
+   "team": "CHAOS",
+   "position": "",
+   "riotId": "B2#KR1",
+   "riotIdGameName": "B2",
+   "summonerName": "B2",
+   "isBot": false,
+   "isDead": false,
+   "items": [],
+   "scores": {
+    "kills": 2,
+    "deaths": 0,
+    "assists": 2,
+    "creepScore": 55,
+    "wardScore": 0.0
+   }
+  },
+  {
+   "championName": "ChampB3",
+   "level": 7,
+   "team": "CHAOS",
+   "position": "",
+   "riotId": "B3#KR1",
+   "riotIdGameName": "B3",
+   "summonerName": "B3",
+   "isBot": false,
+   "isDead": false,
+   "items": [],
+   "scores": {
+    "kills": 1,
+    "deaths": 0,
+    "assists": 2,
+    "creepScore": 65,
+    "wardScore": 0.0
+   }
+  },
+  {
+   "championName": "ChampB4",
+   "level": 7,
+   "team": "CHAOS",
+   "position": "",
+   "riotId": "B4#KR1",
+   "riotIdGameName": "B4",
+   "summonerName": "B4",
+   "isBot": false,
+   "isDead": false,
+   "items": [],
+   "scores": {
+    "kills": 1,
+    "deaths": 0,
+    "assists": 2,
+    "creepScore": 13,
+    "wardScore": 0.0
+   }
+  },
+  {
+   "championName": "ChampB5",
+   "level": 7,
+   "team": "CHAOS",
+   "position": "",
+   "riotId": "B5#KR1",
+   "riotIdGameName": "B5",
+   "summonerName": "B5",
+   "isBot": false,
+   "isDead": false,
+   "items": [],
+   "scores": {
+    "kills": 0,
+    "deaths": 0,
+    "assists": 1,
+    "creepScore": 60,
+    "wardScore": 0.0
+   }
+  }
+ ],
+ "events": {
+  "Events": [
+   {
+    "EventID": 0,
+    "EventName": "GameStart",
+    "EventTime": 0.0
+   },
+   {
+    "EventID": 1,
+    "EventName": "FirstBlood",
+    "EventTime": 181.2,
+    "Recipient": "B2"
+   },
+   {
+    "EventID": 2,
+    "EventName": "ChampionKill",
+    "EventTime": 181.2,
+    "KillerName": "B2",
+    "VictimName": "A4",
+    "Assisters": []
+   },
+   {
+    "EventID": 3,
+    "EventName": "DragonKill",
+    "EventTime": 330.0,
+    "DragonType": "Fire",
+    "Stolen": "False",
+    "KillerName": "B1",
+    "Assisters": []
+   },
+   {
+    "EventID": 4,
+    "EventName": "HeraldKill",
+    "EventTime": 520.0,
+    "Stolen": "False",
+    "KillerName": "A3",
+    "Assisters": []
+   },
+   {
+    "EventID": 5,
+    "EventName": "TurretKilled",
+    "EventTime": 580.0,
+    "TurretKilled": "Turret_T1_L_03_A",
+    "KillerName": "Minion_T200L1S01N0003",
+    "Assisters": []
+   }
+  ]
+ },
+ "gameData": {
+  "gameMode": "CLASSIC",
+  "gameTime": 600.4,
+  "mapName": "Map11"
+ }
+}

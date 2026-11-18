@@ -1,0 +1,8 @@
+.venv/
+__pycache__/
+.pytest_cache/
+# 원본 데이터는 재배포 조건 미확인이라 넣지 않는다 (README 6절)
+data/
+# 학습 산출물·모델 판은 버킷이 보관한다
+artifacts/
+.DS_Store

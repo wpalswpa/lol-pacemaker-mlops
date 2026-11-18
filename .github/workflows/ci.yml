@@ -1,0 +1,120 @@
+name: ci
+# 코드 판(v1.x): 테스트 → 학습·게이트·ONNX → parity → (태그면) 이미지 → 내 서버 배포
+# 비밀값은 secrets, 버킷·리전 등은 vars 로만 받는다. 이 파일에 키·IP·도메인을 적지 않는다.
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test: # 계약 테스트 (규칙 기준선·고정 자료라 학습 산출물·데이터가 필요 없다)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - run: uv run --locked pytest -q
+
+  train: # 학습 → 게이트 → ONNX. 게이트가 실패하면 여기서 멈춘다
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - name: 학습 데이터 받기 (원본 CSV 는 저장소에 두지 않는다)
+        env:
+          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+          KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+        run: |
+          mkdir -p data
+          uvx kaggle datasets download -d bobbyscience/league-of-legends-diamond-ranked-games-10-min -p data --unzip
+          test -f data/high_diamond_ranked_10min.csv
+      - run: uv run --locked --group train python -m training.train_sklearn
+      - run: uv run --locked python -m training.validate_model sklearn # 실패하면 여기서 중단 → 배포 안 됨
+      - run: uv run --locked --group train python -m training.train_dl
+      - run: uv run --locked python -m training.validate_model dl
+      - run: uv run --locked --group train python -m training.export_onnx # 원본 vs ONNX 오차 확인 포함
+      - uses: actions/upload-artifact@v7
+        with:
+          name: model-artifacts
+          path: artifacts/
+
+  parity: # 원본(sklearn) 서버와 ONNX 서버가 같은 답을 내는지
+    needs: train
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: model-artifacts
+          path: artifacts/
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - name: 두 서버 실행
+        run: |
+          MODEL_IMPL=sklearn uv run --locked --group train uvicorn api.app:app --port 8080 &
+          MODEL_IMPL=onnx uv run --locked uvicorn api.app:app --port 8083 &
+          for i in $(seq 1 60); do
+            sleep 1
+            curl -sf -o /dev/null localhost:8080/health && curl -sf -o /dev/null localhost:8083/health && exit 0
+          done
+          exit 1
+      - run: uv run --locked python -m training.check_parity
+        env:
+          TARGETS: onnx=http://127.0.0.1:8083
+
+  image: # 태그에서만: 구운 모델과 함께 이미지를 만들어 GHCR 에 올린다
+    needs: parity
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: model-artifacts
+          path: artifacts/
+      - name: 이미지 이름 (소문자)
+        run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: api/Dockerfile
+          push: true
+          tags: ${{ env.IMAGE }}/lol-api:${{ github.ref_name }}
+          build-args: |
+            APP_VERSION=${{ github.ref_name }}
+
+  deploy: # 내 서버의 러너가 새 이미지로 바꾼다 (SSH·키·서버 주소 없음)
+    needs: image
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: [self-hosted, lightsail]
+    concurrency: { group: lightsail-lol, cancel-in-progress: false }
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v7
+      - name: 배포 파일 놓기
+        run: cp deploy/lightsail/compose.yml deploy/lightsail/server.sh deploy/lightsail/Caddyfile /srv/lol/
+      - name: 새 이미지로 바꾸기 (토큰은 stdin 으로만)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          printf '%s\n' "$GH_TOKEN" | \
+            bash /srv/lol/server.sh image "$GITHUB_REF_NAME" "ghcr.io/${GITHUB_REPOSITORY,,}"

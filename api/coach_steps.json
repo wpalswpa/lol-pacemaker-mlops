@@ -1,0 +1,11 @@
+{
+  "horizon_min": 3,
+  "how_to_read": "과거 경기에서 지금 상황에 이 수치를 더 가졌던 경우의 승률이다. 그렇게 하면 반드시 이긴다는 뜻은 아니다.",
+  "steps": [
+    {"stat": "cs", "add": 20, "unit": "개", "with": ["avg_level"]},
+    {"stat": "kills", "add": 2, "unit": "개", "with": ["assists", "avg_level"]},
+    {"stat": "dragons", "add": 1, "unit": "마리", "with": []},
+    {"stat": "heralds", "add": 1, "unit": "마리", "with": []},
+    {"stat": "towers", "add": 1, "unit": "개", "with": []}
+  ]
+}

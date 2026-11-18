@@ -1,0 +1,26 @@
+{
+  "tier": "테스트 고정 자료",
+  "data": {"n": 0, "seed": 0},
+  "feature_mean": {"first_blood": 0.5, "kills": 0.5, "assists": 0.0, "cs": -2.0, "avg_level": 0.0, "dragons": 0.0, "heralds": 0.0, "towers": 0.0},
+  "feature_std": {"first_blood": 0.5, "kills": 4.0, "assists": 6.0, "cs": 35.0, "avg_level": 0.5, "dragons": 0.9, "heralds": 0.6, "towers": 0.3},
+  "feature_min": {"first_blood": 0, "kills": -17, "assists": -25, "cs": -173, "avg_level": -2.6, "dragons": -1, "heralds": -1, "towers": -2},
+  "feature_max": {"first_blood": 1, "kills": 16, "assists": 23, "cs": 152, "avg_level": 2.4, "dragons": 1, "heralds": 1, "towers": 4},
+  "team_mean": {"kills": 6.0, "assists": 7.0, "cs": 268.0, "avg_level": 6.9, "dragons": 0.4, "heralds": 0.2, "towers": 0.05},
+  "team_min": {"kills": 0, "assists": 0, "cs": 120, "avg_level": 4.6, "dragons": 0, "heralds": 0, "towers": 0},
+  "team_max": {"kills": 22, "assists": 29, "cs": 354, "avg_level": 8.2, "dragons": 1, "heralds": 1, "towers": 4},
+  "quantiles": {
+    "ps": [0, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 95, 100],
+    "win_prob": [0.05, 0.15, 0.2, 0.3, 0.4, 0.45, 0.5, 0.55, 0.6, 0.7, 0.8, 0.85, 0.95],
+    "kills": [-15, -8, -6, -4, -2, -1, 0, 1, 2, 4, 6, 8, 15],
+    "assists": [-20, -10, -8, -5, -3, -1, 0, 1, 3, 5, 8, 10, 20],
+    "cs": [-150, -60, -45, -30, -18, -8, 0, 8, 18, 30, 45, 60, 150],
+    "avg_level": [-2, -0.8, -0.6, -0.4, -0.2, -0.1, 0, 0.1, 0.2, 0.4, 0.6, 0.8, 2],
+    "dragons": [-1, -1, -1, -1, 0, 0, 0, 0, 0, 1, 1, 1, 1],
+    "heralds": [-1, -1, -1, -1, 0, 0, 0, 0, 0, 1, 1, 1, 1],
+    "towers": [-2, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2]
+  },
+  "slope": {
+    "cs": {"avg_level": 0.01},
+    "kills": {"assists": 1.1, "avg_level": 0.08}
+  }
+}

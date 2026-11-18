@@ -1,0 +1,174 @@
+name: model
+# 모델 판(mYYYYMMDD-N): 코드는 그대로 두고 다시 학습 → 게이트 → ONNX → parity → 버킷 승격
+# trainer=ec2 이면 EC2 워커를 이 실행 동안만 켠다(OIDC 단기 토큰, 키 없음). 기본은 GitHub 러너.
+# EC2 는 Lightsail 버킷에 쓰지 않는다(리소스 액세스는 Lightsail 인스턴스만 받는다). 승격은 서버 러너가 한다.
+on:
+  workflow_dispatch:
+    inputs:
+      data_n:
+        description: "학습 데이터 건수"
+        default: "500"
+      data_seed:
+        description: "데이터 시드"
+        default: "0"
+      trainer:
+        description: "학습을 돌릴 곳"
+        type: choice
+        options: [github, ec2]
+        default: github
+
+permissions:
+  contents: read
+
+jobs:
+  worker-up: # EC2 워커 켜기 (trainer=ec2 일 때만)
+    if: inputs.trainer == 'ec2'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - env:
+          ID: ${{ vars.TRAINER_INSTANCE_ID }}
+        run: |
+          aws ec2 start-instances --instance-ids "$ID" >/dev/null
+          aws ec2 wait instance-running --instance-ids "$ID"
+
+  train: # 판 이름 → 학습 → 게이트 → ONNX → 모델 카드
+    needs: worker-up
+    if: ${{ !cancelled() && needs.worker-up.result != 'failure' }}
+    runs-on: ${{ inputs.trainer == 'ec2' && fromJSON('["self-hosted","ec2-trainer"]') || 'ubuntu-latest' }}
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+    env:
+      DATA_N: ${{ inputs.data_n }}
+      DATA_SEED: ${{ inputs.data_seed }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - name: 학습 데이터 받기 (EC2 는 IAM Role 로 원천 S3, GitHub 러너는 Kaggle)
+        env:
+          TRAINER: ${{ inputs.trainer }}
+          DATA_BUCKET: ${{ vars.DATA_BUCKET }}
+          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+          KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+        run: |
+          mkdir -p data
+          if [ "$TRAINER" = ec2 ]; then
+            aws s3 cp "s3://$DATA_BUCKET/lol/high_diamond_ranked_10min.csv" data/
+          else
+            uvx kaggle datasets download -d bobbyscience/league-of-legends-diamond-ranked-games-10-min -p data --unzip
+          fi
+          test -f data/high_diamond_ranked_10min.csv
+      - name: 모델 판 이름 (UTC 날짜-실행 번호)
+        id: ver
+        run: echo "version=m$(date -u +%Y%m%d)-${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+      - run: uv run --locked --group train python -m training.train_sklearn
+      - run: uv run --locked python -m training.validate_model sklearn # 실패하면 승격 안 됨
+      - run: uv run --locked --group train python -m training.train_dl
+      - run: uv run --locked python -m training.validate_model dl
+      - run: uv run --locked --group train python -m training.export_onnx
+      - run: uv run --locked python -m training.model_card
+        env:
+          MODEL_VERSION: ${{ steps.ver.outputs.version }}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: model-artifacts
+          path: artifacts/
+
+  parity: # 새 판의 원본과 ONNX 가 같은 답을 내는지
+    needs: train
+    if: ${{ !cancelled() && needs.train.result == 'success' }}
+    runs-on: ${{ inputs.trainer == 'ec2' && fromJSON('["self-hosted","ec2-trainer"]') || 'ubuntu-latest' }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: model-artifacts
+          path: artifacts/
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - name: 두 서버 실행
+        run: |
+          MODEL_IMPL=sklearn uv run --locked --group train uvicorn api.app:app --port 8080 &
+          MODEL_IMPL=onnx uv run --locked uvicorn api.app:app --port 8083 &
+          for i in $(seq 1 60); do
+            sleep 1
+            curl -sf -o /dev/null localhost:8080/health && curl -sf -o /dev/null localhost:8083/health && exit 0
+          done
+          exit 1
+      - run: uv run --locked python -m training.check_parity
+        env:
+          TARGETS: onnx=http://127.0.0.1:8083
+
+  worker-down: # 성공·실패와 관계없이 EC2 워커 끄기 (크레딧 절약)
+    needs: [worker-up, train, parity]
+    if: ${{ always() && inputs.trainer == 'ec2' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - env:
+          ID: ${{ vars.TRAINER_INSTANCE_ID }}
+        run: aws ec2 stop-instances --instance-ids "$ID" >/dev/null
+
+  promote: # 내 서버의 러너가: 버킷에 올리고 → 새 판으로 띄워 확인 → 그 다음에 current.json
+    needs: [train, parity]
+    if: ${{ !cancelled() && needs.parity.result == 'success' }}
+    runs-on: [self-hosted, lightsail]
+    concurrency: { group: lightsail-lol, cancel-in-progress: false }
+    permissions:
+      contents: read
+      actions: read # 이 실행이 언제 시작됐는지 읽는다
+    env:
+      VER: ${{ needs.train.outputs.version }}
+      BUCKET: ${{ vars.MODEL_BUCKET }}
+      AWS_REGION: ${{ vars.AWS_REGION }}
+    steps:
+      - uses: actions/checkout@v7
+      - run: cp deploy/lightsail/compose.yml deploy/lightsail/server.sh deploy/lightsail/Caddyfile /srv/lol/
+      - uses: actions/download-artifact@v8
+        with:
+          name: model-artifacts
+          path: incoming/
+      - name: 낡은 실행인지 (이 실행이 시작된 뒤 포인터가 바뀌었으면 승격하지 않는다)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          CREATED=$(curl -fsS -H "Authorization: Bearer $GH_TOKEN" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            | python3 -c 'import sys, json; print(json.load(sys.stdin)["created_at"])')
+          SET_AT=$(aws s3 cp "s3://$BUCKET/models/onnx/current.json" - 2>/dev/null \
+            | python3 -c 'import sys, json; print(json.load(sys.stdin).get("set_at", ""))' || true)
+          echo "이 실행 시작 $CREATED / 포인터 바뀐 때 ${SET_AT:-없음}"
+          if [[ -n $SET_AT && $SET_AT > $CREATED ]]; then
+            echo "이 실행이 시작된 뒤 포인터가 바뀌었다. 낡은 실행이라 승격하지 않는다" >&2; exit 1
+          fi
+      - name: 버킷에 판 올리기 (이미 있는 판은 덮어쓰지 않는다)
+        run: |
+          if aws s3api head-object --bucket "$BUCKET" --key "models/onnx/$VER/model.json" >/dev/null 2>&1; then
+            echo "$VER 은 이미 버킷에 있다" >&2; exit 1
+          fi
+          for f in model_sklearn.onnx model.json baseline.json; do
+            aws s3 cp "incoming/$f" "s3://$BUCKET/models/onnx/$VER/$f"
+          done
+      - name: 버킷에서 받아 새 판으로 띄우기 (안 뜨면 server.sh 가 이전 판으로 되돌린다)
+        run: |
+          aws s3 cp --recursive "s3://$BUCKET/models/onnx/$VER/" "/srv/lol/models/$VER/"
+          bash /srv/lol/server.sh model "$VER"
+      - name: 포인터 바꾸기
+        run: |
+          echo "{\"model_version\": \"$VER\", \"set_at\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\", \"run\": \"$GITHUB_RUN_ID\"}" > current.json
+          aws s3 cp current.json "s3://$BUCKET/models/onnx/current.json"

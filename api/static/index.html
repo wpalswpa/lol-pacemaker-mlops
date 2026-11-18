@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>10분 페이스메이커</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='6' fill='%23d8b45a'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #0b0e13; --card: #131821; --line: #232b38; --text: #eef1f5; --sub: #93a1b5; --dim: #5d6b7e;
+    --blue: #4c8dff; --red: #ff5d6c; --good: #3ddc97; --warn: #ffb547; --gold: #d8b45a;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 14px/1.5 -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", "Segoe UI", sans-serif; }
+  main { max-width: 880px; margin: 0 auto; padding: 24px 16px 48px; display: grid; gap: 16px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; }
+  header { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  h1 { font-size: 15px; font-weight: 600; margin: 0; color: var(--sub); letter-spacing: .02em; }
+  .ver { font-size: 12px; color: var(--dim); font-variant-numeric: tabular-nums; }
+  .hero { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin-top: 6px; }
+  .prob { font-size: 56px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+  .chip { font-size: 13px; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line); color: var(--sub); }
+  .chip.lose { color: var(--red); border-color: #5a2a31; } .chip.win { color: var(--good); border-color: #1f4d3b; }
+  .msg { color: var(--sub); margin-top: 8px; min-height: 21px; }
+  /* 분포 막대: 왼쪽이 하위, 오른쪽이 상위. 점 = 지금, 화살표 = 첫 목표를 채웠을 때 */
+  .dist { margin: 26px 0 6px; position: relative; height: 46px; }
+  .bar { position: absolute; left: 0; right: 0; top: 18px; height: 8px; border-radius: 4px;
+         background: linear-gradient(90deg, #3a1d24, #2a3140 50%, #1b3a30); }
+  .tick { position: absolute; top: 14px; width: 1px; height: 16px; background: var(--line); }
+  .dot { position: absolute; top: 13px; width: 18px; height: 18px; margin-left: -9px; border-radius: 50%;
+         background: var(--text); box-shadow: 0 0 0 4px rgba(238,241,245,.15); transition: left .35s; }
+  .arrow { position: absolute; top: 21px; height: 2px; background: var(--gold); transition: left .35s, width .35s; }
+  .arrow::after { content: ""; position: absolute; right: -7px; top: -5px;
+                  border-left: 8px solid var(--gold); border-top: 6px solid transparent; border-bottom: 6px solid transparent; }
+  .lbl { position: absolute; font-size: 12px; white-space: nowrap; transform: translateX(-50%); font-variant-numeric: tabular-nums; }
+  .lbl.now { top: -6px; color: var(--text); } .lbl.goal { top: 34px; color: var(--gold); }
+  .ends { display: flex; justify-content: space-between; font-size: 11px; color: var(--dim); margin-top: 10px; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 18px; }
+  .cols h2 { font-size: 12px; color: var(--dim); font-weight: 600; margin: 0 0 8px; }
+  .row { display: flex; justify-content: space-between; gap: 8px; padding: 6px 0; border-top: 1px solid var(--line); }
+  .row:first-of-type { border-top: 0; }
+  .num { font-variant-numeric: tabular-nums; }
+  .neg { color: var(--red); } .pos { color: var(--good); }
+  .goal-row b { color: var(--gold); font-weight: 600; }
+  /* 시뮬레이터 */
+  .sim-top { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+  button, .seg label { background: #1a212d; color: var(--text); border: 1px solid var(--line); border-radius: 8px;
+           padding: 6px 12px; font: inherit; cursor: pointer; }
+  button:hover, .seg label:hover { border-color: #3a475a; }
+  button:focus-visible, input:focus-visible + span { outline: 2px solid var(--blue); outline-offset: 2px; }
+  .seg { display: inline-flex; gap: 0; }
+  .seg input { position: absolute; opacity: 0; }
+  .seg label { border-radius: 0; } .seg label:first-of-type { border-radius: 8px 0 0 8px; }
+  .seg label:last-of-type { border-radius: 0 8px 8px 0; }
+  .seg input:checked + label { background: #26324a; border-color: var(--blue); }
+  .grid { display: grid; grid-template-columns: 90px minmax(0, 1fr) minmax(0, 1fr); gap: 6px 14px; align-items: center; }
+  .grid .head { font-size: 12px; color: var(--dim); } .grid .head.b { color: var(--blue); } .grid .head.r { color: var(--red); }
+  .slot { display: flex; align-items: center; gap: 8px; }
+  .slot input[type=range] { flex: 1; min-width: 0; }
+  .slot output { width: 40px; text-align: right; font-variant-numeric: tabular-nums; color: var(--sub); }
+  input[type=range].b { accent-color: var(--blue); } input[type=range].r { accent-color: var(--red); }
+  /* 계산에 실패하면 이전 결과는 흐리게: 지금 입력의 답이 아니다 */
+  .stale .hero, .stale .msg, .stale .dist, .stale .ends, .stale .cols { opacity: .3; }
+  .err { color: var(--warn); margin-top: 10px; display: flex; gap: 10px; align-items: center; }
+  .note { color: var(--dim); font-size: 12px; margin-top: 12px; }
+  @media (max-width: 640px) {
+    .cols { grid-template-columns: 1fr; } .prob { font-size: 44px; }
+    .grid { grid-template-columns: 70px minmax(0, 1fr) minmax(0, 1fr); gap: 6px 8px; } .slot output { width: 32px; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <section class="card" id="result" aria-live="polite">
+    <header><h1>10분 페이스</h1><span class="ver" id="ver">모델 판 확인 중</span></header>
+    <div class="hero"><span class="prob num" id="prob">–</span><span class="chip" id="pace">계산 전</span></div>
+    <div class="msg" id="msg">점수판 값을 바꾸면 바로 다시 계산해요.</div>
+
+    <div class="dist" id="dist" aria-label="같은 티어 경기 중 내 위치">
+      <div class="bar"></div>
+      <div class="tick" style="left:25%"></div><div class="tick" style="left:50%"></div><div class="tick" style="left:75%"></div>
+      <div class="arrow" id="arrow" hidden></div>
+      <div class="dot" id="dot" style="left:50%"></div>
+      <span class="lbl now" id="lblNow" style="left:50%"></span>
+      <span class="lbl goal" id="lblGoal" hidden></span>
+    </div>
+    <div class="ends"><span>하위</span><span>같은 티어 10분 경기 분포</span><span>상위</span></div>
+
+    <div class="cols">
+      <div><h2>승률에 가장 크게 작용하는 것</h2><div id="factors"></div></div>
+      <div><h2>다음 3분 목표</h2><div id="goals"></div></div>
+    </div>
+    <div class="err" id="err" hidden><span id="errText"></span><button id="retry" type="button">다시 시도</button></div>
+  </section>
+
+  <section class="card">
+    <div class="sim-top">
+      <div class="seg" role="radiogroup" aria-label="내 팀">
+        <input type="radio" name="side" id="sideB" value="blue" checked><label for="sideB">내 팀 블루</label>
+        <input type="radio" name="side" id="sideR" value="red"><label for="sideR">내 팀 레드</label>
+      </div>
+      <div class="seg" role="radiogroup" aria-label="첫 킬">
+        <input type="radio" name="fb" id="fbB" value="blue" checked><label for="fbB">첫 킬 블루</label>
+        <input type="radio" name="fb" id="fbR" value="red"><label for="fbR">첫 킬 레드</label>
+      </div>
+    </div>
+    <div class="sim-top" id="presets" aria-label="프리셋"></div>
+    <div class="grid" id="grid">
+      <span class="head">지표</span><span class="head b">블루</span><span class="head r">레드</span>
+    </div>
+    <p class="note">점수판(Tab)에 보이는 값만 씁니다. 목표 승률은 과거 경기에서 그 수치를 더 가졌던 경우의 승률이에요. 그렇게 하면 반드시 이긴다는 뜻은 아니에요.</p>
+  </section>
+</main>
+<script>
+const STATS = [
+  ["kills", "킬", 0, 30, 1], ["assists", "어시스트", 0, 40, 1], ["cs", "CS", 100, 400, 1],
+  ["avg_level", "평균 레벨", 4, 10, 0.1], ["dragons", "드래곤", 0, 2, 1], ["heralds", "전령", 0, 1, 1], ["towers", "포탑", 0, 4, 1],
+];
+const EVEN = { kills: 6, assists: 7, cs: 268, avg_level: 6.9, dragons: 0, heralds: 0, towers: 0 };
+const PRESETS = {
+  "균형": [EVEN, EVEN, "blue"],
+  "CS·드래곤 밀림": [{ ...EVEN, kills: 5, assists: 6, cs: 250, avg_level: 6.8 }, { ...EVEN, kills: 7, assists: 9, cs: 268, avg_level: 7.0, dragons: 1 }, "red"],
+  "초반 압승": [{ kills: 11, assists: 14, cs: 300, avg_level: 7.6, dragons: 1, heralds: 1, towers: 1 }, { kills: 4, assists: 5, cs: 245, avg_level: 6.5, dragons: 0, heralds: 0, towers: 0 }, "blue"],
+  "킬은 앞, CS는 뒤": [{ ...EVEN, kills: 9, assists: 10, cs: 240 }, { ...EVEN, kills: 5, assists: 6, cs: 290 }, "blue"],
+};
+const $ = (id) => document.getElementById(id);
+const grid = $("grid");
+for (const [key, name, min, max, step] of STATS) {
+  const label = document.createElement("span"); label.textContent = name; grid.appendChild(label);
+  for (const side of ["blue", "red"]) {
+    const slot = document.createElement("div"); slot.className = "slot";
+    slot.innerHTML = `<input type="range" class="${side[0]}" id="${side}-${key}" min="${min}" max="${max}" step="${step}" aria-label="${side === "blue" ? "블루" : "레드"} ${name}"><output for="${side}-${key}"></output>`;
+    grid.appendChild(slot);
+  }
+}
+for (const name of Object.keys(PRESETS)) {
+  const b = document.createElement("button"); b.type = "button"; b.textContent = name;
+  b.onclick = () => applyPreset(name); $("presets").appendChild(b);
+}
+function applyPreset(name) {
+  const [blue, red, fb] = PRESETS[name];
+  for (const [key] of STATS) { $(`blue-${key}`).value = blue[key]; $(`red-${key}`).value = red[key]; }
+  $(fb === "blue" ? "fbB" : "fbR").checked = true;
+  refresh();
+}
+function readState() {
+  const team = (side) => Object.fromEntries(STATS.map(([key, , , , step]) => {
+    const v = Number($(`${side}-${key}`).value); return [key, step < 1 ? Math.round(v * 10) / 10 : Math.round(v)];
+  }));
+  return { blue: team("blue"), red: team("red"),
+           first_blood: document.querySelector("input[name=fb]:checked").value,
+           my_side: document.querySelector("input[name=side]:checked").value };
+}
+const pct = (p) => `${Math.round(p * 100)}%`;
+const inside = (x) => Math.min(Math.max(x, 14), 86);  // 위치 글자가 막대 밖으로 나가지 않게
+const fmt = (v) => (Math.abs(v) >= 10 ? v.toFixed(0) : v.toFixed(1)).replace(/\.0$/, "");
+function render(r) {
+  $("err").hidden = true;
+  $("result").classList.remove("stale");
+  $("ver").textContent = `${r.model} · ${r.model_version}`;
+  $("prob").textContent = pct(r.my_win_prob);
+  const pace = $("pace"); pace.textContent = r.pace;
+  pace.className = "chip" + (r.pace.startsWith("열세") ? " lose" : r.pace.startsWith("우세") ? " win" : "");
+  $("msg").textContent = r.message;
+  const now = 100 - r.tier_percentile.overall_top_pct;  // 왼쪽 0 = 하위, 오른쪽 100 = 상위
+  $("dot").style.left = `${now}%`;
+  const lblNow = $("lblNow"); lblNow.style.left = `${inside(now)}%`;
+  lblNow.textContent = `지금 상위 ${Math.round(r.tier_percentile.overall_top_pct)}%`;
+  const goal = r.coaching[0], arrow = $("arrow"), lblGoal = $("lblGoal");
+  if (goal) {
+    const to = 100 - goal.overall_top_pct_after;
+    arrow.hidden = false; arrow.style.left = `${Math.min(now, to)}%`; arrow.style.width = `${Math.max(Math.abs(to - now) - 1, 0)}%`;
+    lblGoal.hidden = false; lblGoal.style.left = `${inside(to)}%`;
+    lblGoal.textContent = `${goal.name} +${goal.add} → 상위 ${Math.round(goal.overall_top_pct_after)}%`;
+  } else { arrow.hidden = true; lblGoal.hidden = true; }
+  $("factors").innerHTML = r.top_factors.map((f) => `<div class="row"><span>${f.name} <span class="num" style="color:var(--dim)">${f.diff > 0 ? "+" : ""}${fmt(f.diff)}</span></span>
+      <span class="num ${f.impact_pp < 0 ? "neg" : "pos"}">${f.impact_pp > 0 ? "+" : ""}${f.impact_pp.toFixed(1)}%p</span></div>`).join("");
+  $("goals").innerHTML = r.coaching.length ? r.coaching.slice(0, 3).map((c) => `<div class="row goal-row"><span><b>${c.name} +${c.add}</b>
+      <span style="color:var(--dim)">상위 ${Math.round(c.top_pct_before)}% → ${Math.round(c.top_pct_after)}%</span></span>
+      <span class="num">${pct(c.win_prob_after)} <span class="pos">+${c.gain_pp.toFixed(1)}</span></span></div>`).join("")
+    : `<div class="row"><span style="color:var(--sub)">지금 페이스를 유지하세요</span></div>`;
+}
+let timer = null, seq = 0;
+async function refresh() {
+  for (const [key] of STATS) for (const side of ["blue", "red"]) {
+    const el = $(`${side}-${key}`); el.nextElementSibling.textContent = el.value;
+  }
+  clearTimeout(timer);
+  timer = setTimeout(async () => {
+    const my = ++seq;
+    try {
+      const res = await fetch("/coach", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(readState()) });
+      if (!res.ok) throw new Error(res.status === 422 ? "입력값을 계산할 수 없어요. 값을 다시 확인해 주세요." : `서버가 답하지 않았어요 (${res.status}).`);
+      const body = await res.json();
+      if (my === seq) render(body);  // 늦게 온 옛 응답은 버린다
+    } catch (e) {
+      $("errText").textContent = e.message.startsWith("Failed") || e.name === "TypeError" ? "API에 연결하지 못했어요." : e.message;
+      $("err").hidden = false;
+      $("result").classList.add("stale");
+    }
+  }, 120);
+}
+document.addEventListener("input", refresh);
+$("retry").onclick = refresh;
+applyPreset("CS·드래곤 밀림");
+</script>
+</body>
+</html>

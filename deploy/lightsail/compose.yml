@@ -1,0 +1,37 @@
+# 서버의 바라는 상태는 .env : IMAGE, TAG, MODEL_VERSION, MODEL_DIR (+ SITE_ADDRESS, API_PORT, HTTP_PORT, HTTPS_PORT)
+# 프로젝트 이름을 lol 로 고정해 같은 서버의 다른 Compose 프로젝트(실습용 eta 등)와 섞이지 않게 한다
+name: lol
+
+services:
+  api:
+    image: ${IMAGE:?IMAGE 가 .env 에 없다}/lol-api:${TAG:?TAG 가 .env 에 없다}
+    restart: unless-stopped
+    environment:
+      MODEL_IMPL: onnx
+      # 모델 판이 없으면(baked) 이미지에 구운 모델을 쓴다
+      MODEL_DIR: ${MODEL_DIR:-artifacts}
+    volumes:
+      - ./models:/models:ro
+    ports:
+      # 호스트 안에서만 연다. server.sh 가 컨테이너 자체의 상태를 확인하는 길이다
+      - "127.0.0.1:${API_PORT:-8080}:8080"
+
+  caddy:
+    # 80·443 은 Caddy 가 혼자 맡고, 밖에서 api 로 가는 길은 내부망 api:8080 하나다 (AGENTS.md 11절)
+    image: caddy:2.10
+    restart: unless-stopped
+    depends_on: [api]
+    environment:
+      # 비어 있으면 :80 HTTP 만. 도메인을 넣으면 인증서를 받아 HTTPS 로 받는다
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data: {}
+  caddy_config: {}

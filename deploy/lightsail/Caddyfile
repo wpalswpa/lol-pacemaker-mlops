@@ -1,0 +1,7 @@
+# SITE_ADDRESS 가 :80 이면 HTTP 만, <내 도메인> 이면 인증서를 자동으로 받고 80 → 443 으로 넘긴다.
+# 인증서 검증은 HTTP-01(80번)을 쓴다. Caddy 가 80을 맡고 있으므로 disable_http_challenge 가 필요 없다.
+{$SITE_ADDRESS::80} {
+	encode gzip
+	reverse_proxy api:8080
+	header -Server
+}

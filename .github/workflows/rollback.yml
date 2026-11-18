@@ -1,0 +1,33 @@
+name: rollback
+# 되돌리기: 이미지와 학습은 그대로, 모델 판만 버킷의 옛 판으로 바꾼다
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "되돌릴 모델 판 (예: m20261118-1)"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  rollback:
+    runs-on: [self-hosted, lightsail]
+    concurrency: { group: lightsail-lol, cancel-in-progress: false }
+    env:
+      VER: ${{ inputs.version }} # 입력은 env 로만 넘긴다 (명령에 바로 넣지 않는다)
+      BUCKET: ${{ vars.MODEL_BUCKET }}
+      AWS_REGION: ${{ vars.AWS_REGION }}
+    steps:
+      - uses: actions/checkout@v7
+      - run: cp deploy/lightsail/compose.yml deploy/lightsail/server.sh deploy/lightsail/Caddyfile /srv/lol/
+      - name: 판 이름 검사
+        run: '[[ $VER =~ ^m[0-9]{8}-[0-9]+$ ]] || { echo "모델 판 형식이 아니다: $VER" >&2; exit 1; }'
+      - name: 버킷에서 받아 그 판으로 띄우기
+        run: |
+          aws s3 cp --recursive "s3://$BUCKET/models/onnx/$VER/" "/srv/lol/models/$VER/"
+          bash /srv/lol/server.sh model "$VER"
+      - name: 포인터 바꾸기
+        run: |
+          echo "{\"model_version\": \"$VER\", \"set_at\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\", \"run\": \"$GITHUB_RUN_ID\"}" > current.json
+          aws s3 cp current.json "s3://$BUCKET/models/onnx/current.json"
