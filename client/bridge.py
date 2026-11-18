@@ -507,7 +507,7 @@ def popup_command(url: str, system: str | None = None, which: Callable[[str], st
             return "swift", [binary, url, str(w), str(h)]
     chrome = _find_app_browser(system, which, exists)
     if chrome:
-        return "chrome", [chrome, f"--app={url}", f"--window-size={w},{h}", "--window-position=9999,0",
+        return "chrome", [chrome, f"--app={url}", f"--window-size={w},{h}", "--window-position=24,220",
                           "--user-data-dir=" + os.path.join(_cache_dir(), "chrome-profile")]
     return "browser", None
 

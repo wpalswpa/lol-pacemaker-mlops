@@ -23,8 +23,14 @@
   .live { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 8px;
           background: var(--card); border: 1px solid var(--line); font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left; }
   .live.on { color: var(--green); } .live:not(.on) { color: var(--yellow); }
-  .fx { padding: 5px 9px; border-radius: 8px; border: 1px solid var(--gold); background: rgba(242, 193, 78, .12); color: var(--gold); font-weight: 700; white-space: nowrap; }
+  .fx { padding: 5px 8px; border-radius: 8px; border: 1px solid var(--gold); background: rgba(242, 193, 78, .12); color: var(--gold); font-weight: 700; white-space: nowrap; }
   .fx[aria-pressed="false"] { border-color: var(--line); background: var(--card); color: var(--dim); }
+  .ctrl { padding: 5px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--sub); font-weight: 700; white-space: nowrap; }
+  .ctrl:hover { border-color: #3a475a; color: var(--text); }
+  .mini-bar { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px;
+              font-weight: 700; color: var(--text); display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  body.minimized .win, body.minimized .sec, body.minimized .demo, body.minimized .foot { display: none !important; }
+  body.minimized { min-height: 0; }
 
   .win { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 6px 9px; display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; align-items: center; }
   .win .t { grid-column: 1 / -1; color: var(--sub); font-size: 11px; display: flex; justify-content: space-between; gap: 8px; }
@@ -97,7 +103,10 @@
       <span id="liveText">🟡 게임 중 시뮬레이션 (00:00)</span>
     </button>
     <button type="button" class="fx" id="fx" aria-pressed="true">이펙트 ON</button>
+    <button type="button" class="ctrl" id="opac" title="창 투명도 조절">100%</button>
+    <button type="button" class="ctrl" id="minBtn" aria-expanded="true" title="창 최소화(접기/펼치기)">−</button>
   </div>
+  <div class="mini-bar" id="miniBar" hidden><span id="miniSummary">대기 중</span><span style="color:var(--dim);font-size:11px">최소화됨</span></div>
 
   <section class="win" aria-live="polite" aria-label="실시간 게임 중 승률">
     <div class="t"><b>실시간 게임 중 승률</b><span id="scaleNote">10분 페이스 환산</span></div>
@@ -344,6 +353,35 @@ $("live").addEventListener("click", () => {  // 데모 고정을 풀고 LIVE 로
   demoLock = false;
   if (bridgeAlive && lastLive) applyLive(lastLive);
 });
+
+// ── 투명도 & 창 최소화(접기/펼치기) ──
+const OPAC_STEPS = [1, 0.85, 0.65];
+let opacIdx = 0;
+try { opacIdx = Math.max(0, OPAC_STEPS.indexOf(Number(localStorage.getItem("lol_hud_opac") || "1"))); } catch (_) {}
+function applyOpac() {
+  const val = OPAC_STEPS[opacIdx] || 1;
+  document.body.style.opacity = String(val);
+  $("opac").textContent = `${Math.round(val * 100)}%`;
+}
+applyOpac();
+$("opac").addEventListener("click", () => {
+  opacIdx = (opacIdx + 1) % OPAC_STEPS.length;
+  applyOpac();
+  try { localStorage.setItem("lol_hud_opac", String(OPAC_STEPS[opacIdx])); } catch (_) {}
+});
+
+function setMinimized(on) {
+  document.body.classList.toggle("minimized", on);
+  $("minBtn").setAttribute("aria-expanded", String(!on));
+  $("minBtn").textContent = on ? "+" : "−";
+  $("miniBar").hidden = !on;
+  if (on) {
+    const p = $("prob").textContent || "--%";
+    const sk = $("nextKey").textContent || "?";
+    $("miniSummary").textContent = `승률 ${p} · 스킬 [${sk}]`;
+  }
+}
+$("minBtn").addEventListener("click", () => setMinimized(!document.body.classList.contains("minimized")));
 
 (async () => {
   try { ddVersion = (await (await fetch("/meta/champions")).json()).version; } catch (_) { ddVersion = null; }

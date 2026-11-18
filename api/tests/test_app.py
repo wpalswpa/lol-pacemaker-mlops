@@ -610,6 +610,12 @@ def test_app_starts_when_postgres_unreachable(monkeypatch):
 
 
 def test_download_page_and_launcher_scripts(client):
+    ov = client.get("/overlay")
+    assert ov.status_code == 200
+    assert 'id="minBtn"' in ov.text
+    assert 'id="opac"' in ov.text
+    assert 'id="fx"' in ov.text
+
     page = client.get("/download")
     assert page.status_code == 200
     assert "LoL 페이스메이커 데스크톱 다운로드" in page.text
