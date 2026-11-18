@@ -713,6 +713,7 @@ def test_coach_briefing_fallback_and_llm_mock(client, monkeypatch):
 
     monkeypatch.setenv("LLM_API_KEY", "test-key")
     monkeypatch.setenv("LLM_MODEL", "qwen2.5:3b")
+    llm_coach.clear_cache()
     monkeypatch.setattr(
         llm_coach.urllib.request,
         "urlopen",
@@ -729,6 +730,7 @@ def test_coach_briefing_fallback_and_llm_mock(client, monkeypatch):
         raise TimeoutError("timeout")
 
     monkeypatch.setattr(llm_coach.urllib.request, "urlopen", _boom)
+    llm_coach.clear_cache()  # 같은 입력은 60초 캐시(AGENTS.md 4절)라, 실패 경로를 보려면 비운다
     res3 = client.post("/coach/briefing", json=payload)
     assert res3.status_code == 200
     assert res3.json()["source"] == "fallback_rule"

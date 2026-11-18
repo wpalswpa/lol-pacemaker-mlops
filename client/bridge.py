@@ -428,7 +428,7 @@ class OverlayBridge:
 
 # 브리지가 같은 출처(127.0.0.1)에서 HUD 를 내주기 위해 서버로 넘겨 주는 경로 (AGENTS.md 3-4절 "팝업").
 # 공개 주소의 웹 페이지는 브라우저의 로컬 네트워크 접근 제한 때문에 127.0.0.1 브리지를 읽지 못한다(Chromium 159 확인).
-RELAY = {("GET", "/overlay"), ("GET", "/meta/champions"), ("POST", "/coach")}
+RELAY = {("GET", "/overlay"), ("GET", "/meta/champions"), ("POST", "/coach"), ("POST", "/coach/briefing")}
 RELAY_MAX_BODY = 64 * 1024
 Upstream = Callable[[str, str, "bytes | None"], "tuple[int, str, bytes]"]
 

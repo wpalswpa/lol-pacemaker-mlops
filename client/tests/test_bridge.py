@@ -620,15 +620,18 @@ def test_relay_serves_hud_same_origin():
         code, _, body = _req(port, "POST", "/coach", b'{"a": 1}', {"Content-Type": "application/json"})
         assert (code, body) == (200, b'{"ok": true}')
         assert _req(port, "POST", "/coach", b'{"bad": 1}')[0] == 422   # 서버의 422 를 그대로
+        assert _req(port, "POST", "/coach/briefing", b'{"a": 1}')[0] == 200  # HUD 의 AI 감독 브리핑 (AGENTS.md 4절)
         assert seen == [("GET", "/overlay", None), ("GET", "/meta/champions", None),
-                        ("POST", "/coach", b'{"a": 1}'), ("POST", "/coach", b'{"bad": 1}')]
+                        ("POST", "/coach", b'{"a": 1}'), ("POST", "/coach", b'{"bad": 1}'),
+                        ("POST", "/coach/briefing", b'{"a": 1}')]
         # 화이트리스트 밖은 넘기지 않는다
         for method, path in (("POST", "/matches"), ("GET", "/matches"), ("GET", "/health"), ("POST", "/overlay"),
                              ("GET", "/"), ("POST", "/bridge/state")):
             assert _req(port, method, path, b"{}" if method == "POST" else None)[0] == 404, (method, path)
-        assert len(seen) == 4
+        assert len(seen) == 5
         big = b"x" * (RELAY_MAX_BODY + 1)
-        assert _req(port, "POST", "/coach", big)[0] == 413 and len(seen) == 4
+        assert _req(port, "POST", "/coach", big)[0] == 413 and len(seen) == 5
+        assert _req(port, "POST", "/coach/briefing", big)[0] == 413 and len(seen) == 5
         assert _req(port, "GET", "/bridge/state")[0] == 200
     finally:
         httpd.shutdown()

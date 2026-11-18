@@ -105,6 +105,7 @@
 | 칸 | 무엇을 보고 | 어떻게 보여 주나 |
 |---|---|---|
 | 최근 코칭 전적 기록 (DB) | `GET /matches?limit=10`, `POST /matches` (3-5절) | 맨 아래 표: 번호, 저장 시각, 내 챔피언(한국어 이름), 상대 위협, 승률, 전술 상태(우세·접전·열세 색), 승패. 승·패·모름을 고르고 `전적 저장`을 누르면 지금 입력을 `game_time_sec` 600으로 저장하고 표를 다시 읽는다. 422는 칸 이름이 든 문구, 503은 "전적 DB에 연결하지 못했어요"(코칭은 계속). 승패가 정해진 기록은 재학습용 CSV 링크로 받는다. 글자는 textContent로만 넣는다 |
+| AI 감독 브리핑 | `POST /coach/briefing` (4절) | `/coach` 결과를 그린 뒤 같은 입력으로 따로 부른다(브리핑이 늦어도 승률·목표는 먼저 보인다). `AI 감독 브리핑` 칸에 `briefing`, 옆에 출처(`LLM · {llm_model}` 또는 `규칙 문장`). 늦게 온 옛 응답은 버리고, 실패하면 "브리핑을 받지 못했어요". 글자는 textContent로만 넣는다 |
 | 결과 카드 제목 | 고정 | `실시간 게임 중 승률 예측`(입력은 10분 페이스 기준 점수판). 위쪽에 오버레이(`/overlay`)·발표 슬라이드(`/slides`) 링크 |
 | 테두리 이펙트 | `build_advice.state` | 뷰포트 가장자리와 결과 카드 테두리를 초록(`ahead`, 문구 `우세 · 적극 교전 가능`)·노랑(`even`, `접전 · 파밍 집중`)·빨강(`behind`, `열세 · 1대1 싸움 금지`)으로 빛나게 한다. 상단의 **[테두리 이펙트 ON/OFF]** 버튼으로 바로 끄고 켠다(`aria-pressed`, 브라우저에 기억, 저장이 안 되는 환경에서도 동작). 동작 줄이기 설정(`prefers-reduced-motion`)이면 깜빡임 없이 색만 |
 | 분포 막대 | `tier_percentile.overall_top_pct`, `coaching[0].overall_top_pct_after` | 현재 위치 ●, 첫 목표를 채웠을 때 위치 ★ |
@@ -165,10 +166,13 @@
 | `next_skill` / `next_skill_when` | 위 규칙. 스킬 순서는 마지막 `coach.build_advice.skill_order.order` |
 | `features` / `raw_features` | 환산한 `/coach` 입력, 환산 전 입력 |
 | `coach` / `coach_error` / `error` | 마지막 `/coach` 응답(없으면 `null`), 호출 실패 이유, 게임 API 읽기 실패 이유 |
+| `enemy_items` | 마지막으로 `/coach`에 넣은 상대 위협의 공개 아이템 ID(3-1절) |
+
+**HUD 의 AI 감독 브리핑**: HUD 는 화면에 그린 `coach`의 캐시 키(4절 `POST /coach/briefing` 캐시와 같은 다섯 값)가 바뀔 때만 `POST /coach/briefing`을 같은 출처로 부른다. 본문은 LIVE 면 `features`에 `enemy_items`(있으면)를 더한 것, 데모면 데모 입력. 한 번에 하나만 보내고, `AI 감독 브리핑` 칸에 `briefing`과 출처를 textContent로 넣는다. 실패하면 칸에 "브리핑 없음"을 적고 나머지 HUD 는 그대로 둔다.
 
 **팝업 `--launch-popup`**: `http://127.0.0.1:<포트>/overlay?bridge_url=http://127.0.0.1:<포트>/bridge/state`를 380×560 창으로 화면 우측 상단에 띄운다(`--server`는 `--api`와 같은 옵션).
 
-- **HUD 는 브리지가 같은 출처에서 내준다.** 공개 주소(`http://<고정 IP>`, `https://<내 도메인>`)에서 연 페이지는 브라우저의 로컬 네트워크 접근 제한 때문에 `127.0.0.1` 브리지를 읽지 못한다(Chromium 159에서 `Permission was denied`로 막히고 시뮬레이션 배지에 머무는 것을 확인). 그래서 오버레이 모드의 로컬 서버는 세 경로만 `--server`로 그대로 넘긴다: `GET /overlay`, `GET /meta/champions`, `POST /coach`(본문 64 KB 이하, 넘으면 413). 서버의 상태 코드·본문을 그대로 돌려주고, 서버에 닿지 못하면 502 `{"detail": "서버에 연결하지 못했다"}`. 이 세 경로는 CORS를 열지 않는다(같은 출처 전용). 그 밖의 경로(`/matches` 등)는 404이고, 전적 저장은 브리지 프로세스가 직접 부른다.
+- **HUD 는 브리지가 같은 출처에서 내준다.** 공개 주소(`http://<고정 IP>`, `https://<내 도메인>`)에서 연 페이지는 브라우저의 로컬 네트워크 접근 제한 때문에 `127.0.0.1` 브리지를 읽지 못한다(Chromium 159에서 `Permission was denied`로 막히고 시뮬레이션 배지에 머무는 것을 확인). 그래서 오버레이 모드의 로컬 서버는 네 경로만 `--server`로 그대로 넘긴다: `GET /overlay`, `GET /meta/champions`, `POST /coach`, `POST /coach/briefing`(POST 본문 64 KB 이하, 넘으면 413). 서버의 상태 코드·본문을 그대로 돌려주고, 서버에 닿지 못하면 502 `{"detail": "서버에 연결하지 못했다"}`. 이 네 경로는 CORS를 열지 않는다(같은 출처 전용). 그 밖의 경로(`/matches` 등)는 404이고, 전적 저장은 브리지 프로세스가 직접 부른다.
 
 1. macOS이고 `swiftc`가 있으면 `client/overlay_popup.swift`를 사용자 캐시 폴더에 컴파일(소스가 바뀌었을 때만)해 실행한다. `NSPanel`을 `.floating` 단계로 띄우고 모든 데스크톱·전체 화면 보조 창으로 두며, 눌러도 게임에서 입력 초점을 빼앗지 않는다(`nonactivatingPanel`).
 2. 아니면 Chrome `--app=<URL> --window-size=380,560`(항상 위는 보장하지 않는다), 그것도 없으면 기본 브라우저.
@@ -334,13 +338,14 @@ LoL은 "테두리 없는 창 모드"여야 위에 뜬다. 전체 화면 독점 �
 
 ### `POST /coach/briefing` (감독 브리핑, `include_in_schema=False`)
 
-입력은 3절과 같다(`enemy_items` 포함). 응답은 `/coach` 응답 전체에 세 칸을 더한 것이다. 구현은 `api/llm_coach.py`.
+입력은 3절과 같다(`enemy_items` 포함). 응답은 `/coach` 응답 전체에 네 칸을 더한 것이다. 구현은 `api/llm_coach.py`.
 
 ```json
 {"...": "POST /coach 응답 그대로",
- "briefing": "현재 승률 17%(behind)입니다. … 권장 빌드는 [마법사의 신발 -> 망각의 구 -> 라바돈의 죽음모자] 순입니다.",
+ "briefing": "현재 승률 35%(열세)입니다. 상대 회복·흡혈 코어 감지 -> 치유 감소 하위템 우선 · 장기 교전 금지. 핵심 목표는 '킬 2개 더 → …'이며, 권장 빌드는 [마법사의 신발 -> 망각의 구 -> 라바돈의 죽음모자] 순입니다.",
  "source": "fallback_rule",
- "llm_model": null}
+ "llm_model": null,
+ "fallback_reason": "not_configured"}
 ```
 
 **역할 분리**
@@ -348,19 +353,42 @@ LoL은 "테두리 없는 창 모드"여야 위에 뜬다. 전체 화면 독점 �
 | 단계 | 누가 | 무엇을 정하나 |
 |---|---|---|
 | 1단계 수치 | ONNX 모델 + 규칙표(`service.coach`) | `my_win_prob`, `build_advice`(`state`·`tactical_tip`·`recommended_items`·`skill_order`), `coaching[0]`(핵심 목표). 모든 숫자와 아이템 이름은 여기서만 나온다 |
-| 2단계 문장 | 경량 LLM(`LLM_MODEL`) | 1단계 결과를 줄인 JSON(`build_prompt_payload`: `win_prob_pct`, `state`, `my_champion`, `enemy_top_threat`, `threat_type`, `tactical_tip`, `top_goal`, `recommended_items` 이름, `skill_order`)만 받아 한국어 2문장 이내 운영 브리핑으로 옮긴다. 새 수치·아이템을 만들지 않는다 |
+| 2단계 문장 | 경량 LLM(`LLM_MODEL`) | 1단계 결과를 줄인 JSON(`build_prompt_payload`: `win_prob_pct`, `state`(한국어 `우세`·`접전`·`열세`), `my_champion`, `enemy_top_threat`, `threat_type`, `tactical_tip`, `top_goal`, `horizon_min`, `recommended_items` 이름, `skill_order`)만 받아 한국어 2문장 이내 운영 브리핑으로 옮긴다. 새 수치·아이템을 만들지 않는다 |
+| 3단계 검사 | `validate_briefing_output(text, payload)` | LLM 문장을 아래 검사 규칙으로 본다. 하나라도 걸리면 그 문장을 버리고 규칙 문장으로 답한다 |
 
 | 칸 | 뜻 |
 |---|---|
 | `briefing` | 보여 줄 문장 |
 | `source` | `"llm"`(LLM이 만든 문장) 또는 `"fallback_rule"`(규칙 문장) |
-| `llm_model` | `source`가 `llm`이면 쓴 모델 이름. 키가 없어 부르지 않았으면 `null`, 불렀다가 실패했으면 그 모델 이름 |
+| `llm_model` | `source`가 `llm`이면 쓴 모델 이름. 키가 없어 부르지 않았으면 `null`, 불렀다가 실패했거나 검사에서 버렸으면 그 모델 이름 |
+| `fallback_reason` | `source`가 `llm`이면 `null`. 규칙 문장이면 이유: `not_configured`(키 미설정), `llm_error: <예외 이름>`(시간 초과·네트워크·HTTP·형식 오류), `empty`(빈 문장), `number: <숫자>`, `item: <이름>`, `sentences: <문장 수>`(아래 검사 규칙) |
 
-**규칙 문장(`fallback_briefing`)으로 답하는 경우**: 키 미설정(위 2절 조건), 응답이 `LLM_TIMEOUT_SEC` 초과, 네트워크·HTTP 오류, 응답 형식 오류, 빈 문장. 규칙 문장은 `현재 승률 {반올림 %}({state})입니다. {tactical_tip 또는 posture} 핵심 목표는 '{coaching[0].message}'이며, 권장 빌드는 [{아이템 이름 -> …}] 순입니다.`로 만든다. 그래서 LLM이 없어도 `/coach/briefing`은 항상 200이다.
+**규칙 문장(`fallback_briefing`)으로 답하는 경우**: 키 미설정(위 2절 조건), 응답이 `LLM_TIMEOUT_SEC` 초과, 네트워크·HTTP 오류, 응답 형식 오류, 빈 문장, 검사 규칙 위반. 규칙 문장은 `현재 승률 {반올림 %}({state 한국어})입니다. {tactical_tip 또는 posture}. 핵심 목표는 '{coaching[0].message}'이며, 권장 빌드는 [{아이템 이름 -> …}] 순입니다.`로 만든다. `state`는 `ahead`·`even`·`behind`를 `우세`·`접전`·`열세`로 바꿔 쓴다(영어 상태 이름을 화면 문장에 내지 않는다). `tactical_tip`이 `.`·`!`·`?`로 끝나지 않으면 마침표를 붙여 다음 문장과 붙지 않게 한다. 그래서 LLM이 없어도 `/coach/briefing`은 항상 200이다.
+
+**검사 규칙 `validate_briefing_output(text, payload)`** (차례대로 보고 처음 걸린 것을 `fallback_reason`에 적는다. 모두 통과하면 `source: "llm"`)
+
+| 순서 | 검사 | 걸리는 경우 | `fallback_reason` |
+|---|---|---|---|
+| 1 | 문장 수 | `.`·`!`·`?` 뒤 공백·줄 끝, 또는 줄바꿈으로 나눈 문장이 3개 이상(소수점 `35.0`과 `B.F.`는 나누지 않는다) | `sentences: 3` |
+| 2 | 숫자 | 문장 속 숫자(`\d+(\.\d+)?`, 쉼표 천 단위 허용, 부호 무시)가 payload 안 모든 값(문자열 속 숫자 포함: `win_prob_pct`, `top_goal`의 승률·목표 수치, `horizon_min`, `tactical_tip`)에서 뽑은 숫자에도, 그 숫자를 정수로 반올림(0.5 올림)한 값에도 없다. `1대1`은 숫자로 보지 않는다 | `number: 37` |
+| 3 | 아이템 | 아이템처럼 보이는 이름이 `recommended_items` 이름과 다르다. 아이템처럼 보이는 이름은 ① `api/game_data.json` 아이템 이름이 문장에 나온 것 ② `X의 Y` 꼴에서 Y(조사를 뗀 말)가 장비 명사(`ITEM_NOUNS`: 검·대검·단검·도끼·활·창·지팡이·홀·망치·방패·갑옷·조끼·망토·장막·투구·가면·신발·장화·군화·반지·보석·수정·펜던트·목걸이·부적·모자·모래시계·물약·구 등)인 것 ③ `[ ]` 안을 `->`·`→`·`,`로 나눈 이름. ①은 추천 이름과 같아야 하고, ②③은 추천 이름 하나와 같거나 그 이름을 품어야 한다 | `item: 황금의 대검` |
+
+- 숫자 규칙은 payload에 있는 값만 옮기게 한다. 그래서 "다음 3분"처럼 맞는 말도 payload에 `horizon_min`이 있어야 통과한다.
+- 아이템 규칙은 한국어 이름을 보고 판단하는 규칙이라 모든 지어낸 이름을 잡지는 못한다(예: 장비 명사가 아닌 말로 끝나는 이름). 걸리면 안전한 쪽(규칙 문장)으로 내린다.
+
+**캐시** (같은 상황의 반복 호출 막기, 서버 프로세스 메모리)
+
+| 항목 | 규칙 |
+|---|---|
+| 키 | `(build_advice.state, build_advice.my_champion, build_advice.enemy_top_threat, recommended_items 이름 목록, my_win_prob × 100 반올림)` |
+| 수명·크기 | 넣은 뒤 60초(`BRIEFING_CACHE_TTL_SEC`), 최대 128건(`BRIEFING_CACHE_MAX`). 넘으면 가장 오래 쓰지 않은 것부터 지운다 |
+| 넣는 것 | LLM을 실제로 부른 결과만: 받은 문장(검사 전 원문)과 모델 이름, 또는 호출 실패 이유. 키 미설정이라 부르지 않았으면 넣지 않는다 |
+| 꺼낼 때 | 문장은 지금 요청의 payload로 다시 검사한다(키가 같아도 `top_goal` 수치는 다를 수 있다). 규칙 문장은 지금 요청의 `/coach` 결과로 새로 만든다 |
+| 결과 | 같은 키로 60초 안에 다시 오면 LLM을 다시 부르지 않는다. 60초가 지나면 다시 부른다 |
 
 **요청 설정**: `temperature` 0.2, `max_tokens` 160, 시스템 문장은 "분석 JSON에 있는 값만 근거로 2문장 이내, JSON에 없는 아이템·수치를 지어내지 말 것".
 
-**지금의 한계와 다음 일**: "2문장 이내"와 "지어내지 않음"은 지금 시스템 문장으로 부탁만 하고 응답을 검사하지 않는다. 응답 검사기(`validate_briefing_output`: 분석 JSON에 없는 아이템 이름이나 다른 승률 숫자가 있으면 `fallback_rule`로 내림)와 같은 상황의 반복 호출을 막는 짧은 캐시는 Issue #16에서 이 절을 먼저 고친 뒤 넣는다. 실서버는 키가 없어 `fallback_rule`로 답하는 것까지 확인했다(2026-11-18).
+**화면**: 웹 시뮬레이터(`/`, 3-3절)와 오버레이(`/overlay`, 3-4절)에 `AI 감독 브리핑` 칸을 두고 `briefing`과 출처(`source`가 `llm`이면 `LLM · {llm_model}`, 아니면 `규칙 문장`)를 textContent로만 넣는다. 실서버는 키가 없어 `fallback_rule`로 답하는 것까지 확인했다(2026-11-18).
 
 ### `GET /meta/champions` (웹 시뮬레이터용, `include_in_schema=False`)
 
@@ -466,7 +494,7 @@ p_blue   = 1 / (1 + exp(−gold_est / 2500))
 
 ## 7. 테스트 작성 규칙 (`api/tests/`, `client/tests/`, `deploy/tests/`, `tests/`)
 
-- **범위**: `/predict`·`/coach`의 응답 형식과 계산 정의, 규칙 기준선 값, 백분위 계산(보간·동점 구간·표 밖), 입력 검증(422 목록 전부), `/health`, `/openapi.json`의 도구 이름, 레드 기준 뒤집기, 경계값(허용 범위의 끝, 하나 밖). 빌드 가이드의 규칙표 적용 순서(상태·계열·위협 조합)와 선택 칸 해석(이름·역할군·생략·없는 이름 422). `GET /meta/champions`의 형식과 스키마 숨김, `GET /slides`·`GET /overlay`가 HTML을 돌려주는지(오버레이는 강조 테두리·토글·브리지 폴링·`게임 중` 표시 포함). 빌드 가이드의 `starter_items`·`situational_items`. 오버레이 모드의 10분 페이스 환산(3분·15분·1분 미만·10분), 보유 아이템 추출, 다음 스킬 계획, `/coach` 호출 간격, 로컬 상태 서버의 JSON·CORS 헤더·게임 API 실패 때 `connected: false`, 팝업 실행 방식 선택, HUD 중계의 화이트리스트(세 경로만, 413·502·404)와 같은 출처 팝업 주소, 브리지가 Python 3.9 문법·표준 라이브러리만 쓰는지. 데이터 플라이휠 E2E(`tests/test_flywheel_e2e.py`): 웹·브리지 저장 → CSV 내보내기 → `training/data.py`의 `table_to_xy`가 학습 계약대로 읽는지(학습 라이브러리 없이), 있으면 `_load`와 학습 파이프라인까지. `client/agent_demo.py`의 도구 정의 변환(`$ref` 풀기, 두 도구), 브리핑에 응답의 승률·목표·아이템·`model_version`·`basis`가 들어가고 응답에 없는 숫자가 없는지. 브리지의 응답 변환, 내 챔피언·상대 최다 킬(동률이면 최다 CS) 챔피언 찾기, 422 때 두 칸 빼고 한 번 다시 부르기, 10분 한 번 호출, `--effect`·`--tts` 옵션과 환경 변수의 우선순위. `server.sh`의 판 형식 검사와 실패 시 되돌리기. 부하 실측의 백분위·성공률·RPS 계산과 원격 주소 가리기, 모델 판 비교의 개선율·게이트 판정·가중치 순위 변화(`tests/`, 학습 라이브러리 없이 돈다).
+- **범위**: `/predict`·`/coach`의 응답 형식과 계산 정의, 규칙 기준선 값, 백분위 계산(보간·동점 구간·표 밖), 입력 검증(422 목록 전부), `/health`, `/openapi.json`의 도구 이름, 레드 기준 뒤집기, 경계값(허용 범위의 끝, 하나 밖). 빌드 가이드의 규칙표 적용 순서(상태·계열·위협 조합)와 선택 칸 해석(이름·역할군·생략·없는 이름 422). `GET /meta/champions`의 형식과 스키마 숨김, `GET /slides`·`GET /overlay`가 HTML을 돌려주는지(오버레이는 강조 테두리·토글·브리지 폴링·`게임 중` 표시 포함). 빌드 가이드의 `starter_items`·`situational_items`. 오버레이 모드의 10분 페이스 환산(3분·15분·1분 미만·10분), 보유 아이템 추출, 다음 스킬 계획, `/coach` 호출 간격, 로컬 상태 서버의 JSON·CORS 헤더·게임 API 실패 때 `connected: false`, 팝업 실행 방식 선택, HUD 중계의 화이트리스트(네 경로만, 413·502·404)와 같은 출처 팝업 주소, 브리지가 Python 3.9 문법·표준 라이브러리만 쓰는지. 데이터 플라이휠 E2E(`tests/test_flywheel_e2e.py`): 웹·브리지 저장 → CSV 내보내기 → `training/data.py`의 `table_to_xy`가 학습 계약대로 읽는지(학습 라이브러리 없이), 있으면 `_load`와 학습 파이프라인까지. `client/agent_demo.py`의 도구 정의 변환(`$ref` 풀기, 두 도구), 브리핑에 응답의 승률·목표·아이템·`model_version`·`basis`가 들어가고 응답에 없는 숫자가 없는지. `/coach/briefing`의 검사 규칙(지어낸 아이템·바뀐 숫자·3문장 → `fallback_rule`, JSON 값만 인용 → `llm`)과 캐시(같은 키 60초 안 1회, 61초 뒤 다시)를 로컬 가짜 LLM 서버로. 브리지의 응답 변환, 내 챔피언·상대 최다 킬(동률이면 최다 CS) 챔피언 찾기, 422 때 두 칸 빼고 한 번 다시 부르기, 10분 한 번 호출, `--effect`·`--tts` 옵션과 환경 변수의 우선순위. `server.sh`의 판 형식 검사와 실패 시 되돌리기. 부하 실측의 백분위·성공률·RPS 계산과 원격 주소 가리기, 모델 판 비교의 개선율·게이트 판정·가중치 순위 변화(`tests/`, 학습 라이브러리 없이 돈다).
 - **범위 밖**: 학습한 모델의 성능(`training/validate_model.py` 담당), 원본과 ONNX의 일치(`training/check_parity.py` 담당), 실제 Docker 컨테이너 기동(`deploy/local_e2e.sh` 담당).
 - **기대값의 출처**: 5절 규칙 식과 4절 정의, 고정 자료 `api/tests/fixtures/baseline.json`에서 테스트 안에서 손으로 계산한다. **현재 코드의 출력을 정답으로 옮겨 적지 않는다.** 옮겨 적으면 버그도 정답이 된다.
 - API 테스트는 `MODEL_IMPL=rule`, `MODEL_DIR=api/tests/fixtures`로 돌린다. 학습 산출물·Docker가 없어도 돌아야 하고, **skipped는 0건**이어야 한다.

@@ -85,6 +85,9 @@
   .key.off { color: var(--sub); background: linear-gradient(#232b38, #1a212d); border-color: #3a475a; }
   .order-keys { display: flex; align-items: center; gap: 4px; color: var(--dim); flex: none; }
   .tip { color: var(--sub); font-size: 11px; margin: 4px 0 0; overflow-wrap: anywhere; }
+  .brief-text { margin: 0; font-size: 11px; line-height: 1.45; color: var(--text); overflow-wrap: anywhere; }
+  .brief-src { font-size: 10px; font-weight: 700; color: var(--dim); }
+  .brief-src.llm { color: var(--green, #3ddc97); }
 
   .demo { margin-top: auto; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
   .demo button { padding: 4px 2px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); font-size: 11px; white-space: nowrap; }
@@ -129,6 +132,11 @@
       <div class="order-keys" id="keys"></div>
     </div>
     <p class="tip" id="focus"></p>
+  </section>
+
+  <section class="sec" aria-label="AI 감독 브리핑" aria-live="polite">
+    <h2>AI 감독 브리핑 <span class="brief-src" id="briefSrc">대기 중</span></h2>
+    <p class="brief-text" id="briefText">코칭을 받으면 감독 브리핑을 붙여요</p>
   </section>
 
   <div class="demo" role="group" aria-label="데모 시나리오">
@@ -279,7 +287,35 @@ function render() {
   }));
   $("focus").textContent = b.tactical_tip || (order ? b.skill_order.focus : `${b.skill_order.focus} (원칙만)`);
   $("foot").textContent = `모델 판 ${coach.model_version} · 아이템·스킬은 사람이 정한 규칙표`;
+  requestBriefing(coach, view.body);
   document.querySelectorAll("[data-demo]").forEach((btn) => btn.setAttribute("aria-pressed", String(view.mode === "demo" && btn.dataset.demo === view.demo)));
+}
+
+// ── AI 감독 브리핑 (AGENTS.md 3-4절 "HUD 의 AI 감독 브리핑", 4절 POST /coach/briefing) ──
+// 서버 캐시와 같은 다섯 값이 바뀔 때만, 한 번에 하나만 부른다. 글자는 textContent 로만
+let briefKey = null, briefBusy = false;
+function briefingKey(coach) {
+  const b = coach.build_advice;
+  return JSON.stringify([b.state, b.my_champion, b.enemy_top_threat, b.recommended_items.map((i) => i.name), Math.round(coach.my_win_prob * 100)]);
+}
+async function requestBriefing(coach, body) {
+  const key = briefingKey(coach);
+  if (!body || briefBusy || key === briefKey) return;
+  briefBusy = true; briefKey = key;
+  try {
+    const res = await fetch("/coach/briefing", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    if (!res.ok) throw new Error(String(res.status));
+    const r = await res.json();
+    const llm = r.source === "llm";
+    $("briefText").textContent = r.briefing;
+    $("briefSrc").textContent = llm ? `LLM · ${r.llm_model}` : "규칙 문장";
+    $("briefSrc").className = llm ? "brief-src llm" : "brief-src";
+  } catch (_) {
+    $("briefText").textContent = "브리핑 없음";
+    $("briefSrc").textContent = ""; briefKey = null;  // 다음 갱신 때 다시 시도
+  } finally {
+    briefBusy = false;
+  }
 }
 
 // 카드를 누르면 보유 토글 → 강조가 다음 카드로
@@ -317,7 +353,7 @@ async function runDemo(name, lock) {
     const b = coach.build_advice;
     const owned = new Set([b.starter_items[0]?.item_id, ...b.recommended_items.slice(0, d.ownedSteps).map((i) => i.item_id)].filter(Number.isInteger));
     const plan = skillPlan(b.skill_order.order);
-    view = { mode: "demo", demo: name, t: d.t, coach, owned, level: d.level, next: plan[d.level - 1], when: "now" };
+    view = { mode: "demo", demo: name, t: d.t, coach, owned, level: d.level, next: plan[d.level - 1], when: "now", body };
     render();
   } catch (err) {
     $("msg").textContent = `서버에 연결하지 못했어요 (${err.message})`;
@@ -327,8 +363,9 @@ document.querySelectorAll("[data-demo]").forEach((btn) => btn.addEventListener("
 
 // ── 브리지 폴링 ──
 function applyLive(st) {
+  const body = st.features ? { ...st.features, ...((st.enemy_items || []).length ? { enemy_items: st.enemy_items } : {}) } : null;
   view = { mode: "live", t: st.game_time_sec, coach: st.coach, owned: new Set((st.owned_items || []).map((i) => i.itemID)),
-           level: st.level, next: st.next_skill, when: st.next_skill_when };
+           level: st.level, next: st.next_skill, when: st.next_skill_when, body };
   render();
 }
 async function poll() {

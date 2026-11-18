@@ -123,6 +123,10 @@
                         box-shadow: 0 0 16px rgba(216, 180, 90, .75); } }
   .focus { color: var(--sub); font-size: 13px; margin-top: 10px; overflow-wrap: anywhere; }
   .basis { color: var(--dim); font-size: 12px; margin-top: 12px; overflow-wrap: anywhere; }
+  .brief h2 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .brief .src { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--sub); }
+  .brief .src.llm { color: var(--good); border-color: currentColor; }
+  .brief-text { margin: 0; line-height: 1.6; overflow-wrap: anywhere; }
 
   .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
   .row { display: flex; justify-content: space-between; gap: 8px; padding: 6px 0; border-top: 1px solid var(--line); }
@@ -262,6 +266,11 @@
       <div class="vs" id="vs" aria-label="내 챔피언과 상대 위협"></div>
     </div>
     <div class="err" id="err" hidden><span id="errText"></span><button id="retry" type="button">다시 시도</button></div>
+  </section>
+
+  <section class="card res brief" aria-label="AI 감독 브리핑" aria-live="polite">
+    <h2>AI 감독 브리핑 <span class="src" id="briefSrc">대기 중</span></h2>
+    <p class="brief-text" id="briefText">점수판을 계산하면 감독 브리핑을 붙여요.</p>
   </section>
 
   <section class="card res" aria-label="추천 아이템">
@@ -552,7 +561,7 @@ async function refresh() {
       const res = await fetch("/coach", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(sent) });
       if (!res.ok) throw new Error(res.status === 422 ? await explain422(res, sent) : `서버가 답하지 않았어요 (${res.status}).`);
       const body = await res.json();
-      if (my === seq) render(body);  // 늦게 온 옛 응답은 버린다
+      if (my === seq) { render(body); loadBriefing(sent, my); }  // 늦게 온 옛 응답은 버린다
     } catch (e) {
       if (my !== seq) return;
       $("errText").textContent = e.name === "TypeError" ? "API에 연결하지 못했어요." : e.message;
@@ -560,6 +569,25 @@ async function refresh() {
       document.body.classList.add("stale");
     }
   }, 120);
+}
+// AI 감독 브리핑 (AGENTS.md 4절 POST /coach/briefing). 승률·목표를 먼저 그린 뒤 따로 받는다. 글자는 textContent 로만
+async function loadBriefing(sent, my) {
+  $("briefSrc").textContent = "생성 중"; $("briefSrc").className = "src";
+  try {
+    const res = await fetch("/coach/briefing", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(sent) });
+    if (!res.ok) throw new Error(String(res.status));
+    const r = await res.json();
+    if (my !== seq) return;
+    $("briefText").textContent = r.briefing;
+    const llm = r.source === "llm";
+    $("briefSrc").textContent = llm ? `LLM · ${r.llm_model}` : "규칙 문장";
+    $("briefSrc").className = llm ? "src llm" : "src";
+    $("briefSrc").title = r.fallback_reason ? `규칙 문장으로 답한 이유: ${r.fallback_reason}` : "";
+  } catch (_) {
+    if (my !== seq) return;
+    $("briefText").textContent = "브리핑을 받지 못했어요.";
+    $("briefSrc").textContent = "오류"; $("briefSrc").className = "src";
+  }
 }
 // 슬라이더·라디오는 바로, 챔피언 이름 칸은 다 쓰고 나서(목록 고르기·엔터·칸 벗어나기) 계산한다
 document.addEventListener("input", (e) => { if (e.target.type !== "text") refresh(); });
