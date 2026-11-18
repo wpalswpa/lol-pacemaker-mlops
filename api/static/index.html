@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>10분 페이스메이커</title>
+<title>LoL 페이스메이커 (페이커)</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='6' fill='%23d8b45a'/%3E%3C/svg%3E">
 <style>
   /* 표시 규칙의 정본은 AGENTS.md 3-3절. 이 화면은 /coach 응답을 그림으로 옮기기만 하고 새로 계산하지 않는다 */
@@ -36,12 +36,15 @@
   #result { transition: border-color .35s, box-shadow .35s; }
   body.fx-off .edge { display: none; }
   body.fx-off #result { border-color: var(--line) !important; box-shadow: none !important; }
+  body.fx-off .step:first-child { border-color: var(--line) !important; }
   body.stale .edge { opacity: .25; animation: none; }
   @keyframes pulse { 0%, 100% { opacity: .7; } 50% { opacity: 1; } }
 
   .topbar { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
   .topbar h1 { font-size: 15px; font-weight: 600; margin: 0; color: var(--sub); letter-spacing: .02em; }
   .topbar .right { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .topbar h1 .nick { color: var(--gold); }
+  .topbar h1 .tag { font-size: 12px; font-weight: 500; color: var(--dim); margin-left: 4px; }
   .ver { font-size: 12px; color: var(--dim); font-variant-numeric: tabular-nums; }
   .fx { display: inline-flex; align-items: center; gap: 8px; }
   .fx .sw { width: 34px; height: 18px; border-radius: 9px; background: #2a3342; position: relative; transition: background .2s; flex: none; }
@@ -174,7 +177,7 @@
 <div class="edge" aria-hidden="true"></div>
 <main>
   <div class="topbar">
-    <h1>10분 페이스메이커</h1>
+    <h1>LoL 페이스메이커 <span class="nick">(페이커)</span> <span class="tag">10분 실시간 코치</span></h1>
     <div class="right">
       <button type="button" class="fx" id="fxToggle" aria-pressed="true" title="화면 가장자리 색 테두리를 끄고 켭니다">
         <span class="sw" aria-hidden="true"></span><span>테두리 이펙트</span> <b id="fxState">ON</b>

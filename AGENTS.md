@@ -320,7 +320,16 @@ models/onnx/current.json          {"model_version", "set_at", "run"}
 
 - `/health` 확인은 호스트 안에서만 열린 `127.0.0.1:${API_PORT:-8080}`으로 한다. 밖에서 들어오는 길(Caddy)과 별개로 컨테이너 자체가 살았는지 보기 위해서다.
 
-**승격 순서** (`model.yml`): 학습 → 게이트 → ONNX → 모델 카드 → Parity → (서버 러너) 낡은 실행 검사 → 버킷에 새 판 올리기 → 서버로 받기 → `server.sh model` → `current.json` 갱신.
+**승격 순서** (`model.yml`): (학습 러너, 한 잡) 학습 → 게이트 → ONNX → 모델 카드 → Parity → 세 파일 묶기 → (서버 러너) 묶음 확인 → 낡은 실행 검사 → 버킷에 새 판 올리기 → 서버로 받기 → `server.sh model` → `current.json` 갱신.
+
+**잡 사이 파일 전달 (Actions 아티팩트를 쓰지 않는다)**
+
+2026-11-18 `ci.yml` 실행에서 학습·게이트·ONNX는 통과했지만 `actions/upload-artifact`가 `Artifact storage quota has been hit`(계정 무료 저장 한도 초과)로 실패해 배포가 멈췄다. 아티팩트 저장 한도는 저장소가 아니라 계정 단위라 이 저장소에서 지워도 다시 걸릴 수 있다. 그래서 두 워크플로 모두 아티팩트를 쓰지 않는다.
+
+| 워크플로 | 방식 | 이유 |
+|---|---|---|
+| `ci.yml` | `build` 한 잡에서 학습 → 게이트 → ONNX → Parity → (태그면) 이미지 빌드·GHCR 푸시. `artifacts/`를 그 자리에서 그대로 쓴다 | 같은 GitHub 러너 안이라 넘길 일이 없다. 게이트·Parity가 실패하면 같은 잡의 이미지 단계가 돌지 않는 순서도 그대로다 |
+| `model.yml` | `train` 한 잡에서 학습 → Parity까지 하고, 서버에 필요한 세 파일(`model_sklearn.onnx`·`model.json`·`baseline.json`, tar.gz 후 base64 약 14 KB)을 **잡 출력**(`bundle`, `sha256`)으로 `promote`에 넘긴다. `promote`는 sha256과 `model.json`의 판 이름을 확인한 뒤 푼다 | 학습 러너(GitHub 러너·EC2)는 Lightsail 버킷에 키 없이 쓸 수 없다. S3 임시 경로를 쓰려면 장기 액세스 키를 GitHub에 둬야 해 1절 규칙에 어긋난다. 2 GB 서빙 인스턴스에서 학습하면 PyTorch를 서버에 깔아야 해 12절에 어긋난다. 잡 출력은 키도 저장 한도도 필요 없다(한 잡 1 MB 한도, 묶음이 500,000자를 넘으면 학습 잡이 실패한다) |
 
 **낡은 실행 검사**: 이 실행이 시작된 뒤 `current.json`의 `set_at`이 바뀌었으면(그사이 다른 승격이나 되돌리기가 있었으면) 승격하지 않는다. 늦게 끝난 옛 실행이 방금 되돌린 판을 다시 덮어쓰지 않게 하기 위해서다.
 
@@ -338,7 +347,7 @@ models/onnx/current.json          {"model_version", "set_at", "run"}
 | 워커 켜기·끄기 | GitHub OIDC로 맡는 IAM 역할 `${{ vars.AWS_ROLE_ARN }}` | 없음(OIDC 단기 토큰) | `model.yml` 시작·끝 |
 | 원천 데이터(수집한 경기 기록) | 일반 S3 버킷 `${{ vars.DATA_BUCKET }}` | EC2 IAM Role | 학습 때 |
 
-- **EC2는 Lightsail 버킷에 직접 쓰지 않는다.** Lightsail 버킷의 리소스 액세스는 같은 리전의 Lightsail 인스턴스만 받고, 그 밖에서는 장기 액세스 키가 필요하다(AWS Lightsail 문서 "Control access to Lightsail buckets for instances", "Secure Lightsail object storage buckets", 2026-11-18 확인). 그래서 워커는 학습 결과를 GitHub Actions 아티팩트로 넘기고, 버킷에 올리는 일은 서빙 인스턴스의 러너(`promote`)가 한다. 이렇게 하면 어디에도 키가 생기지 않는다.
+- **EC2는 Lightsail 버킷에 직접 쓰지 않는다.** Lightsail 버킷의 리소스 액세스는 같은 리전의 Lightsail 인스턴스만 받고, 그 밖에서는 장기 액세스 키가 필요하다(AWS Lightsail 문서 "Control access to Lightsail buckets for instances", "Secure Lightsail object storage buckets", 2026-11-18 확인). 그래서 워커는 서버에 필요한 세 파일을 잡 출력으로 넘기고(아래 "잡 사이 파일 전달"), 버킷에 올리는 일은 서빙 인스턴스의 러너(`promote`)가 한다. 이렇게 하면 어디에도 키가 생기지 않는다.
 - 기본값은 `trainer=github`(GitHub 러너)다. EC2 없이도 같은 흐름이 돈다. EC2는 대량 수집·재학습처럼 GitHub 러너의 시간·메모리가 모자랄 때만 쓴다.
 - **실습용 `eta-mini-aws` 자원과 섞지 않는다.** 이름은 `lol-` 접두어(인스턴스 `lol-mini`, 버킷 `lol-models-…`), 서버 경로 `/srv/lol`, Compose 프로젝트 이름 `lol`, 동시 실행 그룹 `lightsail-lol`을 쓴다. 같은 인스턴스에 두면 80·443 포트와 러너가 겹치므로 서빙 인스턴스를 따로 만든다.
 
