@@ -48,7 +48,8 @@ API 계약, 검증 기준 수치, 승격·되돌리기 절차의 정본은 [AGEN
 
 1. **게임 중인 플레이어**: 긴 글을 읽을 시간이 없다. 브리지(`client/bridge.py`)가 10분이 되면 한 번만 계산을 받아, 화면 우측 상단에 3줄짜리 작은 카드를 5초 띄웠다가 지우고(테두리가 우세 초록·접전 노랑·열세 빨강으로 빛남), 원하면 음성으로 한 번 읽어 준다. 둘은 `--effect on|off`, `--tts on|off`(또는 환경 변수 `LOL_EFFECT`, `LOL_TTS`)로 따로 켜고 끈다. 내 챔피언과 상대 최다 킬 챔피언은 게임 응답에서 자동으로 찾아 빌드 가이드에 넣는다. "승률 43% · 상위 68% / CS +20 → 53% (상위 45%)". 표나 긴 글은 띄우지 않는다. 카드 문구는 응답의 `toast`를 그대로 쓴다.
 2. **AI 코칭 에이전트(음성 비서, 디스코드 봇)**: 언어 모델이 승률을 어림하면 그럴듯한 숫자를 지어낸다. 원본 프로젝트의 정성 시험(SC-7)에서도 언어 모델이 킬 수만 보고 틀린 조언을 냈다. 에이전트가 `/openapi.json`의 도구(`predict_pace`, `coach_targets`)를 부르면 승률·요인·위치·목표가 담긴 JSON을 받아 그 숫자로만 말한다. 응답의 `model_version`으로 어느 판의 계산인지도 남긴다. 이 과정을 `client/agent_demo.py`가 그대로 보여 준다(도구 정의 변환 → `coach_targets` 호출 → 응답 숫자만으로 브리핑, 언어 모델 키 없이 재생).
-3. **발표·연습용 웹 시뮬레이터(`GET /`)**: 게임 클라이언트가 없어도 점수판 값과 챔피언을 프리셋·슬라이더·목록으로 바꿔 보는 어두운 카드 화면이다. 초보자가 글을 읽지 않고 따라 하도록 그림으로 보여 준다. 상태에 따라 화면 가장자리와 결과 카드 테두리가 초록(우세 · 적극 교전 가능)·노랑(접전 · 파밍 집중)·빨강(열세 · 1대1 싸움 금지)으로 빛나고 상단 버튼으로 끈다. 티어 분포 막대에는 지금 위치 ●와 첫 목표를 채웠을 때 위치 ★, 그 아래 3단계 행동 카드(예: 🛡️ 1대1 싸움 멈추기 → 🌾 포탑 앞에서 미니언 챙기기 + 첫 목표 → 🏃 아군 강세 라인 합류), Data Dragon 실제 아이콘으로 그린 내 챔피언 대 상대 위협과 아이템 카드 3장(신발 → 하위템 → 코어, 가격과 이유), 스킬 키캡 `[Q] ▶ [E] ▶ [W]`가 나온다. 행동 카드는 상태별 고정 문구이고 아이템·스킬은 규칙표다(AGENTS.md 3-3절).
+3. **게임 중 오버레이(`GET /overlay`, `client/bridge.py --overlay --launch-popup`)**: OP.GG 데스크톱 앱처럼 게임 창 우측 상단에 항상 떠 있는 380×560 HUD다. 브리지가 2초마다 점수판·레벨·인벤토리를 읽어 지금 시각의 누적 값을 10분 페이스로 환산해 `/coach`를 부르고(AGENTS.md 3-4절), HUD 는 `실시간 게임 중 승률`, 전술 배지, 한 줄 목표, 시작·상황별 아이템, 구매 순서(이미 산 것은 `✓ 보유 완료`)와 **지금 살 아이템(금색)·이번 레벨에 찍을 스킬 키(청록)에 빛나는 강조 테두리**를 보여 준다. 상단 버튼으로 이펙트를 끈다. 브리지가 없으면 `초반 우세 06:30`·`중반 박빙 14:20`·`후반 열세 23:10` 데모로 단독 시연한다. 관전·리플레이·연습 모드용이다.
+4. **발표·연습용 웹 시뮬레이터(`GET /`)**: 게임 클라이언트가 없어도 점수판 값과 챔피언을 프리셋·슬라이더·목록으로 바꿔 보는 어두운 카드 화면이다. 초보자가 글을 읽지 않고 따라 하도록 그림으로 보여 준다. 상태에 따라 화면 가장자리와 결과 카드 테두리가 초록(우세 · 적극 교전 가능)·노랑(접전 · 파밍 집중)·빨강(열세 · 1대1 싸움 금지)으로 빛나고 상단 버튼으로 끈다. 티어 분포 막대에는 지금 위치 ●와 첫 목표를 채웠을 때 위치 ★, 그 아래 3단계 행동 카드(예: 🛡️ 1대1 싸움 멈추기 → 🌾 포탑 앞에서 미니언 챙기기 + 첫 목표 → 🏃 아군 강세 라인 합류), Data Dragon 실제 아이콘으로 그린 내 챔피언 대 상대 위협과 아이템 카드 3장(신발 → 하위템 → 코어, 가격과 이유), 스킬 키캡 `[Q] ▶ [E] ▶ [W]`가 나온다. 행동 카드는 상태별 고정 문구이고 아이템·스킬은 규칙표다(AGENTS.md 3-3절).
 
 **입력을 어디서 얻나(합법적 경계)**: 사람이 웹 화면에 넣거나, 브리지가 Riot 공식 로컬 API(`127.0.0.1:2999/liveclientdata/allgamedata`)를 관전·리플레이·연습 모드에서 읽는다. 점수판과 오브젝트 이벤트만 쓰고, 랭크 게임 중에는 쓰지 않는다. Data Dragon 아이템 가격표로 계산한 양 팀 아이템 골드는 참고 값으로 로그에만 남기고 모델에 넣지 않는다. 학습 데이터의 골드(쓰지 않은 골드 포함 총골드)와 정의가 달라 섞으면 학습과 서빙이 어긋나기 때문이다.
 
@@ -171,6 +172,11 @@ uv run python -m client.agent_demo --server http://127.0.0.1:8083
 
 # 발표 슬라이드: http://127.0.0.1:8083/slides (←·→·스페이스·클릭, 주소 #n 으로 바로 가기)
 
+# 게임 중 오버레이 팝업 (관전·리플레이·연습 모드. 브리지는 표준 라이브러리만 써서 python3 로 바로 돈다)
+python3 -m client.bridge --server http://<고정 IP> --insecure-local --overlay --launch-popup
+# 게임 없이: 저장한 응답 + 로컬 서버 (HUD: http://127.0.0.1:8083/overlay, 상태: http://127.0.0.1:8765/bridge/state)
+uv run python -m client.bridge --server http://127.0.0.1:8083 --file client/tests/fixtures/allgamedata_10min.json --overlay --launch-popup
+
 # 6. 로컬 전 과정 재현 (승격 m20261118-1 → -2, 깨진 판 자동 복구, 되돌리기)
 E2E_DIR="$HOME/Library/Caches/lol-mlops-e2e" bash deploy/local_e2e.sh
 ```
@@ -187,7 +193,7 @@ lol-pace-mlops/
 ├── 발표대본.md               11/24 5분 발표 대본, 시연 순서, 예상 질문
 ├── pyproject.toml, uv.lock   기본(서빙): fastapi·uvicorn·numpy·onnxruntime / train 그룹: pandas·scikit-learn·torch·onnx
 ├── api/
-│   ├── app.py                GET /health, POST /predict, POST /coach, GET / (웹 시뮬레이터), GET /slides (발표 슬라이드), GET /meta/champions (숨은 경로)
+│   ├── app.py                GET /health, POST /predict, POST /coach, GET / (웹 시뮬레이터), GET /overlay (게임 중 오버레이 HUD), GET /slides (발표 슬라이드), GET /meta/champions (숨은 경로)
 │   ├── contract.py           입력·출력 모델과 422 규칙, 피처 변환
 │   ├── service.py            요인 분해·백분위·코칭·티어 비교 (모든 구현체 공통)
 │   ├── build.py              우세·열세 상태 및 상대 위협 맞춤 아이템·스킬 가이드 계산
@@ -197,10 +203,13 @@ lol-pace-mlops/
 │   ├── predictors/           rule · sklearn · dl · onnx (load → predict_proba)
 │   ├── static/index.html     웹 시뮬레이터 (테두리 이펙트 ON/OFF, ●★ 분포 막대, 행동 카드, 아이템·챔피언 아이콘, 스킬 키캡)
 │   ├── static/slides.html    5분 발표 슬라이드 7장 (외부 자원 없는 한 파일, 키보드·클릭·진행 막대)
+│   ├── static/overlay.html   게임 중 오버레이 HUD 380×560 (브리지 폴링, 구매·스킬 강조 테두리, 데모 3개)
 │   ├── tests/                계약 테스트와 고정 자료
 │   └── Dockerfile            ONNX Runtime만 담은 서빙 이미지
 ├── client/
-│   ├── bridge.py             로컬 게임 API → 입력 변환(챔피언 자동 추출), 10분 한 번 호출, 테두리 카드·음성 ON/OFF
+│   ├── bridge.py             로컬 게임 API → 입력 변환(챔피언 자동 추출), 10분 한 번 호출, 테두리 카드·음성 ON/OFF,
+│   │                         --overlay(10분 페이스 환산·보유 아이템·다음 스킬·/bridge/state), --launch-popup
+│   ├── overlay_popup.swift   macOS 항상 위 팝업(NSPanel .floating + WKWebView), 브리지가 컴파일해 실행
 │   ├── agent_demo.py         AI 에이전트 시연: /openapi.json → 도구 정의, coach_targets 호출, 응답 숫자만으로 브리핑
 │   └── tests/                변환 테스트와 고정 자료
 ├── training/
@@ -228,6 +237,7 @@ lol-pace-mlops/
 1. `model.yml` 실행(잡 출력으로 넘긴 세 파일 → 버킷 승격, 서버 `/health`의 `model_version`이 새 판인지), 이어 `rollback.yml`로 이전 판 되돌리기 실측.
 2. Docker 가 되는 PC 에서 `deploy/local_e2e.sh` 전체 재실행(이번 PC 에서는 학습·게이트·ONNX·Parity 단계까지만 확인).
 3. 발표 리허설(`발표대본.md`, 5분).
+4. 화면에 로그인한 Mac 에서 오버레이 팝업이 실제로 게임 위에 뜨는지 확인하고 시연 영상 녹화(이번 PC 계정은 화면 세션이 없어 창을 띄우지 못했다).
 <!-- TODO:END -->
 
 ## 12. 검증 결과
@@ -246,6 +256,8 @@ lol-pace-mlops/
 | 웹 시뮬레이터 화면 | 헤드리스 Chromium, 1280px·400px | 가로 넘침 0(`scrollWidth` = 화면 폭), Data Dragon 아이콘 5장 로드, 우세·접전·열세 테두리 색, ON/OFF 토글과 새로고침 뒤 유지, 모르는 챔피언 422 때 칸 이름이 든 오류 문구 | 통과 |
 | 발표 슬라이드 `/slides` | 헤드리스 Chromium, 1366px·1024px·400px | 7장 모두 가로 넘침 0, →·←·Home·클릭·`#5` 이동과 진행 막대, 마지막 장 시연 버튼이 `/`로 이동, 외부 요청 0건, 콘솔 오류 0 | 통과 |
 | AI 에이전트 시연 | `client/tests/test_agent_demo.py` 9건, ONNX 서버에 CLI 실행 | 도구 2개(`$ref` 없는 독립 스키마) 추출, 브리핑의 숫자가 모두 응답 값(응답에 없는 숫자를 넣으면 검사가 잡음), `model_version`·`basis` 포함 | 통과 |
+| 게임 중 오버레이 `/overlay` | 헤드리스 Chromium 380×560·380×532, 브리지 `--file --overlay` + ONNX 서버 | 가로 넘침 0, 532px 안에 들어감, `🟢 게임 중 LIVE (10:00)`, 구매 강조가 카드 클릭마다 다음 카드로 이동, 이펙트 OFF 즉시 해제·새로고침 뒤 유지, 데모 우세 92%·접전 48%·열세 2%, 브리지 없으면 시뮬레이션, 콘솔 오류 0 | 통과 |
+| 브리지 오버레이 모드 | `client/tests/test_bridge.py` 새 21건 | 10분 페이스 환산(3·15·20분, 30초, 10분), 보유 아이템, 스킬 계획, 호출 간격 5초, 상태 서버 CORS·404·게임 API 실패 때 `connected: false`, 팝업 방식 선택. 뮤테이션 3건(반올림·랭크 상한·호출 간격) 모두 검출 | 통과 |
 | 규칙 기준선 (`rule`) | 고정 평가셋 1,976경기 | 정확도 **0.7151** · Brier **0.1917** · LogLoss **0.5676** | 기준선 |
 | 성능 게이트 (`DATA_N=500, SEED=0`) | `sklearn` / `dl` | `sklearn`: 정확도 **0.7090**, Brier **0.1891**, LogLoss **0.5555**<br>`dl`: 정확도 **0.7100**, Brier **0.1887**, LogLoss **0.5566** | 통과 |
 | 성능 게이트 (`DATA_N=5000, SEED=1`) | `sklearn` / `dl` | `sklearn`: 정확도 **0.7156**, Brier **0.1824**, LogLoss **0.5385**<br>`dl`: 정확도 **0.7136**, Brier **0.1837**, LogLoss **0.5424** | 통과 |

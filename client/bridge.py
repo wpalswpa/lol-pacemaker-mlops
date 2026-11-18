@@ -29,19 +29,28 @@
 
   uv run python -m client.bridge --api http://127.0.0.1:8080 --effect on --tts on
   LOL_TTS=on uv run python -m client.bridge --file client/tests/fixtures/allgamedata_10min.json --effect off
+
+게임 중 오버레이 (AGENTS.md 3-4절). 2초마다 읽어 10분 페이스로 환산해 /coach 를 부르고,
+127.0.0.1:<--listen-port>/bridge/state 로 HUD(GET /overlay)에 넘긴다. --launch-popup 이면 항상 위 팝업을 띄운다.
+  uv run python -m client.bridge --server http://127.0.0.1:8083 --insecure-local --overlay --launch-popup
 """
 import argparse
+import hashlib
 import json
+import math
 import os
 import platform
 import shutil
 import ssl
 import subprocess
 import sys
+import threading
 import time
+import webbrowser
 import urllib.error
 import urllib.request
 from collections.abc import Callable, Mapping
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 TEN_MINUTES = 600.0
 POLL_SECONDS = 2.0
@@ -51,6 +60,10 @@ RAW_PREFIX = "game_character_displayname_"
 CHAMPION_FIELDS = ("my_champion", "enemy_top_threat")
 # 토스트 카드 테두리 색 (build_advice.state). 웹 시뮬레이터의 테두리 이펙트와 같은 세 색
 GLOW = {"ahead": "#3ddc97", "even": "#ffd34d", "behind": "#ff4d5e"}
+# 3절 허용 범위 (10분 페이스 환산 뒤 자른다)
+LIMITS = {"kills": 100, "assists": 300, "cs": 2000, "dragons": 7, "heralds": 2, "towers": 11}
+COACH_MIN_SECONDS = 5.0
+POPUP_SIZE = (380, 560)
 
 
 def _names(p: dict) -> set[str]:
@@ -182,6 +195,281 @@ def wait_and_coach(fetch: Callable[[], dict], coach: Callable[[dict], dict],
         sleep(POLL_SECONDS)
 
 
+# ── 게임 중 오버레이 (AGENTS.md 3-4절) ──
+def _half_up(x: float) -> int:
+    return int(math.floor(x + 0.5))
+
+
+def pace_scale(game_time: float) -> tuple[float, float]:
+    """(경과 분, 배율). 1분 전은 1분으로 본다."""
+    minutes = max(float(game_time) / 60.0, 1.0)
+    return minutes, 10.0 / minutes
+
+
+def scale_to_ten_minutes(state: dict, game_time: float) -> dict:
+    """누적 지표를 "지금 속도로 10분이 되었을 때" 값으로. avg_level·first_blood·챔피언 칸은 그대로."""
+    _, k = pace_scale(game_time)
+    out = dict(state)
+    for t in ("blue", "red"):
+        team = dict(state[t])
+        for stat, hi in LIMITS.items():
+            team[stat] = min(max(_half_up(team[stat] * k), 0), hi)
+        team["avg_level"] = min(max(float(team["avg_level"]), 1.0), 18.0)
+        out[t] = team
+    return out
+
+
+def extract_features_from_liveclient(data: dict, side: str | None = None,
+                                     prices: dict[str, float] | None = None) -> dict:
+    """allgamedata → 10분 페이스로 환산한 /coach 입력."""
+    state, info = to_game_state(data, side, prices)
+    return scale_to_ten_minutes(state, info["game_time"])
+
+
+def _me(data: dict) -> dict | None:
+    players = data.get("allPlayers") or []
+    me = _names(data.get("activePlayer") or {})
+    return next((p for p in players if _names(p) & me), players[0] if players else None)
+
+
+def extract_owned_items(data: dict) -> list[dict]:
+    """내 선수(activePlayer 와 같은 이름, 없으면 첫 선수)의 보유 아이템."""
+    p = _me(data) or {}
+    return [{"itemID": int(it["itemID"]), "displayName": it.get("displayName", ""),
+             "count": int(it.get("count", 1)), "slot": it.get("slot")}
+            for it in p.get("items", []) if "itemID" in it]
+
+
+def skill_plan(order: str | None, levels: int = 18) -> list[str | None]:
+    """1~levels 레벨에 찍을 스킬. 1~3레벨은 순서대로 하나씩, 6·11·16은 R, 나머지는 상한에 닿지 않은 첫 스킬."""
+    keys = [k.strip() for k in order.split(">")] if order else []
+    count = {k: 0 for k in keys}
+    plan: list[str | None] = []
+    for lv in range(1, levels + 1):
+        if lv in (6, 11, 16):
+            plan.append("R")
+            continue
+        cap = min((lv + 1) // 2, 5)  # r랭크는 레벨 2r-1 부터
+        if lv <= 3:
+            pick = next((k for k in keys if count[k] == 0), None)
+        else:
+            pick = next((k for k in keys if count[k] < cap), None)
+        if pick:
+            count[pick] += 1
+        plan.append(pick)
+    return plan
+
+
+def next_skill(level: int, order: str | None, abilities: dict[str, int] | None = None) -> tuple[str | None, str]:
+    """(이번에 찍을 스킬, "now" 또는 "next_level")."""
+    level = min(max(int(level), 1), 18)
+    plan = skill_plan(order)
+    if abilities is None:
+        return plan[level - 1], "now"
+    seen: dict[str, int] = {}
+    for k in plan[:level]:
+        if k is None:
+            continue
+        seen[k] = seen.get(k, 0) + 1
+        if abilities.get(k, 0) < seen[k]:
+            return k, "now"
+    return (plan[level] if level < 18 else None), "next_level"
+
+
+def _abilities(data: dict) -> dict[str, int] | None:
+    ab = (data.get("activePlayer") or {}).get("abilities")
+    if not isinstance(ab, dict):
+        return None
+    return {k: int(ab[k].get("abilityLevel", 0)) for k in ("Q", "W", "E", "R") if isinstance(ab.get(k), dict)}
+
+
+def _order_of(coach: dict | None) -> str | None:
+    return (((coach or {}).get("build_advice") or {}).get("skill_order") or {}).get("order")
+
+
+class OverlayBridge:
+    """게임 API 를 읽을 때마다 상태를 갱신한다. HTTP 서버는 snapshot() 만 읽는다."""
+
+    def __init__(self, fetch: Callable[[], dict], coach: Callable[[dict], dict], side: str | None = None,
+                 prices: dict | None = None, source: str = "live", clock: Callable[[], float] = time.time):
+        self.fetch, self.coach, self.side, self.prices, self.clock = fetch, coach, side, prices, clock
+        self.lock = threading.Lock()
+        self.last_coach_at: float | None = None
+        self.last_coach_input: dict | None = None
+        self.state = {"connected": False, "source": source, "in_game": False, "game_time_sec": 0.0,
+                      "minutes": None, "pace_scale": None, "updated_at": None, "champion": None, "level": None,
+                      "owned_items": [], "next_skill": None, "next_skill_when": None, "features": None,
+                      "raw_features": None, "coach": None, "coach_error": None, "error": None}
+
+    def snapshot(self) -> dict:
+        with self.lock:
+            return json.loads(json.dumps(self.state))
+
+    def step(self) -> dict:
+        try:
+            data = self.fetch()
+            raw, info = to_game_state(data, self.side, self.prices)
+        except Exception as e:  # noqa: BLE001  게임 API 가 꺼져 있어도 서버는 살아 있어야 한다
+            with self.lock:
+                self.state.update(connected=False, error=f"{type(e).__name__}: {e}"[:200])
+            return self.snapshot()
+        gt = info["game_time"]
+        minutes, k = pace_scale(gt)
+        features = scale_to_ten_minutes(raw, gt)
+        me = _me(data) or {}
+        level = int((data.get("activePlayer") or {}).get("level") or me.get("level") or 1)
+        now = self.clock()
+
+        coach, coach_error = self.state["coach"], None
+        due = self.last_coach_at is None or (features != self.last_coach_input
+                                             and now - self.last_coach_at > COACH_MIN_SECONDS)
+        if due:
+            try:
+                coach = coach_with_fallback(self.coach, features)
+                self.last_coach_input, self.last_coach_at = features, now
+            except Exception as e:  # noqa: BLE001  직전 응답을 그대로 둔다
+                coach_error = f"{type(e).__name__}: {e}"[:200]
+                self.last_coach_at = now
+        skill, when = next_skill(level, _order_of(coach), _abilities(data))
+        with self.lock:
+            self.state.update(
+                connected=True, in_game=gt > 0, game_time_sec=gt, minutes=minutes, pace_scale=k, updated_at=now,
+                champion=champion_of(me) if me else None, level=level, owned_items=extract_owned_items(data),
+                next_skill=skill, next_skill_when=when, features=features, raw_features=raw, coach=coach,
+                coach_error=coach_error if due else self.state["coach_error"], error=None)
+        return self.snapshot()
+
+
+def _handler(bridge: OverlayBridge) -> type[BaseHTTPRequestHandler]:
+    class Handler(BaseHTTPRequestHandler):
+        def _cors(self) -> None:
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Access-Control-Allow-Private-Network", "true")
+            self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
+            self.send_header("Cache-Control", "no-store")
+
+        def do_OPTIONS(self) -> None:  # noqa: N802
+            self.send_response(204)
+            self._cors()
+            self.end_headers()
+
+        def do_GET(self) -> None:  # noqa: N802
+            if self.path.split("?", 1)[0] != "/bridge/state":
+                self.send_response(404)
+                self._cors()
+                self.end_headers()
+                return
+            body = json.dumps(bridge.snapshot(), ensure_ascii=False).encode()
+            self.send_response(200)
+            self._cors()
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args) -> None:  # 2초마다 찍히는 접속 기록은 숨긴다
+            pass
+
+    return Handler
+
+
+def serve_state(bridge: OverlayBridge, port: int = 8765) -> ThreadingHTTPServer:
+    """127.0.0.1 에만 연다. 뒤쪽 스레드에서 돈다."""
+    httpd = ThreadingHTTPServer(("127.0.0.1", port), _handler(bridge))
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    return httpd
+
+
+def overlay_url(server: str, port: int) -> str:
+    return f"{server.rstrip('/')}/overlay?bridge_url=http://127.0.0.1:{port}/bridge/state"
+
+
+SWIFT_SRC = os.path.join(os.path.dirname(__file__), "overlay_popup.swift")
+CHROME_MAC = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+
+
+def popup_command(url: str, system: str | None = None, which: Callable[[str], str | None] = shutil.which,
+                  exists: Callable[[str], bool] = os.path.exists, build: Callable[[], str | None] | None = None
+                  ) -> tuple[str, list[str] | None]:
+    """(방식, 명령). 방식은 "swift"(항상 위 패널), "chrome"(--app 창), "browser"(기본 브라우저, 명령 None)."""
+    system = system or platform.system()
+    w, h = POPUP_SIZE
+    if system == "Darwin" and which("swiftc"):
+        binary = (build or build_swift_popup)()
+        if binary:
+            return "swift", [binary, url, str(w), str(h)]
+    chrome = (CHROME_MAC if system == "Darwin" and exists(CHROME_MAC) else None) or next(
+        (c for c in (which("google-chrome"), which("chrome"), which("chromium"), which("msedge")) if c), None)
+    if chrome:
+        return "chrome", [chrome, f"--app={url}", f"--window-size={w},{h}", "--window-position=9999,0",
+                          "--user-data-dir=" + os.path.join(_cache_dir(), "chrome-profile")]
+    return "browser", None
+
+
+def _cache_dir() -> str:
+    base = os.path.expanduser("~/Library/Caches") if platform.system() == "Darwin" else (
+        os.environ.get("LOCALAPPDATA") or os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache"))
+    path = os.path.join(base, "lol-pace-overlay")
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def build_swift_popup() -> str | None:
+    """client/overlay_popup.swift 를 캐시 폴더에 컴파일한다(소스가 바뀌었을 때만). 실패하면 None."""
+    with open(SWIFT_SRC, "rb") as f:
+        digest = hashlib.sha256(f.read()).hexdigest()[:12]
+    out = os.path.join(_cache_dir(), f"overlay-popup-{digest}")
+    if os.path.exists(out):
+        return out
+    plist = os.path.join(_cache_dir(), "Info.plist")
+    with open(plist, "w", encoding="utf-8") as f:  # 웹 화면이 http://127.0.0.1 브리지를 읽을 수 있게
+        f.write('<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0"><dict>'
+                "<key>CFBundleIdentifier</key><string>local.lolpace.overlay</string>"
+                "<key>NSAppTransportSecurity</key><dict><key>NSAllowsArbitraryLoadsInWebContent</key><true/>"
+                "<key>NSAllowsLocalNetworking</key><true/></dict></dict></plist>\n")
+    cmd = ["swiftc", "-O", SWIFT_SRC, "-o", out, "-framework", "Cocoa", "-framework", "WebKit",
+           "-Xlinker", "-sectcreate", "-Xlinker", "__TEXT", "-Xlinker", "__info_plist", "-Xlinker", plist]
+    r = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    if r.returncode != 0:
+        print(f"swiftc 실패, 다른 방식으로 띄운다: {r.stderr.strip()[:300]}", file=sys.stderr)
+        return None
+    return out
+
+
+def launch_popup(server: str, port: int) -> str:
+    """항상 위 팝업을 띄우고 쓴 방식을 돌려준다."""
+    url = overlay_url(server, port)
+    how, cmd = popup_command(url)
+    if cmd:
+        subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    else:
+        webbrowser.open(url)
+    print(f"오버레이 팝업({how}): {url}")
+    return how
+
+
+def run_overlay(bridge: OverlayBridge, port: int, popup_server: str | None = None,
+                sleep: Callable[[float], None] = time.sleep, max_steps: int | None = None) -> None:
+    httpd = serve_state(bridge, port)
+    print(f"브리지 상태: http://127.0.0.1:{httpd.server_address[1]}/bridge/state (멈추려면 Ctrl+C)")
+    if popup_server:
+        launch_popup(popup_server, httpd.server_address[1])
+    steps = 0
+    try:
+        while max_steps is None or steps < max_steps:
+            st = bridge.step()
+            steps += 1
+            if st["connected"] and st["coach"]:
+                mm, ss = divmod(int(st["game_time_sec"]), 60)
+                print(f"\r게임 중 {mm:02d}:{ss:02d} · 승률 {st['coach']['my_win_prob'] * 100:.0f}% · "
+                      f"다음 스킬 {st['next_skill'] or '-'}   ", end="", flush=True)
+            sleep(POLL_SECONDS)
+    except KeyboardInterrupt:
+        print()
+    finally:
+        httpd.shutdown()
+
+
 # ── 입출력 ──
 def fetch_live(base: str, cafile: str | None, insecure_local: bool = False) -> dict:
     if not base.startswith(("https://127.0.0.1", "https://localhost")):
@@ -282,7 +570,7 @@ def alert_switches(effect: str | None, tts: str | None, env: Mapping[str, str] =
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="10분에 한 번 페이스·목표를 알려 준다")
-    ap.add_argument("--api", default="http://127.0.0.1:8080")
+    ap.add_argument("--api", "--server", dest="api", default="http://127.0.0.1:8080", help="API 서버 주소")
     ap.add_argument("--live", default="https://127.0.0.1:2999")
     ap.add_argument("--cafile", help="Riot 로컬 API 인증서(riotgames.pem)")
     ap.add_argument("--insecure-local", action="store_true", help="인증서 확인 없이 127.0.0.1 만 읽기")
@@ -294,6 +582,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--card", dest="effect", action="store_const", const="on", help="--effect on 과 같다")
     ap.add_argument("--voice", dest="tts", action="store_const", const="on", help="--tts on 과 같다")
     ap.add_argument("--card-seconds", type=float, default=5.0)
+    ap.add_argument("--overlay", action="store_true", help="게임 중 계속 판단해 /bridge/state 로 HUD 에 넘긴다")
+    ap.add_argument("--listen-port", type=int, default=8765, help="오버레이 상태 서버 포트 (127.0.0.1)")
+    ap.add_argument("--launch-popup", action="store_true", help="항상 위 오버레이 팝업 창을 띄운다 (--overlay 포함)")
     a = ap.parse_args(argv)
     try:
         effect_on, tts_on = alert_switches(a.effect, a.tts)
@@ -312,6 +603,12 @@ def main(argv: list[str] | None = None) -> int:
     else:
         fetch = lambda: fetch_live(a.live, a.cafile, a.insecure_local)  # noqa: E731
         max_polls = None
+
+    if a.overlay or a.launch_popup:
+        bridge = OverlayBridge(fetch, lambda s: post_coach(a.api, s), a.side, prices,
+                               source="file" if a.file else "live")
+        run_overlay(bridge, a.listen_port, a.api if a.launch_popup else None)
+        return 0
 
     def notify(lines: list[str], state: str | None = None) -> None:
         if tts_on:

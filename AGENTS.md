@@ -80,7 +80,7 @@
 
 ### 3-2. 게임을 방해하지 않는 알림 (브리지)
 
-- `gameData.gameTime >= 600`(10분)이 된 뒤 **한 번만** `/coach`를 부른다. 그 전에는 2초마다 시간만 확인한다.
+- (기본 모드) `gameData.gameTime >= 600`(10분)이 된 뒤 **한 번만** `/coach`를 부른다. 그 전에는 2초마다 시간만 확인한다. 게임 내내 계속 판단하는 오버레이 모드는 3-4절.
 - 알림은 두 가지이고 각각 켜고 끈다. ① 이펙트: 화면 우측 상단의 작은 카드(토스트), 최대 3줄(승률 · 상위 % · 핵심 목표 1개), 5초 뒤 자동으로 사라짐(3~8초 사이로 조정). 카드 테두리는 `build_advice.state`에 따라 초록(`ahead`)·노랑(`even`)·빨강(`behind`)으로 빛난다. ② 음성 한 번(PC 내장 음성 합성). 표·긴 글·그래프는 띄우지 않는다.
 - 켜고 끄는 법: 실행 옵션이 환경 변수보다 앞선다.
 
@@ -98,6 +98,7 @@
 
 | 칸 | 무엇을 보고 | 어떻게 보여 주나 |
 |---|---|---|
+| 결과 카드 제목 | 고정 | `실시간 게임 중 승률 예측`(입력은 10분 페이스 기준 점수판). 위쪽에 오버레이(`/overlay`)·발표 슬라이드(`/slides`) 링크 |
 | 테두리 이펙트 | `build_advice.state` | 뷰포트 가장자리와 결과 카드 테두리를 초록(`ahead`, 문구 `우세 · 적극 교전 가능`)·노랑(`even`, `접전 · 파밍 집중`)·빨강(`behind`, `열세 · 1대1 싸움 금지`)으로 빛나게 한다. 상단의 **[테두리 이펙트 ON/OFF]** 버튼으로 바로 끄고 켠다(`aria-pressed`, 브라우저에 기억, 저장이 안 되는 환경에서도 동작). 동작 줄이기 설정(`prefers-reduced-motion`)이면 깜빡임 없이 색만 |
 | 분포 막대 | `tier_percentile.overall_top_pct`, `coaching[0].overall_top_pct_after` | 현재 위치 ●, 첫 목표를 채웠을 때 위치 ★ |
 | 챔피언 초상화 | 선택한 내 챔피언·상대 위협 | `https://ddragon.leagueoflegends.com/cdn/{version}/img/champion/{id}.png`. `version`·`id`는 `GET /meta/champions`. 역할군·유형으로 고르면 글자 배지 |
@@ -115,6 +116,75 @@
 | `ahead` | ⚔️ 적극 교전 가능 | 🎯 첫 목표로 격차 굴리기 | 🐉 오브젝트 압박 |
 
 첫 목표가 없으면(`coaching`이 비면) ②는 `지금 페이스 유지`다. 이 문구는 상태에 따른 일반 원칙이고, 특정 시각·특정 오브젝트를 지금 하라는 지시가 아니다(12절).
+
+### 3-4. 게임 중 오버레이 (`client/bridge.py --overlay`, `GET /overlay`)
+
+기본 모드(3-2)가 10분에 한 번 알리는 것과 달리, 오버레이 모드는 게임 시작부터 끝까지 2초마다 로컬 게임 API를 읽어 게임 창 위의 작은 HUD(380×560)에 보여 준다. 쓰는 곳은 3-1과 같다(관전·리플레이·연습 모드, 랭크 게임 중에는 쓰지 않는다. 12절).
+
+**10분 페이스 환산 (`extract_features_from_liveclient`)**
+
+모델은 10분 스냅샷으로 학습했다. 다른 시각의 점수판을 그대로 넣으면 3분에는 격차가 작아 보이고 25분에는 모든 격차가 과장된다. 그래서 누적 값을 "지금 속도로 10분이 되었을 때"의 값으로 바꿔 넣는다.
+
+| 항목 | 규칙 |
+|---|---|
+| 경과 분 | `minutes = max(gameData.gameTime / 60, 1.0)` (1분 전은 1분으로 본다) |
+| 배율 | `pace_scale = 10 / minutes` |
+| 누적 지표 `kills`·`assists`·`cs`·`dragons`·`heralds`·`towers` | 양 팀 각각 `값 × pace_scale`을 반올림(0.5는 올림)하고 3절 허용 범위 안으로 자른다(정수 칸이라 소수는 422) |
+| `avg_level` | 바꾸지 않는다. 레벨은 시간에 비례해 쌓이지 않는다. 1~18로만 자른다 |
+| `first_blood`·`my_side`·챔피언 칸 | 그대로 |
+
+- 10:00(600초)에서는 배율이 1이라 기본 모드 입력과 같다.
+- **한계**: 환산한 승률은 데이터로 검증하지 않은 가정이다. 성능 게이트와 Parity는 10분 스냅샷에서만 확인했다. 이른 시각에는 킬 한두 개도 크게 부풀려진다. 그래서 화면에 `10분 페이스 환산`을 함께 적는다.
+
+**`/coach` 호출**: 첫 호출은 바로, 그 뒤에는 환산 입력이 직전 호출과 다르고 직전 호출에서 5초(`COACH_MIN_SECONDS`) 넘게 지났을 때만 부른다. 422 대응은 3-1과 같다. 호출이 실패하면 직전 응답을 그대로 두고 `coach_error`에 이유를 적는다.
+
+**보유 아이템 `extract_owned_items(allgamedata)`**: `activePlayer`와 이름(`riotId`·`riotIdGameName`·`summonerName`)이 같은 선수, 없으면 `allPlayers`의 첫 선수의 `items`에서 `[{itemID, displayName, count, slot}]`.
+
+**다음 스킬 `next_skill(level, order, abilities=None)`**
+
+- 계획: 1~3레벨은 `order` 순서로 세 스킬을 하나씩, 6·11·16레벨은 R, 그 밖의 레벨은 `order`에서 레벨 상한에 닿지 않은 첫 스킬(기본 스킬 r랭크는 레벨 `2r − 1`부터, 최대 5랭크). `"Q > W > E"`면 1~18레벨이 `Q W E Q Q R Q W Q W R W W E E R E E`.
+- `abilities`(로컬 API `activePlayer.abilities`의 `abilityLevel`)가 있으면 계획을 1레벨부터 따라가며 실제로 찍은 수가 계획보다 적은 첫 스킬을 `when: "now"`로, 다 찍었으면 다음 레벨의 계획 스킬을 `when: "next_level"`로 낸다. 없으면 이번 레벨의 계획 스킬을 `"now"`로 낸다.
+- `order`가 `null`(규칙표에 없는 챔피언)이면 6·11·16레벨의 R만 내고 그 밖에는 `null`.
+
+**로컬 상태 서버**: `--overlay`면 `127.0.0.1:<--listen-port, 기본 8765>`에만 HTTP 서버를 연다. `GET /bridge/state`는 아래 JSON을 `Access-Control-Allow-Origin: *`, `Access-Control-Allow-Private-Network: true`, `Cache-Control: no-store`와 함께 돌려준다(`OPTIONS`도 같은 헤더로 204). 그 밖의 경로는 404. 게임 API를 읽지 못해도 서버는 멈추지 않고 `connected: false`와 마지막 상태를 돌려준다.
+
+| 필드 | 뜻 |
+|---|---|
+| `connected` / `source` | 게임 API(또는 `--file`)를 이번에 읽었는지, `"live"`·`"file"` |
+| `in_game` / `game_time_sec` / `minutes` / `pace_scale` | 게임 중인지(`gameTime > 0`), 경과 초, 환산에 쓴 분과 배율 |
+| `updated_at` | 마지막으로 읽은 시각(유닉스 초) |
+| `champion` / `level` | 내 챔피언 영문 ID, 내 레벨(`activePlayer.level`) |
+| `owned_items` | `extract_owned_items` 결과 |
+| `next_skill` / `next_skill_when` | 위 규칙. 스킬 순서는 마지막 `coach.build_advice.skill_order.order` |
+| `features` / `raw_features` | 환산한 `/coach` 입력, 환산 전 입력 |
+| `coach` / `coach_error` / `error` | 마지막 `/coach` 응답(없으면 `null`), 호출 실패 이유, 게임 API 읽기 실패 이유 |
+
+**팝업 `--launch-popup`**: `<--server>/overlay?bridge_url=http://127.0.0.1:<포트>/bridge/state`를 380×560 창으로 화면 우측 상단에 띄운다(`--server`는 `--api`와 같은 옵션).
+
+1. macOS이고 `swiftc`가 있으면 `client/overlay_popup.swift`를 사용자 캐시 폴더에 컴파일(소스가 바뀌었을 때만)해 실행한다. `NSPanel`을 `.floating` 단계로 띄우고 모든 데스크톱·전체 화면 보조 창으로 두며, 눌러도 게임에서 입력 초점을 빼앗지 않는다(`nonactivatingPanel`).
+2. 아니면 Chrome `--app=<URL> --window-size=380,560`(항상 위는 보장하지 않는다), 그것도 없으면 기본 브라우저.
+
+LoL은 "테두리 없는 창 모드"여야 위에 뜬다. 전체 화면 독점 모드에서는 어떤 창도 게임 위에 뜨지 않는다.
+
+**오버레이 화면 (`api/static/overlay.html`)**: 화면이 계산을 새로 하지 않고 `/coach` 응답과 브리지 상태만 옮긴다(데모 시나리오의 환산만 위 규칙 그대로 화면에서 한다).
+
+| 칸 | 무엇을 보고 | 어떻게 보여 주나 |
+|---|---|---|
+| 상태 배지 | 브리지 `connected`, `game_time_sec` | 연결되면 `🟢 게임 중 LIVE (MM:SS)`, 아니면 `🟡 게임 중 시뮬레이션 (MM:SS)`(데모 시나리오 시각) |
+| 이펙트 토글 | 사용자 | `이펙트 ON`·`이펙트 OFF`. 끄면 구매·스킬 강조 테두리의 빛과 애니메이션을 바로 없앤다(배지는 남김). `aria-pressed`, 브라우저에 기억(저장 실패해도 동작) |
+| 승률 (`win_prob`) | `my_win_prob` | 제목 `실시간 게임 중 승률`, 그 아래 `10분 페이스 환산` |
+| 전술 배지 (`tactical_action`) | `build_advice.state` | 3-3의 테두리 문구(`우세 · 적극 교전 가능` 등) |
+| 한 줄 코칭 (`coach_message`) | `coaching[0].message` | 목표가 없으면 `지금 페이스 유지` |
+| 시작 아이템 (`starter_items`) | `build_advice.starter_items` | 아이콘 카드 |
+| 구매 순서 (`boots`, `core_items`) | `build_advice.recommended_items` | `1단계 신발 → 2단계 하위템 → 3단계 코어` 카드. 규칙표가 정한 구매 순서가 이 세 단계라 코어 아이템 3개를 따로 지어내지 않는다 |
+| 상황별 아이템 (`situational_items`) | `build_advice.situational_items` | 아이콘 카드와 `why` |
+| 보유 표시 | `owned_items[].itemID` | 같은 `item_id` 카드에 `✓ 보유 완료`와 반투명 |
+| 지금 구매 추천 | 구매 순서 중 보유하지 않은 첫 카드 | `지금 구매 추천` 배지와 금색 맥박 테두리. 카드를 누르면 화면 안에서 보유를 바꿔 강조가 다음 카드로 옮겨 간다(브리지에 연결된 동안에는 2초마다 실제 인벤토리로 다시 맞춘다) |
+| 스킬 키 | `skill_order.order`, `next_skill` | 키캡 줄과 이번에 찍을 키 카드(`[Q]`·`[R]` 등)에 청록 맥박 테두리. 데모에서는 시나리오 레벨로 위 계획을 계산 |
+| 폴링 | `?bridge_url=`(기본 `http://127.0.0.1:8765/bridge/state`) | 2초마다. 실패하면 시뮬레이션으로 둔다 |
+| 데모 | `초반 우세 06:30`·`중반 박빙 14:20`·`후반 열세 23:10` | 시나리오의 누적 점수판을 위 규칙으로 환산해 같은 출처의 `/coach`를 부른다. 데모를 누르면 상태 배지를 누를 때까지 LIVE 결과로 덮지 않는다 |
+
+글자는 모두 `textContent`로 넣고(브리지·서버 응답을 HTML로 해석하지 않는다), 아이콘 주소는 정수 `item_id`와 `/meta/champions`의 `version`으로만 만든다. 동작 줄이기 설정이면 깜빡임 없이 색만.
 
 ## 4. 출력 계약
 
@@ -188,6 +258,8 @@
 | `enemy_top_threat` / `threat_type` | 해석한 상대 위협 챔피언 이름(유형으로 받았으면 `null`)과 위협 유형(`AD`·`AP`·`HEAL`·`TANK`) |
 | `posture` | 상태별 빌드 방향 한 줄(규칙표의 문장) |
 | `recommended_items` | 정확히 3개, `step` 1·2·3 순서. 1 = 신발, 2 = 하위템(대응 또는 피해), 3 = 코어. 각 `{step, slot, item_id, name, gold, why}` |
+| `starter_items` | 게임 시작 때 살 아이템. 규칙표 `starter[내 계열]` 순서. 각 `{item_id, name, gold, why}` |
+| `situational_items` | 상황이 바뀌면 바꿔 살 아이템, 최대 3개. 각 `{item_id, name, gold, why}`. 아래 적용 순서 8 |
 | `skill_order` | `{order, focus, source}`. `order`는 규칙표에 그 챔피언이 있으면 `"Q > W > E"` 형식, 없으면 `null`. `focus`는 상태별 마스터 원칙 문장. `source`는 `"규칙표"` 또는 `"원칙만"` |
 | `basis` | 근거 출처 문장(규칙표와 Data Dragon 판 번호). 모델 계산이 아님을 밝힌다 |
 
@@ -199,6 +271,8 @@
 4. 2단계 하위템: 위협이 `HEAL`이면 치유 감소(`anti_heal[내 피해 또는 tank]`), `TANK`면 관통(`anti_tank[…]`), 그 밖에 `behind`면 방어 하위템(`defensive_component[위협]`), 아니면 피해 하위템(`damage_component[내 계열]`).
 5. 3단계 코어: `behind`이고 위협이 `AD`·`AP`면 `core.behind[위협][내 계열]`, 그 밖에는 `core.ahead[내 계열]`.
 6. 스킬: `skill_orders[챔피언 ID]`가 있으면 그 순서, `focus`는 `skill_focus[state]`.
+7. 시작 아이템: `starter[내 계열]`, `why`는 `why.starter`.
+8. 상황별 아이템: 후보를 이 순서로 놓는다. ① `anti_heal[내 피해 또는 tank]`(`why.situational_heal`) ② `anti_tank[…]`(`why.situational_tank`) ③ `defensive_component.AD`(`why.situational_ad`) ④ `defensive_component.AP`(`why.situational_ap`). `recommended_items`에 이미 있는 아이템과 앞 후보와 같은 아이템을 빼고 앞에서 3개.
 
 규칙표와 `game_data.json`은 패치마다 사람이 다시 확인한다. `training/ddragon.py`가 Data Dragon 최신 판에서 `game_data.json`을 다시 만들고, 규칙표의 아이템 ID가 그 판에 없으면 실패한다.
 
@@ -219,6 +293,10 @@
 ```
 
 `champions`는 `game_data.json`의 모든 챔피언, 한국어 이름 순. `roles`는 규칙표 `role_class`의 키, `threat_types`는 규칙표 `threat_types` 그대로다.
+
+### `GET /overlay` (게임 중 오버레이 HUD, `include_in_schema=False`)
+
+`api/static/overlay.html`을 그대로 돌려준다(`text/html`). 표시 규칙과 브리지 연동은 3-4절.
 
 ### `GET /slides` (발표 슬라이드, `include_in_schema=False`)
 
@@ -273,7 +351,7 @@ p_blue   = 1 / (1 + exp(−gold_est / 2500))
 
 ## 7. 테스트 작성 규칙 (`api/tests/`, `client/tests/`, `deploy/tests/`)
 
-- **범위**: `/predict`·`/coach`의 응답 형식과 계산 정의, 규칙 기준선 값, 백분위 계산(보간·동점 구간·표 밖), 입력 검증(422 목록 전부), `/health`, `/openapi.json`의 도구 이름, 레드 기준 뒤집기, 경계값(허용 범위의 끝, 하나 밖). 빌드 가이드의 규칙표 적용 순서(상태·계열·위협 조합)와 선택 칸 해석(이름·역할군·생략·없는 이름 422). `GET /meta/champions`의 형식과 스키마 숨김, `GET /slides`가 HTML을 돌려주는지. `client/agent_demo.py`의 도구 정의 변환(`$ref` 풀기, 두 도구), 브리핑에 응답의 승률·목표·아이템·`model_version`·`basis`가 들어가고 응답에 없는 숫자가 없는지. 브리지의 응답 변환, 내 챔피언·상대 최다 킬(동률이면 최다 CS) 챔피언 찾기, 422 때 두 칸 빼고 한 번 다시 부르기, 10분 한 번 호출, `--effect`·`--tts` 옵션과 환경 변수의 우선순위. `server.sh`의 판 형식 검사와 실패 시 되돌리기.
+- **범위**: `/predict`·`/coach`의 응답 형식과 계산 정의, 규칙 기준선 값, 백분위 계산(보간·동점 구간·표 밖), 입력 검증(422 목록 전부), `/health`, `/openapi.json`의 도구 이름, 레드 기준 뒤집기, 경계값(허용 범위의 끝, 하나 밖). 빌드 가이드의 규칙표 적용 순서(상태·계열·위협 조합)와 선택 칸 해석(이름·역할군·생략·없는 이름 422). `GET /meta/champions`의 형식과 스키마 숨김, `GET /slides`·`GET /overlay`가 HTML을 돌려주는지(오버레이는 강조 테두리·토글·브리지 폴링·`게임 중` 표시 포함). 빌드 가이드의 `starter_items`·`situational_items`. 오버레이 모드의 10분 페이스 환산(3분·15분·1분 미만·10분), 보유 아이템 추출, 다음 스킬 계획, `/coach` 호출 간격, 로컬 상태 서버의 JSON·CORS 헤더·게임 API 실패 때 `connected: false`, 팝업 실행 방식 선택. `client/agent_demo.py`의 도구 정의 변환(`$ref` 풀기, 두 도구), 브리핑에 응답의 승률·목표·아이템·`model_version`·`basis`가 들어가고 응답에 없는 숫자가 없는지. 브리지의 응답 변환, 내 챔피언·상대 최다 킬(동률이면 최다 CS) 챔피언 찾기, 422 때 두 칸 빼고 한 번 다시 부르기, 10분 한 번 호출, `--effect`·`--tts` 옵션과 환경 변수의 우선순위. `server.sh`의 판 형식 검사와 실패 시 되돌리기.
 - **범위 밖**: 학습한 모델의 성능(`training/validate_model.py` 담당), 원본과 ONNX의 일치(`training/check_parity.py` 담당), 실제 Docker 컨테이너 기동(`deploy/local_e2e.sh` 담당).
 - **기대값의 출처**: 5절 규칙 식과 4절 정의, 고정 자료 `api/tests/fixtures/baseline.json`에서 테스트 안에서 손으로 계산한다. **현재 코드의 출력을 정답으로 옮겨 적지 않는다.** 옮겨 적으면 버그도 정답이 된다.
 - API 테스트는 `MODEL_IMPL=rule`, `MODEL_DIR=api/tests/fixtures`로 돌린다. 학습 산출물·Docker가 없어도 돌아야 하고, **skipped는 0건**이어야 한다.
@@ -381,7 +459,7 @@ models/onnx/current.json          {"model_version", "set_at", "run"}
 ## 12. 하지 않는 것
 
 - 상대 팀의 가려진 정보(골드, 경험치, 와드, 위치, 쿨다운)를 읽거나 추정해 입력으로 받지 않는다.
-- 랭크 게임 중에 화면 위에 띄우는 오버레이를 만들지 않는다.
+- 랭크 게임 중에 쓰는 오버레이를 만들지 않는다. 3-4절의 오버레이는 관전·리플레이·연습 모드용이다.
 - 전술 지시("지금 바론 가라")를 내리지 않는다. API는 정량 목표치만 준다. 웹 시뮬레이터의 3단계 행동 카드(3-3절)는 상태별 일반 원칙 문구이고 시각·대상을 정한 지시가 아니다.
 - 베팅·배당 산출에 쓰지 않는다.
 - 서빙 서버에 scikit-learn·PyTorch를 설치하지 않는다(이미지는 `onnxruntime`만).

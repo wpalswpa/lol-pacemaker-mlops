@@ -438,6 +438,20 @@ def test_slides_page(client, app_module):
     assert "/slides" not in app_module.app.openapi()["paths"]  # 에이전트 도구에는 안 보인다
 
 
+def test_overlay_page(client, app_module):
+    res = client.get("/overlay")
+    assert res.status_code == 200 and "text/html" in res.headers["content-type"]
+    t = res.text
+    assert "now-buy" in t and "now-skill" in t                      # 구매·스킬 강조 테두리
+    assert "지금 구매 추천" in t and "✓ 보유 완료" in t
+    assert 'id="fx"' in t and "이펙트 ON" in t and "이펙트 OFF" in t and "fx-off" in t  # 토글
+    assert "http://127.0.0.1:8765/bridge/state" in t and "bridge_url" in t        # 브리지 폴링
+    assert "게임 중 LIVE" in t and "게임 중 시뮬레이션" in t and "실시간 게임 중 승률" in t
+    for demo in ("초반 우세 06:30", "중반 박빙 14:20", "후반 열세 23:10"):
+        assert demo in t
+    assert "/overlay" not in app_module.app.openapi()["paths"]
+
+
 def test_meta_champions_for_simulator(client):
     game = json.load(open(os.path.join(os.path.dirname(FIXTURES), "..", "game_data.json"), encoding="utf-8"))
     rules = json.load(open(os.path.join(os.path.dirname(FIXTURES), "..", "build_rules.json"), encoding="utf-8"))

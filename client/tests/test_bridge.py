@@ -260,3 +260,209 @@ def test_live_fetch_refuses_remote_hosts_and_silent_insecure():
         fetch_live("https://example.com:2999", None, insecure_local=True)
     with pytest.raises(ValueError):
         fetch_live("https://127.0.0.1:2999", None)  # 인증서도, 명시적 허용도 없으면 거절
+
+
+# ── 게임 중 오버레이 (AGENTS.md 3-4절) ──
+import http.client  # noqa: E402
+
+from api.tests.conftest import app_module as app_module  # noqa: E402,F401  (/coach 로 환산 입력 확인)
+from api.tests.conftest import client as client  # noqa: E402,F401
+
+from client.bridge import (OverlayBridge, extract_features_from_liveclient, extract_owned_items,  # noqa: E402
+                           next_skill, overlay_url, popup_command, run_overlay, serve_state, skill_plan)
+
+
+def at(seconds: float) -> dict:
+    d = copy.deepcopy(DATA)
+    d["gameData"]["gameTime"] = seconds
+    return d
+
+
+def teams(state):
+    return {t: {k: v for k, v in state[t].items()} for t in ("blue", "red")}
+
+
+@pytest.mark.parametrize("seconds,blue,red", [
+    # 3분: 배율 10/3. 블루 킬 5→16.67→17, 어시 6→20, CS 250→833.3→833, 전령 1→3.33→3 이지만 허용 범위 2로 자름
+    #      레드 킬 7→23.3→23, 어시 9→30, CS 268→893.3→893, 드래곤 1→3, 포탑 1→3
+    (180.0, {"kills": 17, "assists": 20, "cs": 833, "dragons": 0, "heralds": 2, "towers": 0},
+            {"kills": 23, "assists": 30, "cs": 893, "dragons": 3, "heralds": 0, "towers": 3}),
+    # 15분: 배율 2/3. 블루 5→3.33→3, 6→4, 250→166.7→167, 전령 0.67→1 / 레드 7→4.67→5, 9→6, 268→178.7→179, 드래곤·포탑 0.67→1
+    (900.0, {"kills": 3, "assists": 4, "cs": 167, "dragons": 0, "heralds": 1, "towers": 0},
+            {"kills": 5, "assists": 6, "cs": 179, "dragons": 1, "heralds": 0, "towers": 1}),
+    # 20분: 배율 0.5. 킬 5→2.5 는 0.5 올림으로 3 (은행가 반올림이면 2), 어시 6→3, CS 125, 전령 0.5→1
+    #       레드 7→3.5→4, 9→4.5→5, 134, 드래곤·포탑 0.5→1
+    (1200.0, {"kills": 3, "assists": 3, "cs": 125, "dragons": 0, "heralds": 1, "towers": 0},
+             {"kills": 4, "assists": 5, "cs": 134, "dragons": 1, "heralds": 0, "towers": 1}),
+    # 30초: 1분으로 보고 배율 10. CS 2500·2680 은 2000, 전령 10→2, 드래곤 10→7, 포탑 10
+    (30.0, {"kills": 50, "assists": 60, "cs": 2000, "dragons": 0, "heralds": 2, "towers": 0},
+           {"kills": 70, "assists": 90, "cs": 2000, "dragons": 7, "heralds": 0, "towers": 10}),
+])
+def test_pace_scaling_to_ten_minutes(seconds, blue, red):
+    f = extract_features_from_liveclient(at(seconds))
+    assert teams(f) == {"blue": {**blue, "avg_level": 6.8}, "red": {**red, "avg_level": 7.0}}  # 레벨은 그대로
+    assert {k: f[k] for k in ("first_blood", "my_side", "my_champion", "enemy_top_threat")} == {
+        "first_blood": "red", "my_side": "blue", "my_champion": "Ahri", "enemy_top_threat": "Zed"}
+    GameState(**f)  # 정수 칸·허용 범위 그대로 /coach 입력 계약을 지킨다
+
+
+def test_pace_scaling_is_identity_at_ten_minutes():
+    assert extract_features_from_liveclient(at(600.0)) == WANT
+
+
+def test_scaled_input_is_accepted_by_coach(client):  # noqa: F811
+    for s in (30.0, 180.0, 900.0, 1500.0):
+        res = client.post("/coach", json=extract_features_from_liveclient(at(s)))
+        assert res.status_code == 200, (s, res.text)
+
+
+def test_extract_owned_items():
+    # activePlayer A1 의 아이템 (도란의 검 1개)
+    assert extract_owned_items(DATA) == [{"itemID": 1055, "displayName": "item1055", "count": 1, "slot": None}]
+    # activePlayer 가 없으면(관전) 첫 선수 A1, 이름이 riotId 로만 맞아도 찾는다
+    d = copy.deepcopy(DATA)
+    d.pop("activePlayer")
+    assert [i["itemID"] for i in extract_owned_items(d)] == [1055]
+    d = copy.deepcopy(DATA)
+    d["activePlayer"] = {"riotId": "B1#KR1"}
+    d["allPlayers"][5]["items"] = [{"itemID": 1036, "displayName": "롱소드", "count": 2, "slot": 3, "price": 350}]
+    assert extract_owned_items(d) == [{"itemID": 1036, "displayName": "롱소드", "count": 2, "slot": 3}]
+
+
+def test_skill_plan():
+    # AGENTS.md 3-4절의 예: 1~3레벨 Q W E, 6·11·16 R, 기본 스킬 r랭크는 2r-1 레벨부터
+    assert " ".join(skill_plan("Q > W > E")) == "Q W E Q Q R Q W Q W R W W E E R E E"
+    assert " ".join(skill_plan("E > Q > W")) == "E Q W E E R E Q E Q R Q Q W W R W W"
+    assert skill_plan(None) == [None] * 5 + ["R"] + [None] * 4 + ["R"] + [None] * 4 + ["R", None, None]
+
+
+@pytest.mark.parametrize("level,abilities,want", [
+    (7, None, ("Q", "now")),                                   # 계획의 7레벨 = Q
+    (6, None, ("R", "now")),
+    (4, {"Q": 1, "W": 1, "E": 1, "R": 0}, ("Q", "now")),       # 4레벨에 Q 두 번째를 아직 안 찍음
+    (3, {"Q": 1, "W": 1, "E": 1, "R": 0}, ("Q", "next_level")),  # 다 찍었으니 4레벨 계획 Q
+    (6, {"Q": 3, "W": 1, "E": 1, "R": 0}, ("R", "now")),       # 궁극기를 아직 안 찍음
+    (2, {"Q": 0, "W": 1, "E": 0, "R": 0}, ("Q", "now")),       # 계획과 다르게 W 를 먼저 찍었으면 빠진 Q
+    (18, {"Q": 5, "W": 5, "E": 5, "R": 3}, (None, "next_level")),
+])
+def test_next_skill(level, abilities, want):
+    assert next_skill(level, "Q > W > E", abilities) == want
+
+
+def test_next_skill_without_order():
+    assert next_skill(7, None) == (None, "now")
+    assert next_skill(11, None) == ("R", "now")
+
+
+COACH = {"my_win_prob": 0.4, "build_advice": {"skill_order": {"order": "Q > W > E"}}}
+
+
+class Clock:
+    def __init__(self):
+        self.t = 1000.0
+
+    def __call__(self):
+        return self.t
+
+
+def make_bridge(frames, clock, calls, fail=False):
+    def fetch():
+        f = frames[0]
+        if isinstance(f, Exception):
+            raise f
+        return f
+
+    def coach(state):
+        calls.append(state)
+        if fail:
+            raise urllib.error.URLError("서버 꺼짐")
+        return {**COACH, "n": len(calls)}
+
+    return OverlayBridge(fetch, coach, clock=clock)
+
+
+def test_overlay_bridge_state_and_coach_interval():
+    clock, calls, frames = Clock(), [], [at(900.0)]
+    b = make_bridge(frames, clock, calls)
+    st = b.step()
+    assert len(calls) == 1 and calls[0] == extract_features_from_liveclient(at(900.0))  # 첫 호출은 바로
+    assert st["connected"] and st["in_game"] and st["source"] == "live"
+    assert (st["game_time_sec"], st["minutes"], st["pace_scale"]) == (900.0, 15.0, pytest.approx(2 / 3))
+    assert (st["champion"], st["level"]) == ("Ahri", 7)
+    assert st["owned_items"] == [{"itemID": 1055, "displayName": "item1055", "count": 1, "slot": None}]
+    assert (st["next_skill"], st["next_skill_when"]) == ("Q", "now")  # 응답의 순서 Q > W > E, 7레벨
+    assert st["features"] == calls[0] and st["raw_features"] == WANT and st["coach"]["n"] == 1
+
+    clock.t += 3
+    b.step()                       # 입력 같음 → 부르지 않음
+    frames[0] = at(1200.0)
+    b.step()                       # 입력이 바뀌었어도 3초 → 아직
+    assert len(calls) == 1
+    clock.t += 3                   # 직전 호출에서 6초
+    st = b.step()
+    assert len(calls) == 2 and st["coach"]["n"] == 2 and st["game_time_sec"] == 1200.0
+
+
+def test_overlay_bridge_survives_failures():
+    clock, calls, frames = Clock(), [], [at(900.0)]
+    b = make_bridge(frames, clock, calls)
+    b.step()
+    frames[0] = urllib.error.URLError("2999 연결 거부")
+    st = b.step()
+    assert st["connected"] is False and "2999" in st["error"]
+    assert st["coach"]["n"] == 1 and st["game_time_sec"] == 900.0  # 마지막 상태를 그대로 둔다
+
+    clock2, calls2 = Clock(), []
+    st = make_bridge([at(900.0)], clock2, calls2, fail=True).step()
+    assert st["connected"] and st["coach"] is None and "서버 꺼짐" in st["coach_error"]
+    assert st["next_skill"] is None  # 스킬 순서를 모르면 7레벨은 없음
+
+
+def test_state_server_json_and_cors():
+    clock, calls = Clock(), []
+    b = make_bridge([at(900.0)], clock, calls)
+    httpd = serve_state(b, 0)
+    try:
+        port = httpd.server_address[1]
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        conn.request("GET", "/bridge/state")
+        r = conn.getresponse()
+        body = json.loads(r.read())
+        assert r.status == 200 and r.getheader("Access-Control-Allow-Origin") == "*"
+        assert r.getheader("Access-Control-Allow-Private-Network") == "true"
+        assert body["connected"] is False and body["coach"] is None  # 아직 한 번도 읽지 않음
+        b.step()
+        conn.request("GET", "/bridge/state?t=1")
+        body = json.loads(conn.getresponse().read())
+        assert set(body) >= {"connected", "in_game", "game_time_sec", "updated_at", "champion", "level",
+                             "owned_items", "features", "coach"}
+        assert body["connected"] and body["game_time_sec"] == 900.0
+        conn.request("OPTIONS", "/bridge/state")
+        r = conn.getresponse(); r.read()
+        assert r.status == 204 and r.getheader("Access-Control-Allow-Origin") == "*"
+        conn.request("GET", "/other")
+        r = conn.getresponse(); r.read()
+        assert r.status == 404
+    finally:
+        httpd.shutdown()
+
+
+def test_run_overlay_one_step_then_stops():
+    clock, calls = Clock(), []
+    b = make_bridge([at(900.0)], clock, calls)
+    run_overlay(b, 0, sleep=lambda s: None, max_steps=2)
+    assert len(calls) == 1
+
+
+def test_popup_command_choice():
+    url = overlay_url("http://127.0.0.1:8083/", 8765)
+    assert url == "http://127.0.0.1:8083/overlay?bridge_url=http://127.0.0.1:8765/bridge/state"
+    how, cmd = popup_command(url, "Darwin", which=lambda n: "/usr/bin/swiftc" if n == "swiftc" else None,
+                             build=lambda: "/cache/overlay-popup")
+    assert how == "swift" and cmd == ["/cache/overlay-popup", url, "380", "560"]
+    # swiftc 가 없거나 컴파일이 실패하면 Chrome --app
+    for which, build in ((lambda n: None, None), (lambda n: "/usr/bin/swiftc" if n == "swiftc" else None, lambda: None)):
+        how, cmd = popup_command(url, "Darwin", which=which, exists=lambda p: True, build=build)
+        assert how == "chrome" and f"--app={url}" in cmd and "--window-size=380,560" in cmd
+    how, cmd = popup_command(url, "Linux", which=lambda n: None, exists=lambda p: False)
+    assert (how, cmd) == ("browser", None)

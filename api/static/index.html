@@ -171,13 +171,16 @@
     .key { animation-duration: .01s; animation-delay: 0s; }
     .mark, .arrow, .edge, #result { transition: none; }
   }
+  .wintitle { font-weight: 700; font-size: 14px; color: var(--sub); margin-bottom: 6px; }
+  .wintitle small { font-weight: 400; color: var(--dim); font-size: 12px; margin-left: 6px; }
+  h1 a.tag { text-decoration: none; }
 </style>
 </head>
 <body>
 <div class="edge" aria-hidden="true"></div>
 <main>
   <div class="topbar">
-    <h1>LoL 페이스메이커 <span class="nick">(페이커)</span> <span class="tag">10분 실시간 코치</span></h1>
+    <h1>LoL 페이스메이커 <span class="nick">(페이커)</span> <span class="tag">게임 중 실시간 코치</span> <a class="tag" href="/overlay">오버레이</a> <a class="tag" href="/slides">발표 슬라이드</a></h1>
     <div class="right">
       <button type="button" class="fx" id="fxToggle" aria-pressed="true" title="화면 가장자리 색 테두리를 끄고 켭니다">
         <span class="sw" aria-hidden="true"></span><span>테두리 이펙트</span> <b id="fxState">ON</b>
@@ -188,6 +191,7 @@
 
   <section class="card" id="result" aria-live="polite">
     <div class="res">
+      <div class="wintitle">실시간 게임 중 승률 예측 <small>입력은 10분 페이스 기준 점수판</small></div>
       <div class="banner" id="banner"><span class="lamp" aria-hidden="true"></span><span id="bannerText">계산 중</span></div>
       <div class="hero"><span class="prob num" id="prob">?</span><span class="chip" id="pace">계산 전</span></div>
       <div class="msg" id="msg">점수판 값을 바꾸면 바로 다시 계산해요.</div>

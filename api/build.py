@@ -83,6 +83,24 @@ def _item(step: int, item_id: int, why_key: str) -> dict:
             "why": RULES["why"][why_key]}
 
 
+def _extra(item_id: int, why_key: str) -> dict:
+    it = GAME["items"][str(item_id)]
+    return {"item_id": item_id, "name": it["name"], "gold": it["gold"], "why": RULES["why"][why_key]}
+
+
+def _situational(pierce: str, taken: set[int]) -> list[dict]:
+    """AGENTS.md 규칙표 적용 순서 8: 회복 대응 → 관통 → 물리 방어 → 마법 방어, 이미 고른 것과 겹치면 뺀다."""
+    out, seen = [], set(taken)
+    for item_id, why in ((RULES["anti_heal"][pierce], "situational_heal"),
+                         (RULES["anti_tank"][pierce], "situational_tank"),
+                         (RULES["defensive_component"]["AD"], "situational_ad"),
+                         (RULES["defensive_component"]["AP"], "situational_ap")):
+        if item_id not in seen:
+            seen.add(item_id)
+            out.append(_extra(item_id, why))
+    return out[:3]
+
+
 def advise(my_win_prob: float, my_champion: str | None, enemy_top_threat: str | None) -> dict:
     """AGENTS.md "규칙표 적용 순서" 1~6 을 그대로 따른다."""
     me, th = resolve_my(my_champion), resolve_threat(enemy_top_threat)
@@ -110,6 +128,7 @@ def advise(my_win_prob: float, my_champion: str | None, enemy_top_threat: str | 
         core = _item(3, RULES["core"]["ahead"][cls], "core_ahead")
 
     order = RULES["skill_orders"].get(me["champion_id"] or "")
+    picked = [boots, comp, core]
     return {
         "state": state,
         "my_champion": me["champion"],
@@ -118,7 +137,9 @@ def advise(my_win_prob: float, my_champion: str | None, enemy_top_threat: str | 
         "enemy_top_threat": th["champion"],
         "threat_type": threat,
         "posture": RULES["posture"][state],
-        "recommended_items": [boots, comp, core],
+        "recommended_items": picked,
+        "starter_items": [_extra(i, "starter") for i in RULES["starter"][cls]],
+        "situational_items": _situational(pierce, {it["item_id"] for it in picked}),
         "skill_order": {"order": order, "focus": RULES["skill_focus"][state],
                         "source": "규칙표" if order else "원칙만"},
         "basis": f"사람이 정한 규칙표(build_rules.json), 아이템은 {GAME['source']} 대조. "

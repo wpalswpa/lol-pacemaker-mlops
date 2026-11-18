@@ -164,6 +164,13 @@ class SkillOrder(BaseModel):
     source: str
 
 
+class ExtraItem(BaseModel):
+    item_id: int
+    name: str
+    gold: int
+    why: str
+
+
 class BuildAdvice(BaseModel):
     state: Literal["ahead", "even", "behind"]
     my_champion: str | None
@@ -173,6 +180,8 @@ class BuildAdvice(BaseModel):
     threat_type: str
     posture: str
     recommended_items: list[BuildItem] = Field(description="1 신발, 2 하위템, 3 코어")
+    starter_items: list[ExtraItem] = Field(description="게임 시작 때 살 아이템 (규칙표 starter)")
+    situational_items: list[ExtraItem] = Field(description="상황이 바뀌면 바꿔 살 아이템, 최대 3개")
     skill_order: SkillOrder
     basis: str = Field(description="근거 출처. 사람이 정한 규칙표이며 모델 계산이 아니다")
 

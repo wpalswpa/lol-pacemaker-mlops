@@ -127,3 +127,28 @@ def test_rule_items_exist_in_game_data():
     assert rule_item_ids(RULES) <= {int(i) for i in GAME["items"]}
     assert set(RULES["skill_orders"]) <= set(GAME["champions"])
     assert set(RULES["heal_champions"]) <= set(GAME["champions"])
+
+
+@pytest.mark.parametrize("game,opt,want_starter,want_situational", [
+    # 아리(마법사, AP) 열세 · 상대 제드(AD): 2단계가 천 갑옷 1029 이라 물리 방어 후보는 빠진다
+    # → 회복 대응 anti_heal.AP 3916, 관통 anti_tank.AP 4630, 마법 방어 1033
+    (BEHIND, {"my_champion": "아리", "enemy_top_threat": "제드"}, [1056, 2003], [3916, 4630, 1033]),
+    # TANK 역할군 · 상대 HEAL: 2단계가 anti_heal.tank 3076 이라 회복 대응 후보가 빠진다
+    # → 관통 anti_tank.tank 1028, 물리 방어 1029, 마법 방어 1033
+    (EVEN_GAME, {"my_champion": "TANK", "enemy_top_threat": "HEAL"}, [1054, 2003], [1028, 1029, 1033]),
+    # 징크스(원딜, AD) 우세 · 상대 AP: 겹침 없음 → 앞에서 3개 3123, 3035, 1029
+    (AHEAD, {"my_champion": "Jinx", "enemy_top_threat": "AP"}, [1055, 2003], [3123, 3035, 1029]),
+    # SUPPORT: 세계 지도집으로 시작
+    (EVEN_GAME, {"my_champion": "SUPPORT", "enemy_top_threat": "AD"}, [3865, 2003], None),
+])
+def test_starter_and_situational_items(client, game, opt, want_starter, want_situational):
+    b = coach(client, game, **opt)
+    assert [i["item_id"] for i in b["starter_items"]] == want_starter
+    assert all(i["why"] == RULES["why"]["starter"] for i in b["starter_items"])
+    if want_situational is not None:
+        assert [i["item_id"] for i in b["situational_items"]] == want_situational
+    sit = [i["item_id"] for i in b["situational_items"]]
+    assert len(sit) <= 3 and not set(sit) & set(ids(b)) and len(set(sit)) == len(sit)
+    for it in b["starter_items"] + b["situational_items"]:  # 이름·가격은 Data Dragon 표 그대로
+        assert (it["name"], it["gold"]) == (GAME["items"][str(it["item_id"])]["name"],
+                                            GAME["items"][str(it["item_id"])]["gold"])

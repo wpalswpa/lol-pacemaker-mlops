@@ -36,6 +36,7 @@ app = FastAPI(
 )
 _INDEX = os.path.join(os.path.dirname(__file__), "static", "index.html")
 _SLIDES = os.path.join(os.path.dirname(__file__), "static", "slides.html")
+_OVERLAY = os.path.join(os.path.dirname(__file__), "static", "overlay.html")
 
 
 @app.exception_handler(RequestValidationError)
@@ -90,6 +91,12 @@ def meta_champions() -> dict:
 def index() -> FileResponse:
     """사람이 점수판 값을 넣어 보는 시뮬레이터 화면."""
     return FileResponse(_INDEX, media_type="text/html; charset=utf-8")
+
+
+@app.get("/overlay", include_in_schema=False)
+def overlay() -> FileResponse:
+    """게임 중 오버레이 HUD 380x560 (AGENTS.md 3-4절). 브리지 /bridge/state 를 2초마다 읽는다."""
+    return FileResponse(_OVERLAY, media_type="text/html; charset=utf-8")
 
 
 @app.get("/slides", include_in_schema=False)
