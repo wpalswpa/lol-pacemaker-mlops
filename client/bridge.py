@@ -370,11 +370,16 @@ class OverlayBridge:
                       "minutes": None, "pace_scale": None, "updated_at": None, "champion": None, "level": None,
                       "owned_items": [], "next_skill": None, "next_skill_when": None, "features": None,
                       "raw_features": None, "enemy_items": [], "coach": None, "coach_error": None, "error": None,
-                      "saved_match": None, "save_error": None}
+                      "saved_match": None, "save_error": None, "popup": None}
 
     def snapshot(self) -> dict:
         with self.lock:
             return json.loads(json.dumps(self.state))
+
+    def set_popup(self, popup: dict) -> None:
+        """팝업 방식과 Windows 항상 위 고정 결과 (AGENTS.md 3-4절 "팝업"). 고정 스레드가 부른다."""
+        with self.lock:
+            self.state["popup"] = dict(popup)
 
     def step(self) -> dict:
         try:
@@ -593,66 +598,166 @@ def build_swift_popup() -> str | None:
     return out
 
 
-def _pin_windows_topmost_async(pid: int) -> None:
-    """Windows 에서 띄운 --app 창을 항상 위(HWND_TOPMOST)로 고정한다."""
-    if platform.system() != "Windows":
+# Windows --app 창 항상 위 고정 (AGENTS.md 3-4절 "Windows 항상 위 고정")
+HWND_TOPMOST = -1
+SWP_NOSIZE, SWP_NOMOVE, SWP_NOACTIVATE = 0x0001, 0x0002, 0x0010
+PIN_FLAGS = SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE
+OVERLAY_TITLES = ("페이커 오버레이", "LoL 페이스메이커")
+CHROME_CLASS = "Chrome_WidgetWin_1"
+PIN_TRIES, PIN_INTERVAL = 25, 0.25
+
+
+class Win32Windows:
+    """user32 위의 얇은 껍데기. Windows 에서는 ctypes.windll.user32 와 ctypes, 테스트는 가짜 둘을 넣는다."""
+
+    def __init__(self, user32, ct):
+        self.u, self.ct = user32, ct
+
+    def visible(self) -> list:
+        out = []
+        w = self.ct.wintypes
+        proto = self.ct.WINFUNCTYPE(w.BOOL, w.HWND, w.LPARAM)
+
+        def cb(hwnd, _lparam):
+            if self.u.IsWindowVisible(hwnd):
+                out.append(hwnd)
+            return True
+
+        self.u.EnumWindows(proto(cb), 0)
+        return out
+
+    def pid(self, hwnd) -> int:
+        d = self.ct.wintypes.DWORD()
+        self.u.GetWindowThreadProcessId(hwnd, self.ct.byref(d))
+        return int(d.value)
+
+    def _text(self, fn, hwnd, n: int) -> str:
+        buf = self.ct.create_unicode_buffer(n)
+        fn(hwnd, buf, n)
+        return buf.value or ""
+
+    def title(self, hwnd) -> str:
+        return self._text(self.u.GetWindowTextW, hwnd, 512)
+
+    def class_name(self, hwnd) -> str:
+        return self._text(self.u.GetClassNameW, hwnd, 256)
+
+    def pin(self, hwnd) -> bool:
+        return bool(self.u.SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, PIN_FLAGS))
+
+
+def find_overlay_windows(win: Win32Windows, pid: int, port: int) -> tuple[str | None, list]:
+    """(찾은 단계 "pid"·"title"·"class", 창 목록). PID → 제목 → 클래스명 + 주소 제목 순서."""
+    shown = win.visible()
+    by_pid = [h for h in shown if win.pid(h) == pid]
+    if by_pid:
+        return "pid", by_pid
+    by_title = [h for h in shown if any(t in win.title(h) for t in OVERLAY_TITLES)]
+    if by_title:
+        return "title", by_title
+    hint = f"127.0.0.1:{port}"
+    by_class = [h for h in shown if win.class_name(h) == CHROME_CLASS and hint in win.title(h)]
+    if by_class:
+        return "class", by_class
+    return None, []
+
+
+def pin_topmost(win: Win32Windows, pid: int, port: int, report: Callable[[dict], None],
+                sleep: Callable[[float], None] = time.sleep, repin_sec: float = 0.0,
+                tries: int = PIN_TRIES, max_repins: int | None = None) -> None:
+    """창을 찾아 항상 위로 고정하고 결과를 report 로 알린다. repin_sec > 0 이면 그 간격으로 다시 고정."""
+    report({"status": "searching"})
+    how, hwnds = None, []
+    for i in range(tries):
+        how, hwnds = find_overlay_windows(win, pid, port)
+        if hwnds:
+            break
+        if i < tries - 1:
+            sleep(PIN_INTERVAL)
+    if not hwnds:
+        report({"status": "failed", "method": None, "windows": 0, "repins": 0,
+                "error": f"오버레이 창을 찾지 못했다(PID {pid}, 제목 {'·'.join(OVERLAY_TITLES)}, "
+                         f"클래스 {CHROME_CLASS} + 127.0.0.1:{port}, {tries}번)"})
         return
+    pinned = [h for h in hwnds if win.pin(h)]
+    report({"status": "pinned" if pinned else "failed", "method": how, "windows": len(pinned), "repins": 0,
+            "error": None if pinned else "SetWindowPos 가 실패했다"})
+    n = 0
+    while repin_sec > 0 and (max_repins is None or n < max_repins):
+        sleep(repin_sec)
+        n += 1
+        how, hwnds = find_overlay_windows(win, pid, port)
+        if not hwnds:
+            report({"status": "lost", "method": None, "windows": 0, "repins": n,
+                    "error": "다시 고정할 오버레이 창을 찾지 못했다(창을 닫았을 수 있다)"})
+            continue
+        pinned = [h for h in hwnds if win.pin(h)]
+        report({"status": "pinned" if pinned else "failed", "method": how, "windows": len(pinned), "repins": n,
+                "error": None if pinned else "SetWindowPos 가 실패했다"})
+
+
+def _pin_windows_topmost_async(pid: int, port: int, report: Callable[[dict], None], repin_sec: float = 0.0,
+                               system: str | None = None) -> bool:
+    """Windows 에서만 백그라운드로 pin_topmost. 다른 OS 는 windll 을 건드리지 않고 False."""
+    if (system or platform.system()) != "Windows":
+        return False
 
     def _worker() -> None:
-        import ctypes
-        from ctypes import wintypes
+        try:
+            import ctypes
+            from ctypes import wintypes
 
-        user32 = ctypes.windll.user32
-        hwnd_topmost = -1
-        flags = 0x0001 | 0x0002 | 0x0010  # SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE
-        enum_proc = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
-
-        for _ in range(25):
-            matched = []
-
-            def _cb(hwnd: int, _lparam: int) -> bool:
-                if user32.IsWindowVisible(hwnd):
-                    proc_id = wintypes.DWORD()
-                    user32.GetWindowThreadProcessId(hwnd, ctypes.byref(proc_id))
-                    if proc_id.value == pid or user32.GetWindowTextLengthW(hwnd) > 0:
-                        buf = ctypes.create_unicode_buffer(256)
-                        user32.GetWindowTextW(hwnd, buf, 256)
-                        if proc_id.value == pid or "LoL" in buf.value or "페이스메이커" in buf.value:
-                            matched.append(hwnd)
-                return True
-
-            user32.EnumWindows(enum_proc(_cb), 0)
-            if matched:
-                for h in matched:
-                    user32.SetWindowPos(h, hwnd_topmost, 0, 0, 0, 0, flags)
-                return
-            time.sleep(0.25)
+            user32 = ctypes.windll.user32
+            # 64비트에서 HWND_TOPMOST(-1)가 포인터 크기로 넘어가게 인자 형을 정한다
+            user32.SetWindowPos.argtypes = [wintypes.HWND, wintypes.HWND, ctypes.c_int, ctypes.c_int,
+                                            ctypes.c_int, ctypes.c_int, wintypes.UINT]
+            user32.SetWindowPos.restype = wintypes.BOOL
+            pin_topmost(Win32Windows(user32, ctypes), pid, port, report, repin_sec=repin_sec)
+        except Exception as e:  # noqa: BLE001  조용히 죽지 않고 상태에 남긴다
+            report({"status": "failed", "error": f"{type(e).__name__}: {e}"[:200]})
 
     threading.Thread(target=_worker, daemon=True).start()
+    return True
 
 
-def launch_popup(port: int) -> str:
-    """항상 위 팝업을 띄우고 쓴 방식을 돌려준다."""
+def launch_popup(port: int, report: Callable[[dict], None] | None = None, repin_sec: float = 0.0,
+                 system: str | None = None) -> str:
+    """항상 위 팝업을 띄우고 쓴 방식을 돌려준다. 고정 결과는 report(브리지 상태의 popup)로 남긴다."""
+    system = system or platform.system()
     url = overlay_url(port)
-    how, cmd = popup_command(url)
+    how, cmd = popup_command(url, system)
+    state: dict = {"how": how, "status": "not_windows", "method": None, "windows": 0, "repins": 0, "error": None}
+
+    def note(update: dict) -> None:
+        state.update(update)
+        if report:
+            report(dict(state))
+        if update.get("status") in ("failed", "lost") and update.get("error"):
+            print(f"\n항상 위 고정 {update['status']}: {update['error']}", file=sys.stderr)
+
     if cmd:
         proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
-        _pin_windows_topmost_async(proc.pid)
+        if how == "chrome" and system == "Windows":
+            _pin_windows_topmost_async(proc.pid, port, note, repin_sec, system)
+        else:
+            note({})
     else:
         webbrowser.open(url)
+        note({"status": "failed", "error": "Chrome·Edge 가 없어 항상 위로 고정할 수 없다"} if system == "Windows" else {})
     print(f"오버레이 팝업({how}): {url}")
     return how
 
 
 def run_overlay(bridge: OverlayBridge, port: int, server: str | None = None, popup: bool = False,
-                sleep: Callable[[float], None] = time.sleep, max_steps: int | None = None) -> None:
+                sleep: Callable[[float], None] = time.sleep, max_steps: int | None = None,
+                repin_sec: float = 0.0) -> None:
     httpd = serve_state(bridge, port, http_upstream(server) if server else None)
     real = httpd.server_address[1]
     print(f"브리지 상태: http://127.0.0.1:{real}/bridge/state (멈추려면 Ctrl+C)")
     if server:
         print(f"HUD: {overlay_url(real)}")
     if popup:
-        launch_popup(real)
+        launch_popup(real, bridge.set_popup, repin_sec)
     steps = 0
     try:
         while max_steps is None or steps < max_steps:
@@ -793,6 +898,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--overlay", action="store_true", help="게임 중 계속 판단해 /bridge/state 로 HUD 에 넘긴다")
     ap.add_argument("--listen-port", type=int, default=8765, help="오버레이 상태 서버 포트 (127.0.0.1)")
     ap.add_argument("--launch-popup", action="store_true", help="항상 위 오버레이 팝업 창을 띄운다 (--overlay 포함)")
+    ap.add_argument("--repin-sec", type=float, default=0.0,
+                    help="Windows 에서 N초마다 팝업을 다시 항상 위로 고정 (기본 0 = 끔)")
     ap.add_argument("--save-match", action="store_true",
                     help="오버레이 모드에서 경기가 끝나면(--file 이면 바로) 전처리 피처를 POST /matches 로 한 번 저장")
     a = ap.parse_args(argv)
@@ -820,7 +927,7 @@ def main(argv: list[str] | None = None) -> int:
         bridge = OverlayBridge(fetch, lambda s: post_coach(a.api, s), a.side, prices,
                                source="file" if a.file else "live",
                                save=(lambda p: post_match(a.api, p)) if a.save_match else None)
-        run_overlay(bridge, a.listen_port, a.api, popup=a.launch_popup)
+        run_overlay(bridge, a.listen_port, a.api, popup=a.launch_popup, repin_sec=a.repin_sec)
         return 0
 
     def notify(lines: list[str], state: str | None = None) -> None:

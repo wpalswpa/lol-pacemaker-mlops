@@ -167,6 +167,7 @@
 | `features` / `raw_features` | 환산한 `/coach` 입력, 환산 전 입력 |
 | `coach` / `coach_error` / `error` | 마지막 `/coach` 응답(없으면 `null`), 호출 실패 이유, 게임 API 읽기 실패 이유 |
 | `enemy_items` | 마지막으로 `/coach`에 넣은 상대 위협의 공개 아이템 ID(3-1절) |
+| `popup` | 팝업 실행 방식과 Windows 항상 위 고정 결과(아래 "팝업"), 안 띄웠으면 `null` |
 
 **HUD 의 AI 감독 브리핑**: HUD 는 화면에 그린 `coach`의 캐시 키(4절 `POST /coach/briefing` 캐시와 같은 다섯 값)가 바뀔 때만 `POST /coach/briefing`을 같은 출처로 부른다. 본문은 LIVE 면 `features`에 `enemy_items`(있으면)를 더한 것, 데모면 데모 입력. 한 번에 하나만 보내고, `AI 감독 브리핑` 칸에 `briefing`과 출처를 textContent로 넣는다. 실패하면 칸에 "브리핑 없음"을 적고 나머지 HUD 는 그대로 둔다.
 
@@ -176,6 +177,18 @@
 
 1. macOS이고 `swiftc`가 있으면 `client/overlay_popup.swift`를 사용자 캐시 폴더에 컴파일(소스가 바뀌었을 때만)해 실행한다. `NSPanel`을 `.floating` 단계로 띄우고 모든 데스크톱·전체 화면 보조 창으로 두며, 눌러도 게임에서 입력 초점을 빼앗지 않는다(`nonactivatingPanel`).
 2. 아니면 Chrome `--app=<URL> --window-size=380,560`(항상 위는 보장하지 않는다), 그것도 없으면 기본 브라우저.
+
+**Windows 항상 위 고정 (`pin_topmost`, Chrome·Edge `--app` 창)**: Windows 에서 2번으로 띄웠을 때만 이 경로를 탄다(`platform.system() == "Windows"`). macOS·Linux 는 `ctypes.windll`을 건드리지 않고 `popup.status`를 `not_windows`로 적는다.
+
+| 항목 | 규칙 |
+|---|---|
+| 창 찾기 순서 | 보이는 창(`EnumWindows` + `IsWindowVisible`) 가운데 ① 띄운 프로세스 PID 의 창 ② 제목에 `페이커 오버레이`(HUD 의 `<title>`) 또는 `LoL 페이스메이커`가 든 창 ③ 클래스명 `Chrome_WidgetWin_1`이면서 제목에 `127.0.0.1:<포트>`가 든 창(페이지 제목이 뜨기 전 Chrome 은 주소를 제목으로 쓴다). 앞 단계에서 찾으면 뒤 단계는 보지 않는다. Chrome·Edge 가 이미 켜져 있으면 `--app` 창이 기존 프로세스에 합쳐져 ①이 비므로 ②③이 필요하다. 클래스명만으로는 찾지 않는다(사용자의 평소 브라우저 창까지 항상 위로 올리게 되므로) |
+| 처음 찾기 | 0.25초 간격 최대 25번(약 6초) |
+| 고정 | 찾은 창마다 `SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOSIZE \| SWP_NOMOVE \| SWP_NOACTIVATE)`. 모든 호출에 `SWP_NOACTIVATE`를 넣어 게임에서 입력 초점을 빼앗지 않는다 |
+| 주기적 재고정(선택) | `--repin-sec N`(기본 0 = 끔). 켜면 N초마다 같은 순서로 다시 찾아 같은 플래그로 다시 고정한다(게임이 앞으로 나오며 항상 위가 풀리는 경우). 다시 못 찾으면 `lost`로 적고 계속 시도한다 |
+| 조용한 실패 금지 | 결과를 브리지 상태의 `popup`에 적는다(아래 표). 못 찾으면 `failed`와 이유(찾은 단계와 횟수)를 `error`에 남기고 터미널에도 한 줄 찍는다. Chrome·Edge 가 없어 기본 브라우저로 열었으면 `failed`, `error`는 "Chrome·Edge 가 없어 항상 위로 고정할 수 없다" |
+
+브리지 상태 `popup` (팝업을 안 띄웠으면 `null`): `how`(`swift`·`chrome`·`browser`), `status`(`not_windows`·`searching`·`pinned`·`lost`·`failed`), `method`(`pid`·`title`·`class` 또는 `null`), `windows`(고정한 창 수), `repins`(재고정 횟수), `error`(없으면 `null`).
 
 LoL은 "테두리 없는 창 모드"여야 위에 뜬다. 전체 화면 독점 모드에서는 어떤 창도 게임 위에 뜨지 않는다.
 

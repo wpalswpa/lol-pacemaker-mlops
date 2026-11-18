@@ -799,3 +799,202 @@ def test_422_retry_also_drops_enemy_items():
     body = {"blue": {}, "red": {}, "enemy_items": [999999]}  # 챔피언 칸 없이 아이템만 있어도 한 번 다시
     assert coach_with_fallback(coach, body) == {"ok": True}
     assert sent == [body, {"blue": {}, "red": {}}]
+
+
+# ── Windows --app 창 항상 위 고정 (AGENTS.md 3-4절 "Windows 항상 위 고정"). 가짜 user32·ctypes 로 ──
+from client.bridge import (CHROME_CLASS, HWND_TOPMOST, PIN_FLAGS, PIN_TRIES, SWP_NOACTIVATE,  # noqa: E402
+                           Win32Windows, _pin_windows_topmost_async, find_overlay_windows, launch_popup, pin_topmost)
+
+
+class FakeCT:
+    """ctypes 대역: WINFUNCTYPE 는 함수를 그대로, byref 는 상자를 그대로 넘긴다."""
+
+    class wintypes:  # noqa: N801  ctypes.wintypes 와 같은 이름
+        BOOL = HWND = LPARAM = int
+
+        class DWORD:
+            def __init__(self):
+                self.value = 0
+
+    @staticmethod
+    def WINFUNCTYPE(*_types):  # noqa: N802
+        return lambda fn: fn
+
+    @staticmethod
+    def byref(box):
+        return box
+
+    class _Buf:
+        value = ""
+
+    @staticmethod
+    def create_unicode_buffer(_n):
+        return FakeCT._Buf()
+
+
+class FakeUser32:
+    """windows: {hwnd: (pid, 제목, 클래스, 보임)}. SetWindowPos 호출을 그대로 기록한다."""
+
+    def __init__(self, windows, set_ok=True):
+        self.windows, self.set_ok, self.calls = windows, set_ok, []
+
+    def EnumWindows(self, cb, lparam):  # noqa: N802
+        for h in list(self.windows):
+            if not cb(h, lparam):
+                break
+        return 1
+
+    def IsWindowVisible(self, h):  # noqa: N802
+        return self.windows[h][3]
+
+    def GetWindowThreadProcessId(self, h, box):  # noqa: N802
+        box.value = self.windows[h][0]
+        return 1
+
+    def GetWindowTextW(self, h, buf, n):  # noqa: N802
+        buf.value = self.windows[h][1][:n]
+        return len(buf.value)
+
+    def GetClassNameW(self, h, buf, n):  # noqa: N802
+        buf.value = self.windows[h][2][:n]
+        return len(buf.value)
+
+    def SetWindowPos(self, *args):  # noqa: N802
+        self.calls.append(args)
+        return 1 if self.set_ok else 0
+
+
+PORT, PID = 8765, 4242
+OTHER_CHROME = (999, "새 탭 - Chrome", CHROME_CLASS, True)  # 사용자의 평소 브라우저 창: 절대 고정하면 안 된다
+
+
+def pins(u32):
+    return [c[0] for c in u32.calls]
+
+
+def run_pin(windows, **kw):
+    u32, reports, slept = FakeUser32(windows), [], []
+    pin_topmost(Win32Windows(u32, FakeCT), PID, PORT, reports.append, sleep=slept.append, **kw)
+    return u32, reports, slept
+
+
+def test_pin_finds_by_pid_first():
+    u32, reports, _ = run_pin({1: OTHER_CHROME, 2: (PID, "페이커 오버레이", CHROME_CLASS, True),
+                               3: (PID, "숨은 창", CHROME_CLASS, False)})
+    assert pins(u32) == [2]  # 보이는 PID 창만
+    assert reports[-1] == {"status": "pinned", "method": "pid", "windows": 1, "repins": 0, "error": None}
+
+
+def test_pin_falls_back_to_title_when_pid_has_no_window():
+    # 이미 켜진 Chrome 에 --app 창이 합쳐져 띄운 PID 에는 창이 없다
+    u32, reports, _ = run_pin({1: OTHER_CHROME, 2: (777, "페이커 오버레이", CHROME_CLASS, True)})
+    assert pins(u32) == [2] and reports[-1]["method"] == "title"
+    u32, reports, _ = run_pin({1: OTHER_CHROME, 2: (777, "LoL 페이스메이커 (페이커)", "Edge", True)})
+    assert pins(u32) == [2] and reports[-1]["method"] == "title"
+
+
+def test_pin_falls_back_to_chrome_class_with_overlay_address():
+    u32, reports, _ = run_pin({1: OTHER_CHROME, 2: (777, f"127.0.0.1:{PORT}/overlay?bridge_url=", CHROME_CLASS, True),
+                               3: (778, f"127.0.0.1:{PORT}/overlay", "Notepad", True)})
+    assert pins(u32) == [2] and reports[-1]["method"] == "class"
+
+
+def test_pin_not_found_records_error_and_never_pins_other_chrome():
+    u32, reports, slept = run_pin({1: OTHER_CHROME, 2: (777, "메모장", "Notepad", True)})
+    assert u32.calls == []  # 클래스명만 같은 평소 브라우저 창은 건드리지 않는다
+    assert len(slept) == PIN_TRIES - 1  # 0.25초 간격 25번 시도
+    last = reports[-1]
+    assert (last["status"], last["method"], last["windows"]) == ("failed", None, 0)
+    assert f"PID {PID}" in last["error"] and "페이커 오버레이" in last["error"] and f"127.0.0.1:{PORT}" in last["error"]
+    assert reports[0] == {"status": "searching"}
+
+
+def test_pin_found_after_a_few_tries():
+    windows = {1: OTHER_CHROME}
+    u32, reports, slept = FakeUser32(windows), [], []
+
+    def sleep(sec):
+        slept.append(sec)
+        if len(slept) == 3:  # 0.75초 뒤 창이 뜬다
+            windows[2] = (PID, "페이커 오버레이", CHROME_CLASS, True)
+
+    pin_topmost(Win32Windows(u32, FakeCT), PID, PORT, reports.append, sleep=sleep)
+    assert slept == [0.25] * 3 and pins(u32) == [2] and reports[-1]["status"] == "pinned"
+
+
+def test_repin_interval_count_and_lost_window():
+    windows = {2: (PID, "페이커 오버레이", CHROME_CLASS, True)}
+    u32, reports, slept = FakeUser32(windows), [], []
+
+    def sleep(sec):
+        slept.append(sec)
+        if len(slept) == 2:
+            del windows[2]  # 두 번째 재고정 전에 창을 닫음
+        if len(slept) == 3:
+            windows[5] = (777, "페이커 오버레이", CHROME_CLASS, True)  # 다시 열림 (다른 프로세스)
+
+    pin_topmost(Win32Windows(u32, FakeCT), PID, PORT, reports.append, sleep=sleep, repin_sec=3.0, max_repins=4)
+    assert slept == [3.0] * 4
+    assert pins(u32) == [2, 2, 5, 5]  # 처음 1 + 재고정 4번 중 창이 있던 3번
+    assert [(r["status"], r["repins"]) for r in reports[1:]] == [
+        ("pinned", 0), ("pinned", 1), ("lost", 2), ("pinned", 3), ("pinned", 4)]
+    assert reports[3]["error"].startswith("다시 고정할 오버레이 창을 찾지 못했다")
+    assert reports[4]["method"] == "title"
+
+
+def test_every_setwindowpos_keeps_noactivate():
+    u32, _, _ = run_pin({2: (PID, "페이커 오버레이", CHROME_CLASS, True), 3: (PID, "페이커 오버레이 2", CHROME_CLASS, True)},
+                        repin_sec=3.0, max_repins=3)
+    assert len(u32.calls) == 8
+    for hwnd, after, x, y, cx, cy, flags in u32.calls:
+        assert after == HWND_TOPMOST and (x, y, cx, cy) == (0, 0, 0, 0)
+        assert flags & SWP_NOACTIVATE and flags == PIN_FLAGS == 0x0013  # NOSIZE | NOMOVE | NOACTIVATE
+
+
+def test_setwindowpos_failure_is_reported():
+    u32, reports = FakeUser32({2: (PID, "페이커 오버레이", CHROME_CLASS, True)}, set_ok=False), []
+    pin_topmost(Win32Windows(u32, FakeCT), PID, PORT, reports.append, sleep=lambda s: None)
+    assert (reports[-1]["status"], reports[-1]["error"]) == ("failed", "SetWindowPos 가 실패했다")
+
+
+def test_find_order_unit():
+    win = Win32Windows(FakeUser32({1: (PID, "x", "y", True), 2: (5, "페이커 오버레이", CHROME_CLASS, True)}), FakeCT)
+    assert find_overlay_windows(win, PID, PORT) == ("pid", [1])  # PID 가 있으면 제목은 보지 않는다
+
+
+@pytest.mark.parametrize("system", ["Darwin", "Linux"])
+def test_non_windows_never_takes_the_pin_path(monkeypatch, system):
+    import ctypes
+    import threading as th
+
+    monkeypatch.setattr(ctypes, "windll", None, raising=False)  # 건드리면 AttributeError
+    started = []
+    monkeypatch.setattr(th.Thread, "start", lambda self: started.append(self))
+    assert _pin_windows_topmost_async(PID, PORT, lambda r: None, 3.0, system=system) is False
+    assert started == []
+
+
+@pytest.mark.parametrize("system, how, cmd, want_status, pinned", [
+    ("Darwin", "swift", ["/cache/overlay-popup"], "not_windows", False),
+    ("Linux", "chrome", ["chrome", "--app=x"], "not_windows", False),
+    ("Windows", "chrome", ["chrome.exe", "--app=x"], "searching", True),
+    ("Windows", "browser", None, "failed", False),
+])
+def test_launch_popup_reports_into_bridge_state(monkeypatch, system, how, cmd, want_status, pinned):
+    import client.bridge as br
+
+    calls = []
+    monkeypatch.setattr(br, "popup_command", lambda url, system=None: (how, cmd))
+    monkeypatch.setattr(br.subprocess, "Popen", lambda *a, **k: type("P", (), {"pid": PID})())
+    monkeypatch.setattr(br.webbrowser, "open", lambda url: True)
+    monkeypatch.setattr(br, "_pin_windows_topmost_async",
+                        lambda pid, port, report, repin, system: (calls.append((pid, port, repin)), report({"status": "searching"})))
+    b = make_bridge([at(900.0)], Clock(), [])
+    assert launch_popup(PORT, b.set_popup, 3.0, system=system) == how
+    st = b.snapshot()["popup"]
+    assert st["how"] == how and st["status"] == want_status
+    assert (calls == [(PID, PORT, 3.0)]) is pinned
+    if how == "browser":
+        assert st["error"] == "Chrome·Edge 가 없어 항상 위로 고정할 수 없다"
+    b.step()
+    assert b.snapshot()["popup"]["how"] == how  # 게임 상태를 갱신해도 popup 은 남는다
