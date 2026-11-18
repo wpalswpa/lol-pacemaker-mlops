@@ -7,8 +7,8 @@ API 계약, 검증 기준 수치, 승격·되돌리기 절차의 정본은 [AGEN
 ## 현재 상태
 
 <!-- STATUS:START -->
-- **완료(로컬 실측 확인)**: API(`/health`, `/predict`, `/coach`), 4종 예측 구현체(`rule`·`sklearn`·`dl`·`onnx`), 성능 게이트(`validate_model.py`), ONNX 변환(`export_onnx.py`), 서버 간 일치 검사(`check_parity.py`), 빌드 가이드(`build_advice`), 로컬 승격·실패 자동 복구·되돌리기(`deploy/local_e2e.sh`) 및 단위·계약 테스트 163건 전체 통과.
-- **미완료(다음 단계)**: 뮤테이션 버그 주입 확인 3건, 브리지 챔피언 자동 추출, 웹 시뮬레이터의 챔피언·아이템 시각 표시 칸 추가, 실제 AWS Lightsail·GitHub Actions 클라우드 실배포(사용자 승인 후 진행).
+- **완료(로컬 실측 확인)**: API(`/health`, `/predict`, `/coach`), 4종 예측 구현체(`rule`·`sklearn`·`dl`·`onnx`), 성능 게이트(`validate_model.py`), ONNX 변환(`export_onnx.py`), 서버 간 일치 검사(`check_parity.py`), 빌드 가이드(`build_advice`), 로컬 승격·실패 자동 복구·되돌리기(`deploy/local_e2e.sh`), 뮤테이션 확인 3건(모두 테스트가 잡음), 브리지 챔피언 자동 추출과 알림 ON/OFF(`--effect`·`--tts`), 웹 시뮬레이터 시각 코칭 화면(테두리 이펙트 ON/OFF, 아이템·챔피언 아이콘, 스킬 키캡, 3단계 행동 카드) 및 단위·계약 테스트 181건 전체 통과.
+- **미완료(다음 단계)**: 로컬 E2E 재실행(이번 변경 뒤), 실제 AWS Lightsail·GitHub Actions 클라우드 실배포(사용자 승인 후 진행).
 <!-- STATUS:END -->
 
 ## 1. 문제와 목적
@@ -33,7 +33,7 @@ API 계약, 검증 기준 수치, 승격·되돌리기 절차의 정본은 [AGEN
 | ① 페이스 진단 `/predict` | 내 팀 승률, 페이스 구간, 같은 티어 경기 중 내 위치(상위 몇 %) | "승률 26% · 열세 페이스 · 티어 상위 76%" |
 | ② 격차 요인 `top_factors`, `tier_percentile` | 승률에 가장 크게 작용하는 지표 3개와 그 몫(%p), 지표별 티어 내 위치 | "승률을 깎는 1순위는 CS 격차 -18개(-6.4%p), CS 격차는 상위 70%" |
 | ③ 목표 수치 `/coach` | 다음 3분 동안 채우면 승률이 오르는 목표, 오르는 폭, 목표를 채웠을 때 옮겨 갈 위치 | "킬 2개 더 → 상위 70%에서 50%로 (승률 26.5% → 37.2%, +10.7%p)" |
-| ④ 상황별 아이템·스킬 가이드 `build_advice` | 현재 우세·열세 상태와 내 챔피언·상대 위협 유형에 맞춘 빌드 방향(`posture`), 추천 아이템 3단계, 스킬 마스터 원칙 | "열세 + 상대 마법 위협 → 헤르메스의 발걸음(1,200G) → 마법무효화의 망토(400G) → 맬모셔스의 아귀, 라인 클리어·생존기 우선" |
+| ④ 상황별 아이템·스킬 가이드 `build_advice` | 현재 우세·열세 상태와 내 챔피언·상대 위협 유형에 맞춘 빌드 방향(`posture`), 추천 아이템 3단계, 스킬 마스터 원칙 | "열세 + 상대 마법 위협 → 헤르메스의 발걸음(1,250G) → 마법무효화의 망토(400G) → 맬모셔스의 아귀, 라인 클리어·생존기 우선" |
 
 예의 수치는 형식을 보여 주는 예시다. 실제 값은 검증 결과 절(아래 12절)에 적는다.
 
@@ -45,9 +45,9 @@ API 계약, 검증 기준 수치, 승격·되돌리기 절차의 정본은 [AGEN
 
 목표는 "플레이어에게는 1초 안에 읽히는 숫자 목표를, AI 코칭 에이전트에게는 지어내지 않는 계산 도구를 주는 것"이다. 둘은 **같은 JSON 계약**을 쓴다.
 
-1. **게임 중인 플레이어**: 긴 글을 읽을 시간이 없다. 브리지(`client/bridge.py`)가 10분이 되면 한 번만 계산을 받아, 음성으로 한 번 읽어 주거나 화면 우측 상단에 3줄짜리 작은 카드를 5초 띄웠다가 지운다. "승률 43% · 상위 68% / CS +20 → 53% (상위 45%)". 표나 긴 글은 띄우지 않는다. 카드 문구는 응답의 `toast`를 그대로 쓴다.
+1. **게임 중인 플레이어**: 긴 글을 읽을 시간이 없다. 브리지(`client/bridge.py`)가 10분이 되면 한 번만 계산을 받아, 화면 우측 상단에 3줄짜리 작은 카드를 5초 띄웠다가 지우고(테두리가 우세 초록·접전 노랑·열세 빨강으로 빛남), 원하면 음성으로 한 번 읽어 준다. 둘은 `--effect on|off`, `--tts on|off`(또는 환경 변수 `LOL_EFFECT`, `LOL_TTS`)로 따로 켜고 끈다. 내 챔피언과 상대 최다 킬 챔피언은 게임 응답에서 자동으로 찾아 빌드 가이드에 넣는다. "승률 43% · 상위 68% / CS +20 → 53% (상위 45%)". 표나 긴 글은 띄우지 않는다. 카드 문구는 응답의 `toast`를 그대로 쓴다.
 2. **AI 코칭 에이전트(음성 비서, 디스코드 봇)**: 언어 모델이 승률을 어림하면 그럴듯한 숫자를 지어낸다. 원본 프로젝트의 정성 시험(SC-7)에서도 언어 모델이 킬 수만 보고 틀린 조언을 냈다. 에이전트가 `/openapi.json`의 도구(`predict_pace`, `coach_targets`)를 부르면 승률·요인·위치·목표가 담긴 JSON을 받아 그 숫자로만 말한다. 응답의 `model_version`으로 어느 판의 계산인지도 남긴다.
-3. **발표·연습용 웹 시뮬레이터(`GET /`)**: 게임 클라이언트가 없어도 점수판 값을 프리셋과 슬라이더로 바꿔 보는 어두운 카드 화면이다. 티어 분포 막대 위에 지금 위치(점)와 첫 목표를 채웠을 때 위치(화살표)만 그린다.
+3. **발표·연습용 웹 시뮬레이터(`GET /`)**: 게임 클라이언트가 없어도 점수판 값과 챔피언을 프리셋·슬라이더·목록으로 바꿔 보는 어두운 카드 화면이다. 초보자가 글을 읽지 않고 따라 하도록 그림으로 보여 준다. 상태에 따라 화면 가장자리와 결과 카드 테두리가 초록(우세 · 적극 교전 가능)·노랑(접전 · 파밍 집중)·빨강(열세 · 1대1 싸움 금지)으로 빛나고 상단 버튼으로 끈다. 티어 분포 막대에는 지금 위치 ●와 첫 목표를 채웠을 때 위치 ★, 그 아래 3단계 행동 카드(예: 🛡️ 1대1 싸움 멈추기 → 🌾 포탑 앞에서 미니언 챙기기 + 첫 목표 → 🏃 아군 강세 라인 합류), Data Dragon 실제 아이콘으로 그린 내 챔피언 대 상대 위협과 아이템 카드 3장(신발 → 하위템 → 코어, 가격과 이유), 스킬 키캡 `[Q] ▶ [E] ▶ [W]`가 나온다. 행동 카드는 상태별 고정 문구이고 아이템·스킬은 규칙표다(AGENTS.md 3-3절).
 
 **입력을 어디서 얻나(합법적 경계)**: 사람이 웹 화면에 넣거나, 브리지가 Riot 공식 로컬 API(`127.0.0.1:2999/liveclientdata/allgamedata`)를 관전·리플레이·연습 모드에서 읽는다. 점수판과 오브젝트 이벤트만 쓰고, 랭크 게임 중에는 쓰지 않는다. Data Dragon 아이템 가격표로 계산한 양 팀 아이템 골드는 참고 값으로 로그에만 남기고 모델에 넣지 않는다. 학습 데이터의 골드(쓰지 않은 골드 포함 총골드)와 정의가 달라 섞으면 학습과 서빙이 어긋나기 때문이다.
 
@@ -161,7 +161,10 @@ MODEL_VERSION=m20261118-1 uv run python -m training.model_card
 # 3. ONNX 서빙 서버 실행 (웹 시뮬레이터: http://127.0.0.1:8083/)
 MODEL_IMPL=onnx uv run uvicorn api.app:app --port 8083
 
-# 4. 로컬 전 과정 재현 (승격 m20261118-1 → -2, 깨진 판 자동 복구, 되돌리기)
+# 4. 브리지 (게임 없이 저장한 응답으로 시연. 실제 게임은 --file 대신 --cafile riotgames.pem)
+uv run python -m client.bridge --api http://127.0.0.1:8083 --file client/tests/fixtures/allgamedata_10min.json --effect on --tts off
+
+# 5. 로컬 전 과정 재현 (승격 m20261118-1 → -2, 깨진 판 자동 복구, 되돌리기)
 E2E_DIR="$HOME/Library/Caches/lol-mlops-e2e" bash deploy/local_e2e.sh
 ```
 <!-- RUN:END -->
@@ -175,7 +178,7 @@ E2E_DIR="$HOME/Library/Caches/lol-mlops-e2e" bash deploy/local_e2e.sh
 ├── 인수인계.md               다음 세션 이어받기용 상태·수치·남은 일 기록
 ├── pyproject.toml, uv.lock   기본(서빙): fastapi·uvicorn·numpy·onnxruntime / train 그룹: pandas·scikit-learn·torch·onnx
 ├── api/
-│   ├── app.py                GET /health, POST /predict, POST /coach, GET / (웹 시뮬레이터)
+│   ├── app.py                GET /health, POST /predict, POST /coach, GET / (웹 시뮬레이터), GET /meta/champions (숨은 경로)
 │   ├── contract.py           입력·출력 모델과 422 규칙, 피처 변환
 │   ├── service.py            요인 분해·백분위·코칭·티어 비교 (모든 구현체 공통)
 │   ├── build.py              우세·열세 상태 및 상대 위협 맞춤 아이템·스킬 가이드 계산
@@ -183,11 +186,11 @@ E2E_DIR="$HOME/Library/Caches/lol-mlops-e2e" bash deploy/local_e2e.sh
 │   ├── game_data.json        Data Dragon 16.23.1 챔피언·아이템 검증 데이터
 │   ├── coach_steps.json      코칭 단계(올릴 지표와 양, 연쇄 지표)
 │   ├── predictors/           rule · sklearn · dl · onnx (load → predict_proba)
-│   ├── static/index.html     웹 시뮬레이터 (분포 막대, 프리셋·슬라이더)
+│   ├── static/index.html     웹 시뮬레이터 (테두리 이펙트 ON/OFF, ●★ 분포 막대, 행동 카드, 아이템·챔피언 아이콘, 스킬 키캡)
 │   ├── tests/                계약 테스트와 고정 자료
 │   └── Dockerfile            ONNX Runtime만 담은 서빙 이미지
 ├── client/
-│   ├── bridge.py             로컬 게임 API → 입력 변환, 10분 한 번 호출, 음성·알림 카드
+│   ├── bridge.py             로컬 게임 API → 입력 변환(챔피언 자동 추출), 10분 한 번 호출, 테두리 카드·음성 ON/OFF
 │   └── tests/                변환 테스트와 고정 자료
 ├── training/
 │   ├── data.py               CSV 읽기, 고정 평가셋, DATA_N·DATA_SEED 표본, 기준선·분위수 계산
@@ -200,7 +203,7 @@ E2E_DIR="$HOME/Library/Caches/lol-mlops-e2e" bash deploy/local_e2e.sh
 │   ├── model_card.py         model.json (판 이름, 커밋, 데이터, 성능)
 │   └── check_parity.py       원본 서버 vs ONNX 서버 응답 비교
 ├── deploy/
-│   ├── lightsail/            launch-script-lightsail.sh · compose.yml · Caddyfile · server.sh · models.py
+│   ├── lightsail/            launch-script-lightsail.sh · compose.yml · Caddyfile · server.sh
 │   ├── tests/                server.sh 테스트 (가짜 docker·curl)
 │   └── local_e2e.sh          로컬에서 승격·실패 복구·되돌리기 전 과정을 재현
 └── .github/workflows/        ci.yml · model.yml · rollback.yml
@@ -211,10 +214,8 @@ E2E_DIR="$HOME/Library/Caches/lol-mlops-e2e" bash deploy/local_e2e.sh
 ## 11. 남은 일
 
 <!-- TODO:START -->
-1. 뮤테이션 확인 3종(`rule.py`, `service.py`, `server.sh`에 의도적 버그 주입 후 `pytest` 실패 확인 및 원복).
-2. 브리지(`client/bridge.py`)에서 내 챔피언과 상대 최다 킬 위협 챔피언 자동 추출 및 테스트 추가.
-3. 웹 시뮬레이터(`api/static/index.html`)에 챔피언 선택, 테두리 이펙트 ON/OFF, 추천 아이템·스킬 시각 표시 칸 추가.
-4. 사용자 승인 후 AWS Lightsail 인스턴스·버킷 생성, 셀프 호스티드 러너·변수 등록 및 실서버 배포 확인.
+1. 로컬 E2E 재실행(`deploy/local_e2e.sh`, 브리지·화면 변경 뒤 한 번 더).
+2. 사용자 승인 후 AWS Lightsail 인스턴스·버킷 생성, 셀프 호스티드 러너·변수 등록 및 실서버 배포 확인.
 <!-- TODO:END -->
 
 ## 12. 검증 결과
@@ -224,7 +225,11 @@ E2E_DIR="$HOME/Library/Caches/lol-mlops-e2e" bash deploy/local_e2e.sh
 
 | 검증 항목 | 실행 명령 / 조건 | 실측 결과 | 판정 |
 |---|---|---|---|
-| 단위·계약 테스트 | `uv run pytest -q` (api·client·deploy) | **163 passed, skipped 0** | 통과 |
+| 단위·계약 테스트 | `uv run pytest -q` (api·client·deploy) | **181 passed, skipped 0** | 통과 |
+| 뮤테이션 ① | `rule.py` 확률식을 `(gold + 1) / SCALE`로 | 6건 실패(`test_predict_win_prob_follows_rule`, `test_predict_red_side_flips`, `test_top_factors_are_three_sorted_by_impact`, `test_even_game_is_close_pace`, `test_coach_targets_follow_rule`, `test_coach_red_side`) | 잡음 |
+| 뮤테이션 ② | `service.py` `impact_pp`의 `sign *` 제거 | 1건 실패(`test_predict_red_side_flips`) | 잡음 |
+| 뮤테이션 ③ | `server.sh` 실패 복구를 `/models/$VER`로 | 1건 실패(`deploy/tests/test_server_sh.py::test_model_failure_restores_previous_dir`) | 잡음 |
+| 웹 시뮬레이터 화면 | 헤드리스 Chromium, 1280px·400px | 가로 넘침 0(`scrollWidth` = 화면 폭), Data Dragon 아이콘 5장 로드, 우세·접전·열세 테두리 색, ON/OFF 토글과 새로고침 뒤 유지, 모르는 챔피언 422 때 칸 이름이 든 오류 문구 | 통과 |
 | 규칙 기준선 (`rule`) | 고정 평가셋 1,976경기 | 정확도 **0.7151** · Brier **0.1917** · LogLoss **0.5676** | 기준선 |
 | 성능 게이트 (`DATA_N=500, SEED=0`) | `sklearn` / `dl` | `sklearn`: 정확도 **0.7090**, Brier **0.1891**, LogLoss **0.5555**<br>`dl`: 정확도 **0.7100**, Brier **0.1887**, LogLoss **0.5566** | 통과 |
 | 성능 게이트 (`DATA_N=5000, SEED=1`) | `sklearn` / `dl` | `sklearn`: 정확도 **0.7156**, Brier **0.1824**, LogLoss **0.5385**<br>`dl`: 정확도 **0.7136**, Brier **0.1837**, LogLoss **0.5424** | 통과 |

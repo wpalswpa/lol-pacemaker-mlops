@@ -425,6 +425,24 @@ def test_index_page(client):
     res = client.get("/")
     assert res.status_code == 200 and "text/html" in res.headers["content-type"]
     assert "/coach" in res.text  # 화면이 같은 API 를 부른다
+    assert "/meta/champions" in res.text
+
+
+def test_meta_champions_for_simulator(client):
+    game = json.load(open(os.path.join(os.path.dirname(FIXTURES), "..", "game_data.json"), encoding="utf-8"))
+    rules = json.load(open(os.path.join(os.path.dirname(FIXTURES), "..", "build_rules.json"), encoding="utf-8"))
+    res = client.get("/meta/champions")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["version"] == game["version"] and body["source"] == game["source"]
+    assert {c["id"] for c in body["champions"]} == set(game["champions"])  # 빠짐없이
+    ahri = next(c for c in body["champions"] if c["id"] == "Ahri")
+    assert ahri == {"id": "Ahri", "name": game["champions"]["Ahri"]["name"], "tags": game["champions"]["Ahri"]["tags"]}
+    names = [c["name"] for c in body["champions"]]
+    assert names == sorted(names)  # 한국어 이름 순
+    assert body["roles"] == list(rules["role_class"]) and body["threat_types"] == rules["threat_types"]
+    spec = client.get("/openapi.json").json()
+    assert "/meta/champions" not in spec["paths"]  # 에이전트 도구 스키마에는 숨긴다
 
 
 def test_request_not_mutated_between_calls(client):

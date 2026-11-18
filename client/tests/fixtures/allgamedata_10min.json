@@ -8,7 +8,8 @@
  },
  "allPlayers": [
   {
-   "championName": "ChampA1",
+   "championName": "아리",
+   "rawChampionName": "game_character_displayname_Ahri",
    "level": 7,
    "team": "ORDER",
    "position": "",
@@ -34,7 +35,8 @@
    }
   },
   {
-   "championName": "ChampA2",
+   "championName": "리 신",
+   "rawChampionName": "game_character_displayname_LeeSin",
    "level": 7,
    "team": "ORDER",
    "position": "",
@@ -53,7 +55,8 @@
    }
   },
   {
-   "championName": "ChampA3",
+   "championName": "가렌",
+   "rawChampionName": "game_character_displayname_Garen",
    "level": 7,
    "team": "ORDER",
    "position": "",
@@ -72,7 +75,8 @@
    }
   },
   {
-   "championName": "ChampA4",
+   "championName": "럭스",
+   "rawChampionName": "game_character_displayname_Lux",
    "level": 6,
    "team": "ORDER",
    "position": "",
@@ -91,7 +95,8 @@
    }
   },
   {
-   "championName": "ChampA5",
+   "championName": "징크스",
+   "rawChampionName": "game_character_displayname_Jinx",
    "level": 7,
    "team": "ORDER",
    "position": "",
@@ -110,7 +115,8 @@
    }
   },
   {
-   "championName": "ChampB1",
+   "championName": "제드",
+   "rawChampionName": "game_character_displayname_Zed",
    "level": 7,
    "team": "CHAOS",
    "position": "",
@@ -136,7 +142,8 @@
    }
   },
   {
-   "championName": "ChampB2",
+   "championName": "다리우스",
+   "rawChampionName": "game_character_displayname_Darius",
    "level": 7,
    "team": "CHAOS",
    "position": "",
@@ -155,7 +162,8 @@
    }
   },
   {
-   "championName": "ChampB3",
+   "championName": "블라디미르",
+   "rawChampionName": "game_character_displayname_Vladimir",
    "level": 7,
    "team": "CHAOS",
    "position": "",
@@ -174,7 +182,8 @@
    }
   },
   {
-   "championName": "ChampB4",
+   "championName": "소라카",
+   "rawChampionName": "game_character_displayname_Soraka",
    "level": 7,
    "team": "CHAOS",
    "position": "",
@@ -193,7 +202,8 @@
    }
   },
   {
-   "championName": "ChampB5",
+   "championName": "케이틀린",
+   "rawChampionName": "game_character_displayname_Caitlyn",
    "level": 7,
    "team": "CHAOS",
    "position": "",

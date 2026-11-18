@@ -11,6 +11,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 
+from api.build import GAME, RULES
 from api.contract import CoachResponse, GameState, Health, PredictResponse
 from api.service import STEPS_PATH, PaceService, load_json
 
@@ -66,6 +67,22 @@ def predict(state: GameState) -> dict:
 def coach(state: GameState) -> dict:
     """/predict 의 근거 수치에 더해, 다음 몇 분 동안 채우면 승률이 오르는 정량 목표를 돌려준다."""
     return _tag(service.coach(state))
+
+
+# 웹 시뮬레이터의 챔피언 선택·초상화용 (AGENTS.md 4절 GET /meta/champions). 도구 스키마에는 넣지 않는다
+_META = {
+    "version": GAME["version"],
+    "source": GAME["source"],
+    "champions": sorted(({"id": cid, "name": c["name"], "tags": c["tags"]} for cid, c in GAME["champions"].items()),
+                        key=lambda c: c["name"]),
+    "roles": list(RULES["role_class"]),
+    "threat_types": list(RULES["threat_types"]),
+}
+
+
+@app.get("/meta/champions", include_in_schema=False)
+def meta_champions() -> dict:
+    return _META
 
 
 @app.get("/", include_in_schema=False)

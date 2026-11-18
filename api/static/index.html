@@ -6,50 +6,139 @@
 <title>10분 페이스메이커</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='6' fill='%23d8b45a'/%3E%3C/svg%3E">
 <style>
+  /* 표시 규칙의 정본은 AGENTS.md 3-3절. 이 화면은 /coach 응답을 그림으로 옮기기만 하고 새로 계산하지 않는다 */
   :root {
-    --bg: #0b0e13; --card: #131821; --line: #232b38; --text: #eef1f5; --sub: #93a1b5; --dim: #5d6b7e;
+    --bg: #0b0e13; --card: #131821; --card2: #171d28; --line: #232b38; --text: #eef1f5; --sub: #93a1b5; --dim: #5d6b7e;
     --blue: #4c8dff; --red: #ff5d6c; --good: #3ddc97; --warn: #ffb547; --gold: #d8b45a;
+    --glow: #3a475a; --glow-soft: rgba(58, 71, 90, 0);
   }
+  /* 상태 색: 초록 우세, 노랑 접전, 빨강 열세 */
+  body[data-state=ahead]  { --glow: #3ddc97; --glow-soft: rgba(61, 220, 151, .42); }
+  body[data-state=even]   { --glow: #ffd34d; --glow-soft: rgba(255, 211, 77, .40); }
+  body[data-state=behind] { --glow: #ff4d5e; --glow-soft: rgba(255, 77, 94, .45); }
   * { box-sizing: border-box; }
   [hidden] { display: none !important; }
+  html, body { overflow-x: hidden; }
   body { margin: 0; background: var(--bg); color: var(--text);
          font: 14px/1.5 -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", "Segoe UI", sans-serif; }
-  main { max-width: 880px; margin: 0 auto; padding: 24px 16px 48px; display: grid; gap: 16px; }
-  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; }
-  header { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
-  h1 { font-size: 15px; font-weight: 600; margin: 0; color: var(--sub); letter-spacing: .02em; }
+  main { max-width: 880px; margin: 0 auto; padding: 16px 16px 48px; display: grid; gap: 16px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; min-width: 0; }
+  h2 { font-size: 12px; color: var(--dim); font-weight: 600; margin: 0 0 10px; letter-spacing: .02em; }
+  .num { font-variant-numeric: tabular-nums; }
+  .neg { color: var(--red); } .pos { color: var(--good); }
+
+  /* ── 테두리 이펙트: 뷰포트 가장자리 + 결과 카드 ── */
+  .edge { position: fixed; inset: 0; pointer-events: none; z-index: 40; border-radius: 0;
+          border: 3px solid var(--glow); box-shadow: inset 0 0 34px 8px var(--glow-soft);
+          opacity: 0; transition: opacity .3s, border-color .35s, box-shadow .35s; }
+  body[data-state] .edge { opacity: 1; animation: pulse 2.4s ease-in-out infinite; }
+  body[data-state] #result { border-color: var(--glow); box-shadow: 0 0 0 1px var(--glow), 0 0 26px var(--glow-soft); }
+  #result { transition: border-color .35s, box-shadow .35s; }
+  body.fx-off .edge { display: none; }
+  body.fx-off #result { border-color: var(--line) !important; box-shadow: none !important; }
+  body.stale .edge { opacity: .25; animation: none; }
+  @keyframes pulse { 0%, 100% { opacity: .7; } 50% { opacity: 1; } }
+
+  .topbar { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .topbar h1 { font-size: 15px; font-weight: 600; margin: 0; color: var(--sub); letter-spacing: .02em; }
+  .topbar .right { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
   .ver { font-size: 12px; color: var(--dim); font-variant-numeric: tabular-nums; }
-  .hero { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin-top: 6px; }
+  .fx { display: inline-flex; align-items: center; gap: 8px; }
+  .fx .sw { width: 34px; height: 18px; border-radius: 9px; background: #2a3342; position: relative; transition: background .2s; flex: none; }
+  .fx .sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%;
+                   background: var(--sub); transition: left .2s, background .2s; }
+  .fx[aria-pressed=true] .sw { background: var(--glow); }
+  .fx[aria-pressed=true] .sw::after { left: 18px; background: #0b0e13; }
+  .fx b { font-weight: 700; min-width: 2.2em; text-align: left; }
+
+  /* 상태 배너 */
+  .banner { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 10px;
+            background: var(--card2); border: 1px solid var(--line); font-size: 17px; font-weight: 700; }
+  body[data-state] .banner { border-color: var(--glow); color: var(--glow); }
+  .banner .lamp { width: 14px; height: 14px; border-radius: 50%; background: var(--dim); flex: none; }
+  body[data-state] .banner .lamp { background: var(--glow); box-shadow: 0 0 12px var(--glow); }
+
+  .hero { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin-top: 12px; }
   .prob { font-size: 56px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
   .chip { font-size: 13px; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line); color: var(--sub); }
   .chip.lose { color: var(--red); border-color: #5a2a31; } .chip.win { color: var(--good); border-color: #1f4d3b; }
-  .msg { color: var(--sub); margin-top: 8px; min-height: 21px; }
-  /* 분포 막대: 왼쪽이 하위, 오른쪽이 상위. 점 = 지금, 화살표 = 첫 목표를 채웠을 때 */
-  .dist { margin: 26px 0 6px; position: relative; height: 46px; }
-  .bar { position: absolute; left: 0; right: 0; top: 18px; height: 8px; border-radius: 4px;
+  .msg { color: var(--sub); margin-top: 8px; min-height: 21px; overflow-wrap: anywhere; }
+
+  /* 분포 막대: 왼쪽이 하위, 오른쪽이 상위. ● = 지금, ★ = 첫 목표를 채웠을 때 */
+  .dist { margin: 30px 0 6px; position: relative; height: 50px; }
+  .bar { position: absolute; left: 0; right: 0; top: 20px; height: 8px; border-radius: 4px;
          background: linear-gradient(90deg, #3a1d24, #2a3140 50%, #1b3a30); }
-  .tick { position: absolute; top: 14px; width: 1px; height: 16px; background: var(--line); }
-  .dot { position: absolute; top: 13px; width: 18px; height: 18px; margin-left: -9px; border-radius: 50%;
-         background: var(--text); box-shadow: 0 0 0 4px rgba(238,241,245,.15); transition: left .35s; }
-  .arrow { position: absolute; top: 21px; height: 2px; background: var(--gold); transition: left .35s, width .35s; }
-  .arrow::after { content: ""; position: absolute; right: -7px; top: -5px;
-                  border-left: 8px solid var(--gold); border-top: 6px solid transparent; border-bottom: 6px solid transparent; }
+  .tick { position: absolute; top: 16px; width: 1px; height: 16px; background: var(--line); }
+  .mark { position: absolute; top: 9px; transform: translateX(-50%); font-size: 22px; line-height: 1; transition: left .35s; }
+  .mark.now { color: var(--text); text-shadow: 0 0 8px rgba(238, 241, 245, .5); }
+  .mark.goal { color: var(--gold); text-shadow: 0 0 10px rgba(216, 180, 90, .7); top: 8px; font-size: 24px; }
+  .arrow { position: absolute; top: 23px; height: 2px; background: var(--gold); opacity: .7; transition: left .35s, width .35s; }
   .lbl { position: absolute; font-size: 12px; white-space: nowrap; transform: translateX(-50%); font-variant-numeric: tabular-nums; }
-  .lbl.now { top: -6px; color: var(--text); } .lbl.goal { top: 34px; color: var(--gold); }
-  .ends { display: flex; justify-content: space-between; font-size: 11px; color: var(--dim); margin-top: 10px; }
-  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 18px; }
-  .cols h2 { font-size: 12px; color: var(--dim); font-weight: 600; margin: 0 0 8px; }
+  .lbl.now { top: -10px; color: var(--text); } .lbl.goal { top: 38px; color: var(--gold); }
+  .ends { display: flex; justify-content: space-between; gap: 8px; font-size: 11px; color: var(--dim); margin-top: 10px; }
+
+  /* 3단계 행동 카드 */
+  .steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 18px; }
+  .step { background: var(--card2); border: 1px solid var(--line); border-radius: 12px; padding: 12px; display: flex; gap: 10px; align-items: flex-start; min-width: 0; }
+  body[data-state] .step:first-child { border-color: var(--glow); }
+  .step .ico { font-size: 28px; line-height: 1; flex: none; }
+  .step .no { font-size: 11px; color: var(--dim); font-weight: 700; }
+  .step .t { font-weight: 700; font-size: 15px; overflow-wrap: anywhere; }
+  .step .s { color: var(--gold); font-size: 13px; margin-top: 2px; overflow-wrap: anywhere; }
+
+  /* 맞대결: 내 챔피언 vs 상대 위협 */
+  .vs { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 18px; flex-wrap: wrap; }
+  .champ { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .portrait { width: 52px; height: 52px; border-radius: 10px; border: 2px solid var(--line); background: #1a212d;
+              object-fit: cover; flex: none; display: grid; place-items: center; font-weight: 800; font-size: 13px; color: var(--sub); overflow: hidden; }
+  .champ.mine .portrait { border-color: var(--blue); } .champ.enemy .portrait { border-color: var(--red); }
+  .champ .who { font-size: 11px; color: var(--dim); } .champ .nm { font-weight: 700; overflow-wrap: anywhere; }
+  .champ .ty { font-size: 12px; color: var(--sub); }
+  .vs .x { font-weight: 800; color: var(--dim); }
+
+  /* 아이템 카드 3장 */
+  .items { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr); gap: 8px; align-items: stretch; }
+  .item { background: var(--card2); border: 1px solid var(--line); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 6px; min-width: 0; }
+  .item .stepl { font-size: 11px; font-weight: 700; color: var(--bg); background: var(--gold); padding: 1px 8px; border-radius: 999px; }
+  .item img, .item .ph { width: 56px; height: 56px; border-radius: 8px; border: 1px solid #3a475a; background: #1a212d; }
+  .item .ph { display: grid; place-items: center; color: var(--dim); font-weight: 800; }
+  .item .nm { font-weight: 700; overflow-wrap: anywhere; }
+  .item .g { color: var(--gold); font-weight: 700; font-variant-numeric: tabular-nums; }
+  .item .why { color: var(--sub); font-size: 12px; overflow-wrap: anywhere; }
+  .items .to { align-self: center; color: var(--gold); font-size: 18px; }
+  .posture { color: var(--sub); font-size: 13px; margin: 10px 0 0; overflow-wrap: anywhere; }
+
+  /* 스킬 키캡 */
+  .keys { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .key { display: inline-grid; place-items: center; width: 46px; height: 46px; border-radius: 9px; font: 800 20px/1 ui-monospace, Menlo, Consolas, monospace;
+         color: var(--sub); background: linear-gradient(#232b38, #1a212d); border: 1px solid #3a475a; border-bottom-width: 4px;
+         animation: lit .5s ease-out forwards; animation-delay: calc(var(--i) * .35s); }
+  .key.k0 { width: 54px; height: 54px; font-size: 24px; }
+  .keys .sep { color: var(--gold); }
+  .keys .klbl { font-size: 11px; color: var(--dim); display: block; text-align: center; margin-top: 4px; }
+  @keyframes lit { to { color: #0b0e13; background: linear-gradient(#ffe08a, var(--gold)); border-color: #fff3c4;
+                        box-shadow: 0 0 16px rgba(216, 180, 90, .75); } }
+  .focus { color: var(--sub); font-size: 13px; margin-top: 10px; overflow-wrap: anywhere; }
+  .basis { color: var(--dim); font-size: 12px; margin-top: 12px; overflow-wrap: anywhere; }
+
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
   .row { display: flex; justify-content: space-between; gap: 8px; padding: 6px 0; border-top: 1px solid var(--line); }
   .row:first-of-type { border-top: 0; }
-  .num { font-variant-numeric: tabular-nums; }
-  .neg { color: var(--red); } .pos { color: var(--good); }
   .goal-row b { color: var(--gold); font-weight: 600; }
-  /* 시뮬레이터 */
+
+  /* 시뮬레이터 입력 */
+  .pick { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+  .pick label.t { display: block; font-size: 12px; color: var(--dim); margin-bottom: 6px; }
+  .pick input[type=text] { width: 100%; min-width: 0; background: #0f141b; color: var(--text); border: 1px solid var(--line);
+                           border-radius: 8px; padding: 8px 10px; font: inherit; }
+  .pick input[aria-invalid=true] { border-color: var(--warn); }
+  .quick { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+  .quick button { padding: 3px 10px; font-size: 12px; }
   .sim-top { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
   button, .seg label { background: #1a212d; color: var(--text); border: 1px solid var(--line); border-radius: 8px;
            padding: 6px 12px; font: inherit; cursor: pointer; }
   button:hover, .seg label:hover { border-color: #3a475a; }
-  button:focus-visible, input:focus-visible + span { outline: 2px solid var(--blue); outline-offset: 2px; }
+  button:focus-visible, input:focus-visible, input:focus-visible + label { outline: 2px solid var(--blue); outline-offset: 2px; }
   .seg { display: inline-flex; gap: 0; }
   .seg input { position: absolute; opacity: 0; }
   .seg label { border-radius: 0; } .seg label:first-of-type { border-radius: 8px 0 0 8px; }
@@ -57,45 +146,101 @@
   .seg input:checked + label { background: #26324a; border-color: var(--blue); }
   .grid { display: grid; grid-template-columns: 90px minmax(0, 1fr) minmax(0, 1fr); gap: 6px 14px; align-items: center; }
   .grid .head { font-size: 12px; color: var(--dim); } .grid .head.b { color: var(--blue); } .grid .head.r { color: var(--red); }
-  .slot { display: flex; align-items: center; gap: 8px; }
+  .slot { display: flex; align-items: center; gap: 8px; min-width: 0; }
   .slot input[type=range] { flex: 1; min-width: 0; }
   .slot output { width: 40px; text-align: right; font-variant-numeric: tabular-nums; color: var(--sub); }
   input[type=range].b { accent-color: var(--blue); } input[type=range].r { accent-color: var(--red); }
   /* 계산에 실패하면 이전 결과는 흐리게: 지금 입력의 답이 아니다 */
-  .stale .hero, .stale .msg, .stale .dist, .stale .ends, .stale .cols { opacity: .3; }
-  .err { color: var(--warn); margin-top: 10px; display: flex; gap: 10px; align-items: center; }
+  body.stale .res { opacity: .3; }
+  .err { color: var(--warn); margin-top: 12px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; overflow-wrap: anywhere; }
+  .pick-err { margin: -4px 0 12px; }
   .note { color: var(--dim); font-size: 12px; margin-top: 12px; }
   @media (max-width: 640px) {
-    .cols { grid-template-columns: 1fr; } .prob { font-size: 44px; }
-    .grid { grid-template-columns: 70px minmax(0, 1fr) minmax(0, 1fr); gap: 6px 8px; } .slot output { width: 32px; }
+    .cols, .pick, .steps { grid-template-columns: 1fr; } .prob { font-size: 44px; }
+    .items { grid-template-columns: 1fr; } .items .to { justify-self: center; transform: rotate(90deg); }
+    .item { flex-direction: row; text-align: left; align-items: center; flex-wrap: wrap; }
+    .item .txt { flex: 1; min-width: 0; }
+    .grid { grid-template-columns: 64px minmax(0, 1fr) minmax(0, 1fr); gap: 6px 8px; } .slot output { width: 32px; }
+    .key { width: 42px; height: 42px; } .key.k0 { width: 48px; height: 48px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    body[data-state] .edge { animation: none; }
+    .key { animation-duration: .01s; animation-delay: 0s; }
+    .mark, .arrow, .edge, #result { transition: none; }
   }
 </style>
 </head>
 <body>
+<div class="edge" aria-hidden="true"></div>
 <main>
-  <section class="card" id="result" aria-live="polite">
-    <header><h1>10분 페이스</h1><span class="ver" id="ver">모델 판 확인 중</span></header>
-    <div class="hero"><span class="prob num" id="prob">–</span><span class="chip" id="pace">계산 전</span></div>
-    <div class="msg" id="msg">점수판 값을 바꾸면 바로 다시 계산해요.</div>
-
-    <div class="dist" id="dist" aria-label="같은 티어 경기 중 내 위치">
-      <div class="bar"></div>
-      <div class="tick" style="left:25%"></div><div class="tick" style="left:50%"></div><div class="tick" style="left:75%"></div>
-      <div class="arrow" id="arrow" hidden></div>
-      <div class="dot" id="dot" style="left:50%"></div>
-      <span class="lbl now" id="lblNow" style="left:50%"></span>
-      <span class="lbl goal" id="lblGoal" hidden></span>
+  <div class="topbar">
+    <h1>10분 페이스메이커</h1>
+    <div class="right">
+      <button type="button" class="fx" id="fxToggle" aria-pressed="true" title="화면 가장자리 색 테두리를 끄고 켭니다">
+        <span class="sw" aria-hidden="true"></span><span>테두리 이펙트</span> <b id="fxState">ON</b>
+      </button>
+      <span class="ver" id="ver">모델 판 확인 중</span>
     </div>
-    <div class="ends"><span>하위</span><span>같은 티어 10분 경기 분포</span><span>상위</span></div>
+  </div>
 
-    <div class="cols">
-      <div><h2>승률에 가장 크게 작용하는 것</h2><div id="factors"></div></div>
-      <div><h2>다음 3분 목표</h2><div id="goals"></div></div>
+  <section class="card" id="result" aria-live="polite">
+    <div class="res">
+      <div class="banner" id="banner"><span class="lamp" aria-hidden="true"></span><span id="bannerText">계산 중</span></div>
+      <div class="hero"><span class="prob num" id="prob">?</span><span class="chip" id="pace">계산 전</span></div>
+      <div class="msg" id="msg">점수판 값을 바꾸면 바로 다시 계산해요.</div>
+
+      <div class="dist" aria-label="같은 티어 경기 중 내 위치">
+        <div class="bar"></div>
+        <div class="tick" style="left:25%"></div><div class="tick" style="left:50%"></div><div class="tick" style="left:75%"></div>
+        <div class="arrow" id="arrow" hidden></div>
+        <span class="mark now" id="dot" style="left:50%" aria-hidden="true">●</span>
+        <span class="mark goal" id="star" hidden aria-hidden="true">★</span>
+        <span class="lbl now" id="lblNow" style="left:50%"></span>
+        <span class="lbl goal" id="lblGoal" hidden></span>
+      </div>
+      <div class="ends"><span>하위</span><span>● 지금 · ★ 첫 목표를 채우면</span><span>상위</span></div>
+
+      <div class="steps" id="steps" aria-label="지금 할 일 3단계"></div>
+      <div class="vs" id="vs" aria-label="내 챔피언과 상대 위협"></div>
     </div>
     <div class="err" id="err" hidden><span id="errText"></span><button id="retry" type="button">다시 시도</button></div>
   </section>
 
+  <section class="card res" aria-label="추천 아이템">
+    <h2>추천 아이템 순서</h2>
+    <div class="items" id="items"></div>
+    <p class="posture" id="posture"></p>
+  </section>
+
+  <section class="card res" aria-label="스킬 순서">
+    <h2>스킬 마스터 순서</h2>
+    <div class="keys" id="keys"></div>
+    <div class="focus" id="focus"></div>
+    <div class="basis" id="basis"></div>
+  </section>
+
+  <section class="card res">
+    <div class="cols">
+      <div><h2>승률에 가장 크게 작용하는 것</h2><div id="factors"></div></div>
+      <div><h2>다음 3분 목표</h2><div id="goals"></div></div>
+    </div>
+  </section>
+
   <section class="card">
+    <div class="pick">
+      <div>
+        <label class="t" for="myChamp">내 챔피언</label>
+        <input type="text" id="myChamp" list="champList" placeholder="예: 아리, Ahri (비우면 AD)" autocomplete="off" maxlength="40">
+        <div class="quick" id="roleBtns" aria-label="역할군으로 고르기"></div>
+      </div>
+      <div>
+        <label class="t" for="threat">상대에서 가장 센 챔피언</label>
+        <input type="text" id="threat" list="champList" placeholder="예: 제드, Zed (비우면 AP)" autocomplete="off" maxlength="40">
+        <div class="quick" id="threatBtns" aria-label="피해 유형으로 고르기"></div>
+      </div>
+      <datalist id="champList"></datalist>
+    </div>
+    <p class="err pick-err" id="pickErr" role="alert" hidden></p>
     <div class="sim-top">
       <div class="seg" role="radiogroup" aria-label="내 팀">
         <input type="radio" name="side" id="sideB" value="blue" checked><label for="sideB">내 팀 블루</label>
@@ -110,7 +255,7 @@
     <div class="grid" id="grid">
       <span class="head">지표</span><span class="head b">블루</span><span class="head r">레드</span>
     </div>
-    <p class="note">점수판(Tab)에 보이는 값만 씁니다. 목표 승률은 과거 경기에서 그 수치를 더 가졌던 경우의 승률이에요. 그렇게 하면 반드시 이긴다는 뜻은 아니에요.</p>
+    <p class="note">점수판(Tab)에 보이는 값만 씁니다. 목표 승률은 과거 경기에서 그 수치를 더 가졌던 경우의 승률이에요. 그렇게 하면 반드시 이긴다는 뜻은 아니에요. 아이템·스킬·행동 카드는 사람이 정한 규칙표와 상태별 원칙이고, 모델은 우세·접전·열세만 정합니다.</p>
   </section>
 </main>
 <script>
@@ -125,7 +270,39 @@ const PRESETS = {
   "초반 압승": [{ kills: 11, assists: 14, cs: 300, avg_level: 7.6, dragons: 1, heralds: 1, towers: 1 }, { kills: 4, assists: 5, cs: 245, avg_level: 6.5, dragons: 0, heralds: 0, towers: 0 }, "blue"],
   "킬은 앞, CS는 뒤": [{ ...EVEN, kills: 9, assists: 10, cs: 240 }, { ...EVEN, kills: 5, assists: 6, cs: 290 }, "blue"],
 };
+// 상태 배너 문구 (AGENTS.md 3-3절)
+const STATE_LABEL = { ahead: "우세 · 적극 교전 가능", even: "접전 · 파밍 집중", behind: "열세 · 1대1 싸움 금지" };
+// 3단계 행동 카드: 사람이 정한 상태별 고정 문구 (AGENTS.md 3-3절 표). ② 에 첫 목표(coaching[0])를 넣는다
+const ACTIONS = {
+  behind: [["🛡️", "1대1 싸움 멈추기"], ["🌾", "포탑 앞에서 미니언 챙기기"], ["🏃", "아군 강세 라인 합류"]],
+  even:   [["🌾", "파밍 집중"], ["🎯", "첫 목표 채우기"], ["👀", "오브젝트 전에 모이기"]],
+  ahead:  [["⚔️", "적극 교전 가능"], ["🎯", "첫 목표로 격차 굴리기"], ["🐉", "오브젝트 압박"]],
+};
+const ROLE_KO = { AD: "원거리 딜러", AP: "마법사", TANK: "탱커", SUPPORT: "서포터" };
+const THREAT_KO = { AD: "물리 피해", AP: "마법 피해", HEAL: "회복", TANK: "단단함" };
+const CLASS_KO = { marksman: "원딜", fighter: "전사", assassin: "암살자", mage: "마법사", tank: "탱커", support: "서포터" };
+const ORDINAL = ["먼저", "다음", "마지막"];
+const CDN = "https://ddragon.leagueoflegends.com/cdn";
+let META = { version: null, champions: [], roles: ["AD", "AP", "TANK", "SUPPORT"], threat_types: ["AD", "AP", "HEAL", "TANK"] };
+let BY_NAME = new Map();
+
 const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+// ── 테두리 이펙트 ON/OFF (브라우저에 기억, 저장이 막혀도 동작) ──
+const FX_KEY = "lolpace.edgeFx";
+function setFx(on) {
+  document.body.classList.toggle("fx-off", !on);
+  $("fxToggle").setAttribute("aria-pressed", String(on));
+  $("fxState").textContent = on ? "ON" : "OFF";
+  try { localStorage.setItem(FX_KEY, on ? "on" : "off"); } catch (_) { /* 저장 불가 환경 */ }
+}
+let fxSaved = null;
+try { fxSaved = localStorage.getItem(FX_KEY); } catch (_) { /* 저장 불가 환경 */ }
+setFx(fxSaved !== "off");
+$("fxToggle").onclick = () => setFx(document.body.classList.contains("fx-off"));
+
+// ── 입력 칸 만들기 ──
 const grid = $("grid");
 for (const [key, name, min, max, step] of STATS) {
   const label = document.createElement("span"); label.textContent = name; grid.appendChild(label);
@@ -139,6 +316,25 @@ for (const name of Object.keys(PRESETS)) {
   const b = document.createElement("button"); b.type = "button"; b.textContent = name;
   b.onclick = () => applyPreset(name); $("presets").appendChild(b);
 }
+function quickButtons(boxId, inputId, codes, ko) {
+  const box = $(boxId); box.innerHTML = "";
+  for (const code of codes) {
+    const b = document.createElement("button"); b.type = "button";
+    b.textContent = `${code} ${ko[code] || ""}`.trim();
+    b.onclick = () => { $(inputId).value = code; refresh(); };
+    box.appendChild(b);
+  }
+}
+async function loadMeta() {
+  try {
+    const res = await fetch("/meta/champions");
+    if (res.ok) META = await res.json();
+  } catch (_) { /* 목록 없이도 이름을 직접 쓰면 된다 */ }
+  BY_NAME = new Map(META.champions.map((c) => [c.name, c]));
+  $("champList").innerHTML = META.champions.map((c) => `<option value="${esc(c.name)}">${esc(c.id)}</option>`).join("");
+  quickButtons("roleBtns", "myChamp", META.roles, ROLE_KO);
+  quickButtons("threatBtns", "threat", META.threat_types, THREAT_KO);
+}
 function applyPreset(name) {
   const [blue, red, fb] = PRESETS[name];
   for (const [key] of STATS) { $(`blue-${key}`).value = blue[key]; $(`red-${key}`).value = red[key]; }
@@ -149,38 +345,120 @@ function readState() {
   const team = (side) => Object.fromEntries(STATS.map(([key, , , , step]) => {
     const v = Number($(`${side}-${key}`).value); return [key, step < 1 ? Math.round(v * 10) / 10 : Math.round(v)];
   }));
-  return { blue: team("blue"), red: team("red"),
-           first_blood: document.querySelector("input[name=fb]:checked").value,
-           my_side: document.querySelector("input[name=side]:checked").value };
+  const body = { blue: team("blue"), red: team("red"),
+                 first_blood: document.querySelector("input[name=fb]:checked").value,
+                 my_side: document.querySelector("input[name=side]:checked").value };
+  const my = $("myChamp").value.trim(), th = $("threat").value.trim();
+  if (my) body.my_champion = my;  // 비우면 서버 기본값(AD)
+  if (th) body.enemy_top_threat = th;  // 비우면 서버 기본값(AP)
+  return body;
 }
+
+// ── 그리기 ──
 const pct = (p) => `${Math.round(p * 100)}%`;
 const inside = (x) => Math.min(Math.max(x, 14), 86);  // 위치 글자가 막대 밖으로 나가지 않게
 const fmt = (v) => (Math.abs(v) >= 10 ? v.toFixed(0) : v.toFixed(1)).replace(/\.0$/, "");
+function img(kind, id, alt, fallback, cls) {
+  if (!META.version || id == null) return `<span class="${cls} ph">${esc(fallback)}</span>`;
+  return `<img class="${cls}" src="${CDN}/${esc(META.version)}/img/${kind}/${esc(id)}.png" alt="${esc(alt)}" width="56" height="56" data-fb="${esc(fallback)}">`;
+}
+// 오프라인 등으로 그림을 못 받으면 글자 자리로 바꾼다 (error 는 버블링되지 않아 캡처 단계에서 받는다)
+document.addEventListener("error", (e) => {
+  const el = e.target;
+  if (el.tagName !== "IMG" || !el.dataset.fb) return;
+  const ph = document.createElement("span");
+  ph.className = `${el.className} ph`.trim(); ph.textContent = el.dataset.fb;
+  el.replaceWith(ph);
+}, true);
+// 챔피언이면 초상화, 역할군·유형으로 골랐으면 글자 배지
+function champBlock(side, who, name, badge, plain, sub) {
+  const c = name ? BY_NAME.get(name) : null;
+  const pic = c ? img("champion", c.id, name, name.slice(0, 2), "portrait") : `<span class="portrait">${esc(badge)}</span>`;
+  return `<div class="champ ${side}">${pic}<div><div class="who">${who}</div><div class="nm">${esc(name || plain)}</div><div class="ty">${esc(sub)}</div></div></div>`;
+}
+const CLASS_BADGE = { marksman: "AD", fighter: "FTR", assassin: "ASN", mage: "AP", tank: "TANK", support: "SUP" };
 function render(r) {
   $("err").hidden = true;
-  $("result").classList.remove("stale");
+  document.body.classList.remove("stale");
+  for (const id of ["myChamp", "threat"]) $(id).removeAttribute("aria-invalid");
+  $("pickErr").hidden = true;
+  const b = r.build_advice;
+  document.body.dataset.state = b.state;
+  $("bannerText").textContent = STATE_LABEL[b.state];
   $("ver").textContent = `${r.model} · ${r.model_version}`;
   $("prob").textContent = pct(r.my_win_prob);
   const pace = $("pace"); pace.textContent = r.pace;
-  pace.className = "chip" + (r.pace.startsWith("열세") ? " lose" : r.pace.startsWith("우세") ? " win" : "");
+  pace.className = "chip" + (b.state === "behind" ? " lose" : b.state === "ahead" ? " win" : "");
   $("msg").textContent = r.message;
+
+  // 분포 막대 ● ★
   const now = 100 - r.tier_percentile.overall_top_pct;  // 왼쪽 0 = 하위, 오른쪽 100 = 상위
   $("dot").style.left = `${now}%`;
   const lblNow = $("lblNow"); lblNow.style.left = `${inside(now)}%`;
-  lblNow.textContent = `지금 상위 ${Math.round(r.tier_percentile.overall_top_pct)}%`;
-  const goal = r.coaching[0], arrow = $("arrow"), lblGoal = $("lblGoal");
+  lblNow.textContent = `● 지금 상위 ${Math.round(r.tier_percentile.overall_top_pct)}%`;
+  const goal = r.coaching[0], arrow = $("arrow"), star = $("star"), lblGoal = $("lblGoal");
   if (goal) {
     const to = 100 - goal.overall_top_pct_after;
-    arrow.hidden = false; arrow.style.left = `${Math.min(now, to)}%`; arrow.style.width = `${Math.max(Math.abs(to - now) - 1, 0)}%`;
+    arrow.hidden = false; arrow.style.left = `${Math.min(now, to)}%`; arrow.style.width = `${Math.abs(to - now)}%`;
+    star.hidden = false; star.style.left = `${to}%`;
     lblGoal.hidden = false; lblGoal.style.left = `${inside(to)}%`;
-    lblGoal.textContent = `${goal.name} +${goal.add} → 상위 ${Math.round(goal.overall_top_pct_after)}%`;
-  } else { arrow.hidden = true; lblGoal.hidden = true; }
-  $("factors").innerHTML = r.top_factors.map((f) => `<div class="row"><span>${f.name} <span class="num" style="color:var(--dim)">${f.diff > 0 ? "+" : ""}${fmt(f.diff)}</span></span>
+    lblGoal.textContent = `★ ${goal.name} +${goal.add} → 상위 ${Math.round(goal.overall_top_pct_after)}%`;
+  } else { arrow.hidden = true; star.hidden = true; lblGoal.hidden = true; }
+
+  // 3단계 행동 카드
+  const goalText = goal ? `목표: ${goal.name} +${goal.add} (+${goal.gain_pp.toFixed(1)}%p)` : "지금 페이스 유지";
+  $("steps").innerHTML = ACTIONS[b.state].map(([ico, t], i) => `<div class="step"><span class="ico" aria-hidden="true">${ico}</span>
+      <div><div class="no">${i + 1}단계</div><div class="t">${esc(t)}</div>${i === 1 ? `<div class="s">${esc(goalText)}</div>` : ""}</div></div>`).join("");
+
+  // 내 챔피언 vs 상대 위협
+  const myKo = CLASS_KO[b.my_class] || b.my_class, thKo = THREAT_KO[b.threat_type] || b.threat_type;
+  $("vs").innerHTML = champBlock("mine", "나", b.my_champion, CLASS_BADGE[b.my_class] || b.my_damage, myKo,
+                                  b.my_champion ? `${myKo} · 주 피해 ${b.my_damage}` : `역할군 · 주 피해 ${b.my_damage}`)
+    + `<span class="x">VS</span>`
+    + champBlock("enemy", "상대 위협", b.enemy_top_threat, b.threat_type, thKo, b.enemy_top_threat ? `위협: ${thKo}` : "피해 유형");
+
+  // 아이템 카드 1 → 2 → 3
+  $("items").innerHTML = b.recommended_items.map((it) => `<div class="item">
+      <span class="stepl">${it.step}단계 ${esc(it.slot)}</span>${img("item", it.item_id, it.name, it.step, "")}
+      <div class="txt"><div class="nm">${esc(it.name)}</div><div class="g">${it.gold.toLocaleString("ko-KR")}G</div><div class="why">${esc(it.why)}</div></div></div>`)
+    .join(`<span class="to" aria-hidden="true">▶</span>`);
+  $("posture").textContent = b.posture;
+
+  // 스킬 키캡
+  const keys = b.skill_order.order ? b.skill_order.order.split(">").map((k) => k.trim()) : [];
+  $("keys").innerHTML = keys.length
+    ? keys.map((k, i) => `<span><kbd class="key k${i}" style="--i:${i}">${esc(k)}</kbd><span class="klbl">${ORDINAL[i] || ""}</span></span>`)
+        .join(`<span class="sep" aria-hidden="true">▶</span>`)
+    : `<span class="chip">원칙만 · 이 챔피언은 규칙표에 순서가 없어요</span>`;
+  $("focus").textContent = b.skill_order.focus;
+  $("basis").textContent = b.basis;
+
+  $("factors").innerHTML = r.top_factors.map((f) => `<div class="row"><span>${esc(f.name)} <span class="num" style="color:var(--dim)">${f.diff > 0 ? "+" : ""}${fmt(f.diff)}</span></span>
       <span class="num ${f.impact_pp < 0 ? "neg" : "pos"}">${f.impact_pp > 0 ? "+" : ""}${f.impact_pp.toFixed(1)}%p</span></div>`).join("");
-  $("goals").innerHTML = r.coaching.length ? r.coaching.slice(0, 3).map((c) => `<div class="row goal-row"><span><b>${c.name} +${c.add}</b>
+  $("goals").innerHTML = r.coaching.length ? r.coaching.slice(0, 3).map((c) => `<div class="row goal-row"><span><b>${esc(c.name)} +${c.add}</b>
       <span style="color:var(--dim)">상위 ${Math.round(c.top_pct_before)}% → ${Math.round(c.top_pct_after)}%</span></span>
       <span class="num">${pct(c.win_prob_after)} <span class="pos">+${c.gain_pp.toFixed(1)}</span></span></div>`).join("")
     : `<div class="row"><span style="color:var(--sub)">지금 페이스를 유지하세요</span></div>`;
+}
+// 422 의 위치(loc)로 어느 칸이 틀렸는지 알려 준다. 챔피언 칸이면 그 칸 바로 아래에도 띄운다(모바일에서 위 결과 카드가 안 보여도 읽히게)
+async function explain422(res, sent) {
+  const msg = await reason422(res, sent);
+  if (sent.bad) { $("pickErr").textContent = msg; $("pickErr").hidden = false; }
+  return msg;
+}
+async function reason422(res, sent) {
+  let detail = [];
+  try { detail = (await res.json()).detail || []; } catch (_) { /* 본문 없음 */ }
+  const bad = (field) => detail.some((d) => (d.loc || []).includes(field));
+  if (bad("my_champion")) {
+    $("myChamp").setAttribute("aria-invalid", "true"); sent.bad = true;
+    return `내 챔피언 이름을 찾지 못했어요: "${sent.my_champion}". 목록에서 고르거나 ${META.roles.join("·")} 버튼을 눌러 주세요.`;
+  }
+  if (bad("enemy_top_threat")) {
+    $("threat").setAttribute("aria-invalid", "true"); sent.bad = true;
+    return `상대 위협 이름을 찾지 못했어요: "${sent.enemy_top_threat}". 목록에서 고르거나 ${META.threat_types.join("·")} 버튼을 눌러 주세요.`;
+  }
+  return "입력값을 계산할 수 없어요. 값을 다시 확인해 주세요.";
 }
 let timer = null, seq = 0;
 async function refresh() {
@@ -189,22 +467,25 @@ async function refresh() {
   }
   clearTimeout(timer);
   timer = setTimeout(async () => {
-    const my = ++seq;
+    const my = ++seq, sent = readState();
     try {
-      const res = await fetch("/coach", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(readState()) });
-      if (!res.ok) throw new Error(res.status === 422 ? "입력값을 계산할 수 없어요. 값을 다시 확인해 주세요." : `서버가 답하지 않았어요 (${res.status}).`);
+      const res = await fetch("/coach", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(sent) });
+      if (!res.ok) throw new Error(res.status === 422 ? await explain422(res, sent) : `서버가 답하지 않았어요 (${res.status}).`);
       const body = await res.json();
       if (my === seq) render(body);  // 늦게 온 옛 응답은 버린다
     } catch (e) {
-      $("errText").textContent = e.message.startsWith("Failed") || e.name === "TypeError" ? "API에 연결하지 못했어요." : e.message;
+      if (my !== seq) return;
+      $("errText").textContent = e.name === "TypeError" ? "API에 연결하지 못했어요." : e.message;
       $("err").hidden = false;
-      $("result").classList.add("stale");
+      document.body.classList.add("stale");
     }
   }, 120);
 }
-document.addEventListener("input", refresh);
+// 슬라이더·라디오는 바로, 챔피언 이름 칸은 다 쓰고 나서(목록 고르기·엔터·칸 벗어나기) 계산한다
+document.addEventListener("input", (e) => { if (e.target.type !== "text") refresh(); });
+document.addEventListener("change", (e) => { if (e.target.type === "text") refresh(); });
 $("retry").onclick = refresh;
-applyPreset("CS·드래곤 밀림");
+loadMeta().then(() => applyPreset("CS·드래곤 밀림"));
 </script>
 </body>
 </html>
