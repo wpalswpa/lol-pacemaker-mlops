@@ -1086,3 +1086,23 @@ def test_save_match_on_early_disconnect_after_60s():
     assert st2["saved_match"] == {"id": 99, "created_at": "now", "win": None}
     b.step()
     assert len(saved_calls) == 1  # 중복 저장 안 함
+
+
+def test_resets_saved_flag_when_new_game_starts():
+    saved_calls = []
+    frames = [at(180.0), None, at(10.0), at(150.0), None]
+
+    def fetch():
+        f = frames.pop(0)
+        if f is None:
+            raise ConnectionError("between games")
+        return f
+
+    b = OverlayBridge(fetch, lambda s: {"my_win_prob": 0.5, "build_advice": {"skill_order": {"order": "Q > W > E"}}},
+                      save=lambda p: (saved_calls.append(p), {"id": len(saved_calls), "created_at": "now"})[1])
+    b.step()  # 1판 180s
+    b.step()  # 1판 끊김 -> 저장 1회
+    b.step()  # 2판 10s 시작 -> saved 리셋
+    b.step()  # 2판 150s
+    b.step()  # 2판 끊김 -> 저장 2회
+    assert len(saved_calls) == 2 and saved_calls[1]["game_time_sec"] == 150

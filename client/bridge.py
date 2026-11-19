@@ -423,6 +423,13 @@ class OverlayBridge:
                                   saved_match=saved_match, save_error=save_error)
             return self.snapshot()
         gt = info["game_time"]
+        prev_gt = float(self.state["game_time_sec"] or 0.0)
+        if self.saved and self.source == "live" and prev_gt >= 60.0 and gt < 30.0:
+            # 연달아 새 게임을 시작하면(게임 시각이 초기화됨) 저장·코칭 상태를 리셋
+            self.saved = False
+            self.last_save_try = None
+            self.last_coach_input = None
+            self.last_coach_at = None
         minutes, k = pace_scale(gt)
         features = scale_to_ten_minutes(raw, gt)
         me = _me(data) or {}
