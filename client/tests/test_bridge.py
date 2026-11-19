@@ -1065,3 +1065,24 @@ def test_hud_uses_same_pace_boundaries_and_texts(client):  # noqa: F811
     assert PACE_TEXT["late"] in t and PACE_TEXT["very_late"] in t
     assert PACE_TEXT["early"].replace("{scale}", "${(10 / Math.max(t / 60, 1)).toFixed(1)}") in t
     assert 'id="paceWarn"' in t and '$("paceWarn").textContent = pw ? pw.text : ""' in t
+
+
+def test_save_match_on_early_disconnect_after_60s():
+    saved_calls = []
+    frames = [at(180.0)]  # 3분 유효 게임 뒤 연결 끊김(연습모드 중도 나가기)
+
+    def fetch():
+        if frames:
+            return frames.pop(0)
+        raise ConnectionError("game exited")
+
+    b = OverlayBridge(fetch, lambda s: {"my_win_prob": 0.5, "build_advice": {"skill_order": {"order": "Q > W > E"}}},
+                      save=lambda p: (saved_calls.append(p), {"id": 99, "created_at": "now"})[1])
+    st1 = b.step()
+    assert st1["connected"] and saved_calls == []
+    st2 = b.step()
+    assert not st2["connected"] and len(saved_calls) == 1
+    assert saved_calls[0]["win"] is None and saved_calls[0]["game_time_sec"] == 180
+    assert st2["saved_match"] == {"id": 99, "created_at": "now", "win": None}
+    b.step()
+    assert len(saved_calls) == 1  # 중복 저장 안 함

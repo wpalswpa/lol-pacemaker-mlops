@@ -407,8 +407,20 @@ class OverlayBridge:
             data = self.fetch()
             raw, info = to_game_state(data, self.side, self.prices)
         except Exception as e:  # noqa: BLE001  게임 API 가 꺼져 있어도 서버는 살아 있어야 한다
+            prev_feats = self.state["features"]
+            prev_gt = float(self.state["game_time_sec"] or 0.0)
+            was_live = bool(self.state["connected"])
+            saved_match, save_error = self.state["saved_match"], self.state["save_error"]
+            if self.save and not self.saved and self.source == "live" and was_live and prev_feats and prev_gt >= 60.0:
+                try:
+                    out = coach_with_fallback(self.save, match_payload(prev_feats, prev_gt, None))
+                    self.saved, save_error = True, None
+                    saved_match = {"id": out.get("id"), "created_at": out.get("created_at"), "win": None}
+                except Exception as se:  # noqa: BLE001
+                    save_error = f"{type(se).__name__}: {se}"[:200]
             with self.lock:
-                self.state.update(connected=False, error=f"{type(e).__name__}: {e}"[:200])
+                self.state.update(connected=False, error=f"{type(e).__name__}: {e}"[:200],
+                                  saved_match=saved_match, save_error=save_error)
             return self.snapshot()
         gt = info["game_time"]
         minutes, k = pace_scale(gt)
