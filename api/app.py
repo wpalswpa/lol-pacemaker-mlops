@@ -179,7 +179,7 @@ def download_launcher(request: Request, os: Literal["windows", "mac"] = Query(..
             "if not defined PY_CMD (\r\n"
             "  echo Python 3 자동 설치를 시도합니다...\r\n"
             "  winget install -e --id Python.Python.3.12 --silent --accept-package-agreements --accept-source-agreements >nul 2>nul\r\n"
-            "  if exist \"%LocalAppData%\\Programs\\Python\\Python312\\python.exe\" set \"PY_CMD=%LocalAppData%\\Programs\\Python\\Python312\\python.exe\"\r\n"
+            "  for %%V in (314 313 312 311) do if not defined PY_CMD if exist \"%LocalAppData%\\Programs\\Python\\Python%%V\\python.exe\" set \"PY_CMD=%LocalAppData%\\Programs\\Python\\Python%%V\\python.exe\"\r\n"
             ")\r\n"
             "if not defined PY_CMD (\r\n"
             "  echo Python 3 설치가 필요합니다. 브라우저에서 설치 페이지를 엽니다.\r\n"
@@ -195,7 +195,7 @@ def download_launcher(request: Request, os: Literal["windows", "mac"] = Query(..
             ")\r\n"
             "pushd \"%APP_DIR%\"\r\n"
             "echo [LoL Pacemaker] 항상 위 인게임 오버레이 팝업을 켭니다.\r\n"
-            f"%PY_CMD% -m client.bridge --server \"{origin}\" --insecure-local --overlay --launch-popup --save-match\r\n"
+            f"%PY_CMD% -m client.bridge --server \"{origin}\" --insecure-local --overlay --launch-popup --repin-sec 3 --save-match\r\n"
             "popd\r\n"
             "pause\r\n"
         )
