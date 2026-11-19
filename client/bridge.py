@@ -623,7 +623,8 @@ def popup_command(url: str, system: str | None = None, which: Callable[[str], st
     chrome = _find_app_browser(system, which, exists)
     if chrome:
         return "chrome", [chrome, f"--app={url}", f"--window-size={w},{h}", "--window-position=24,220",
-                          "--user-data-dir=" + os.path.join(_cache_dir(), "chrome-profile")]
+                          "--user-data-dir=" + os.path.join(_cache_dir(), "chrome-profile"),
+                          "--no-first-run", "--no-default-browser-check"]
     return "browser", None
 
 
@@ -865,6 +866,72 @@ def run_overlay(bridge: OverlayBridge, port: int, server: str | None = None, pop
 
 
 # ── 입출력 ──
+# 실제 응답 기록 (AGENTS.md 3-4 "실제 응답 기록 --record")
+ID_KEYS = ("summonerName", "riotId", "riotIdGameName", "riotIdTagLine", "Recipient", "KillerName", "VictimName")
+
+
+def mask_identities(data, names: dict[str, str]):
+    """선수 식별 값을 한 실행 안에서 일관된 가명(P1…)으로 바꾼 사본. names 는 실행 동안 이어 쓴다."""
+    def alias(v):
+        if not isinstance(v, str) or not v:
+            return v
+        if v not in names:
+            names[v] = f"P{len(names) + 1}"
+        return names[v]
+
+    if isinstance(data, dict):
+        out = {}
+        for k, v in data.items():
+            if k in ID_KEYS:
+                out[k] = alias(v)
+            elif k == "Assisters" and isinstance(v, list):
+                out[k] = [alias(x) for x in v]
+            else:
+                out[k] = mask_identities(v, names)
+        return out
+    if isinstance(data, list):
+        return [mask_identities(x, names) for x in data]
+    return data
+
+
+class Recorder:
+    """LIVE 응답을 게임 시각 1분마다 한 번 가명 처리해 남긴다. 실패해도 브리지는 계속 돈다."""
+
+    def __init__(self, folder: str, clock: Callable[[], float] = time.time):
+        self.dir = os.path.join(folder, time.strftime("%Y%m%d-%H%M%S", time.localtime(clock())))
+        self.names: dict[str, str] = {}
+        self.last_minute: int | None = None
+        self.warned = False
+
+    def __call__(self, data: dict) -> None:
+        try:
+            gt = float(data["gameData"]["gameTime"])
+        except (KeyError, TypeError, ValueError):
+            return
+        minute = int(gt // 60)
+        if minute == self.last_minute:
+            return
+        try:
+            os.makedirs(self.dir, exist_ok=True)
+            mm, ss = divmod(int(gt), 60)
+            path = os.path.join(self.dir, f"allgamedata_{mm:02d}m{ss:02d}s.json")
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(mask_identities(data, self.names), f, ensure_ascii=False)
+            self.last_minute = minute
+        except OSError as e:
+            if not self.warned:
+                print(f"\n응답 기록 실패(브리지는 계속): {e}", file=sys.stderr)
+                self.warned = True
+
+
+def recording(fetch: Callable[[], dict], recorder: Callable[[dict], None]) -> Callable[[], dict]:
+    def wrapped() -> dict:
+        data = fetch()
+        recorder(data)
+        return data
+    return wrapped
+
+
 def fetch_live(base: str, cafile: str | None, insecure_local: bool = False) -> dict:
     if not base.startswith(("https://127.0.0.1", "https://localhost")):
         raise ValueError("로컬 게임 API(127.0.0.1)만 읽는다")
@@ -990,6 +1057,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--launch-popup", action="store_true", help="항상 위 오버레이 팝업 창을 띄운다 (--overlay 포함)")
     ap.add_argument("--repin-sec", type=float, default=0.0,
                     help="Windows 에서 처음 10초(1초 간격) 재고정 뒤에도 N초마다 다시 항상 위로 고정 (기본 0 = 처음 10초만)")
+    ap.add_argument("--record", help="LIVE 응답을 1분마다 가명 처리해 이 폴더에 남긴다 (실게임 시험용)")
     ap.add_argument("--save-match", action="store_true",
                     help="오버레이 모드에서 경기가 끝나면(--file 이면 바로) 전처리 피처를 POST /matches 로 한 번 저장")
     a = ap.parse_args(argv)
@@ -1012,6 +1080,8 @@ def main(argv: list[str] | None = None) -> int:
     else:
         fetch = lambda: fetch_live(a.live, a.cafile, a.insecure_local)  # noqa: E731
         max_polls = None
+        if a.record:
+            fetch = recording(fetch, Recorder(a.record))
 
     if a.overlay or a.launch_popup:
         bridge = OverlayBridge(fetch, lambda s: post_coach(a.api, s), a.side, prices,

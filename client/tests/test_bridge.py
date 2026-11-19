@@ -1187,3 +1187,78 @@ def test_port_taken_by_other_program(capsys):
         assert "--listen-port" in capsys.readouterr().err
     finally:
         s.close()
+
+
+# ── 실제 응답 기록 (AGENTS.md 3-4 "실제 응답 기록 --record") ──
+from client.bridge import Recorder, mask_identities, popup_command, recording  # noqa: E402
+
+FIXTURE = os.path.join(os.path.dirname(__file__), "fixtures", "allgamedata_10min.json")
+
+
+def _names(d):
+    out = set()
+    for p in d["allPlayers"]:
+        out |= {p.get("summonerName"), p.get("riotId"), p.get("riotIdGameName")}
+    return {n for n in out if n}
+
+
+def test_mask_identities_hides_every_player_name_but_keeps_matching():
+    with open(FIXTURE, encoding="utf-8") as f:
+        raw = json.load(f)
+    masked = mask_identities(raw, {})
+    text = json.dumps(masked, ensure_ascii=False)
+    assert not any(n in text for n in _names(raw))  # 원래 이름이 하나도 남지 않는다
+    # 내 선수 대조가 그대로 되도록 같은 이름은 같은 가명
+    me = masked["activePlayer"].get("riotId") or masked["activePlayer"].get("summonerName")
+    assert any(me in (p.get("riotId"), p.get("summonerName")) for p in masked["allPlayers"])
+    # 점수판·이벤트 종류·시각은 그대로
+    assert masked["gameData"] == raw["gameData"]
+    assert [p["scores"] for p in masked["allPlayers"]] == [p["scores"] for p in raw["allPlayers"]]
+    assert [e["EventName"] for e in masked["events"]["Events"]] == [e["EventName"] for e in raw["events"]["Events"]]
+
+
+def test_masked_record_still_gives_same_coaching_input():
+    with open(FIXTURE, encoding="utf-8") as f:
+        raw = json.load(f)
+    from client.bridge import to_game_state
+    assert to_game_state(mask_identities(raw, {})) == to_game_state(raw)
+
+
+def test_recorder_saves_once_per_game_minute(tmp_path):
+    with open(FIXTURE, encoding="utf-8") as f:
+        raw = json.load(f)
+    rec = Recorder(str(tmp_path), clock=lambda: 0.0)
+    for gt in (61.0, 75.0, 119.9, 120.0, 605.4):
+        d = copy.deepcopy(raw)
+        d["gameData"]["gameTime"] = gt
+        recording(lambda d=d: d, rec)()
+    files = sorted(os.listdir(rec.dir))
+    assert files == ["allgamedata_01m01s.json", "allgamedata_02m00s.json", "allgamedata_10m05s.json"]
+    saved = json.load(open(os.path.join(rec.dir, files[0]), encoding="utf-8"))
+    assert not any(n in json.dumps(saved, ensure_ascii=False) for n in _names(raw))
+
+
+def test_recorder_failure_never_stops_the_bridge(tmp_path, capsys):
+    blocker = tmp_path / "file"
+    blocker.write_text("x")
+    rec = Recorder(str(blocker))  # 파일 아래에 폴더를 만들 수 없다
+    d = {"gameData": {"gameTime": 30.0}}
+    assert recording(lambda: d, rec)() is d
+    recording(lambda: d, rec)()
+    assert capsys.readouterr().err.count("응답 기록 실패") == 1
+
+
+def test_app_window_skips_browser_first_run_screens():
+    how, cmd = popup_command("http://127.0.0.1:8765/overlay", "Windows",
+                             which=lambda _n: None, exists=lambda p: p.endswith("msedge.exe"))
+    assert how == "chrome" and "--no-first-run" in cmd and "--no-default-browser-check" in cmd
+
+
+def test_mask_identities_covers_kill_event_names_and_assisters():
+    ev = {"EventName": "ChampionKill", "EventTime": 300.0, "KillerName": "철수#KR1",
+          "VictimName": "영희#KR1", "Assisters": ["민수#KR1", "철수#KR1"]}
+    names = {}
+    m = mask_identities({"events": {"Events": [ev]}}, names)["events"]["Events"][0]
+    assert "#KR1" not in json.dumps(m, ensure_ascii=False)
+    assert m["Assisters"][1] == m["KillerName"]  # 같은 사람은 같은 가명
+    assert m["EventName"] == "ChampionKill" and m["EventTime"] == 300.0

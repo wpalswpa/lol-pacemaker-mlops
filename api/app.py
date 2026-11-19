@@ -208,7 +208,7 @@ def download_launcher(request: Request, os: Literal["windows", "mac"] = Query(..
             ")\r\n"
             "pushd \"%APP_DIR%\"\r\n"
             "echo [LoL Pacemaker] Starting the always-on-top HUD. Close this window to stop.\r\n"
-            f"%PY_CMD% -m client.bridge --server \"{origin}\" --insecure-local --overlay --launch-popup --repin-sec 3 --save-match\r\n"
+            f"%PY_CMD% -m client.bridge --server \"{origin}\" --insecure-local --overlay --launch-popup --repin-sec 3 --save-match --record \"%APP_DIR%\\records\"\r\n"
             "popd\r\n"
             "pause\r\n"
         )

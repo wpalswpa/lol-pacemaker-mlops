@@ -191,7 +191,9 @@
 - **HUD 는 브리지가 같은 출처에서 내준다.** 공개 주소(`http://<고정 IP>`, `https://<내 도메인>`)에서 연 페이지는 브라우저의 로컬 네트워크 접근 제한 때문에 `127.0.0.1` 브리지를 읽지 못한다(Chromium 159에서 `Permission was denied`로 막히고 시뮬레이션 배지에 머무는 것을 확인). 그래서 오버레이 모드의 로컬 서버는 네 경로만 `--server`로 그대로 넘긴다: `GET /overlay`, `GET /meta/champions`, `POST /coach`, `POST /coach/briefing`(POST 본문 64 KB 이하, 넘으면 413). 서버의 상태 코드·본문을 그대로 돌려주고, 서버에 닿지 못하면 502 `{"detail": "서버에 연결하지 못했다"}`. 이 네 경로는 CORS를 열지 않는다(같은 출처 전용). 그 밖의 경로(`/matches` 등)는 404이고, 전적 저장은 브리지 프로세스가 직접 부른다.
 
 1. macOS이고 `swiftc`가 있으면 `client/overlay_popup.swift`를 사용자 캐시 폴더에 컴파일(소스가 바뀌었을 때만)해 실행한다. `NSPanel`을 `.floating` 단계로 띄우고 모든 데스크톱·전체 화면 보조 창으로 두며, 눌러도 게임에서 입력 초점을 빼앗지 않는다(`nonactivatingPanel`).
-2. 아니면 Chrome `--app=<URL> --window-size=380,560`(항상 위는 보장하지 않는다), 그것도 없으면 기본 브라우저.
+2. 아니면 Chrome `--app=<URL> --window-size=380,560`(항상 위는 보장하지 않는다), 그것도 없으면 기본 브라우저. 전용 프로필(`--user-data-dir`)은 처음 열 때 환영 화면·기본 브라우저 묻기가 HUD를 가릴 수 있어 `--no-first-run --no-default-browser-check`를 함께 넣는다(2026-11-20).
+
+**실제 응답 기록 `--record <폴더>` (2026-11-20, 실게임 시험용)**: 켜면 LIVE 응답(`allgamedata`)을 게임 시각 1분마다 한 번(첫 응답 포함) `<폴더>/<실행 시각>/allgamedata_<MM>m<SS>s.json`으로 남긴다. 실제 응답 구조(CS 정의, 챔피언 이름, 이벤트 이름)를 맥에서 재현해 고치고 시험 자료로 쓰기 위해서다. 저장 전에 선수 식별 값(`summonerName`·`riotId`·`riotIdGameName`·`riotIdTagLine`, 이벤트의 `Recipient`·`KillerName`·`VictimName`·`Assisters`)을 한 실행 안에서 같은 이름이면 같은 가명(`P1`…)으로 바꾼다(12절: 개인 식별자는 남기지 않는다). 쓰기 실패는 브리지를 멈추지 않고 터미널에 한 번만 한 줄로 알린다. 기본은 꺼짐이고, Windows 실행기는 `%TEMP%\lol-pace-client\records`로 켠다.
 
 **Windows 항상 위 고정 (`pin_topmost`, Chrome·Edge `--app` 창)**: Windows 에서 2번으로 띄웠을 때만 이 경로를 탄다(`platform.system() == "Windows"`). macOS·Linux 는 `ctypes.windll`을 건드리지 않고 `popup.status`를 `not_windows`로 적는다.
 
@@ -275,6 +277,7 @@ LoL은 "테두리 없는 창 모드"여야 위에 뜬다. 전체 화면 독점 �
 **Windows `.bat` 규칙 (2026-11-19, 실게임 시험 전 보강)**
 - 화면에 찍는 문구는 영문 ASCII만 쓴다. `cmd`가 코드페이지와 파일 인코딩이 어긋나면 한글 줄을 명령으로 잘못 읽을 수 있어서다(브리지가 찍는 한글은 Python이 콘솔에 직접 쓰므로 괜찮다).
 - Python 후보(`python` → `py -3` → `%LocalAppData%\Programs\Python\Python3xx` → `%ProgramFiles%\Python3xx`)마다 `sys.version_info >= (3, 9)`인지 확인한다. Microsoft Store 별칭과 너무 오래된 Python을 함께 거른다. 없으면 winget 설치를 시도한 뒤 같은 후보를 다시 본다.
+- 브리지는 `--record "%APP_DIR%\records"`로 실제 응답을 가명 처리해 남긴다(3-4 "실제 응답 기록"). 시험 뒤 이 폴더를 보내면 맥에서 재현할 수 있다.
 - 실행 전에 "롤 화면 모드를 Borderless(테두리 없는 창 모드)로, 로비에서는 기다리고 게임이 시작되면 HUD가 LIVE로 바뀐다"를 출력한다.
 
 **`/download` 화면 Windows 안내**: 단계 안내에 ① 브라우저·SmartScreen 경고가 나오면 "추가 정보 → 실행" ② 롤 설정 → 동영상 → 창 모드 "테두리 없음" 필수(전체 화면이면 HUD가 가려짐) ③ HUD는 게임이 시작돼야 LIVE(로비·로딩 중에는 대기) ④ 실행기 창은 하나만(두 번 실행하면 두 번째는 안내 후 종료)을 넣는다.
