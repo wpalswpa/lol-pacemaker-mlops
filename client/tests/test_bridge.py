@@ -268,8 +268,9 @@ import http.client  # noqa: E402
 from api.tests.conftest import app_module as app_module  # noqa: E402,F401  (/coach 로 환산 입력 확인)
 from api.tests.conftest import client as client  # noqa: E402,F401
 
-from client.bridge import (OverlayBridge, extract_features_from_liveclient, extract_owned_items,  # noqa: E402
-                           next_skill, overlay_url, popup_command, run_overlay, serve_state, skill_plan)
+from client.bridge import (DISCONNECT_SAVE_SEC, OverlayBridge, extract_features_from_liveclient,  # noqa: E402
+                           extract_owned_items, game_key, next_skill, overlay_url, popup_command, run_overlay,
+                           serve_state, skill_plan)
 
 
 def at(seconds: float) -> dict:
@@ -1067,50 +1068,97 @@ def test_hud_uses_same_pace_boundaries_and_texts(client):  # noqa: F811
     assert 'id="paceWarn"' in t and '$("paceWarn").textContent = pw ? pw.text : ""' in t
 
 
-def test_save_match_on_early_disconnect_after_60s():
-    saved_calls = []
-    frames = [at(180.0)]  # 3분 유효 게임 뒤 연결 끊김(연습모드 중도 나가기)
-
+def _saving_bridge(frames, clock, saved_calls):
+    """frames 의 None 은 게임 API 끊김. 한 번 부를 때마다 하나씩 꺼낸다(다 쓰면 계속 끊김)."""
     def fetch():
-        if frames:
-            return frames.pop(0)
-        raise ConnectionError("game exited")
+        f = frames.pop(0) if frames else None
+        if f is None:
+            raise ConnectionError("game exited")
+        return f
 
-    b = OverlayBridge(fetch, lambda s: {"my_win_prob": 0.5, "build_advice": {"skill_order": {"order": "Q > W > E"}}},
-                      save=lambda p: (saved_calls.append(p), {"id": 99, "created_at": "now"})[1])
+    return OverlayBridge(fetch, lambda s: {"my_win_prob": 0.5, "build_advice": {"skill_order": {"order": "Q > W > E"}}},
+                         save=lambda p: (saved_calls.append(p), {"id": len(saved_calls), "created_at": "now"})[1],
+                         clock=clock)
+
+
+def test_save_match_on_early_disconnect_after_60s():
+    saved_calls, clock = [], Clock()
+    b = _saving_bridge([at(180.0)], clock, saved_calls)  # 3분 유효 게임 뒤 연결 끊김(연습모드 중도 나가기)
     st1 = b.step()
     assert st1["connected"] and saved_calls == []
+    clock.t += 2
     st2 = b.step()
-    assert not st2["connected"] and len(saved_calls) == 1
+    assert not st2["connected"] and saved_calls == []  # 끊긴 지 0초: 아직 경기 끝으로 보지 않는다
+    clock.t += DISCONNECT_SAVE_SEC
+    st3 = b.step()
+    assert len(saved_calls) == 1
     assert saved_calls[0]["win"] is None and saved_calls[0]["game_time_sec"] == 180
-    assert st2["saved_match"] == {"id": 99, "created_at": "now", "win": None}
+    assert st3["saved_match"] == {"id": 1, "created_at": "now", "win": None}
+    clock.t += 2
     b.step()
     assert len(saved_calls) == 1  # 중복 저장 안 함
 
 
+def test_transient_drop_mid_game_does_not_save_and_real_result_is_kept():
+    """시뮬레이션 F1: 경기 중 2~3초 끊김(시간 초과 한 번)으로 win=null 을 미리 저장하면 실제 GameEnd 를 잃는다."""
+    saved_calls, clock = [], Clock()
+    end = at(1500.0)
+    end["events"]["Events"].append({"EventName": "GameEnd", "Result": "Win"})
+    b = _saving_bridge([at(300.0), None, at(304.0), end], clock, saved_calls)
+    for _ in range(4):
+        b.step()
+        clock.t += 2.5
+    assert len(saved_calls) == 1 and saved_calls[0]["win"] is True
+
+
 def test_resets_saved_flag_when_new_game_starts():
-    saved_calls = []
-    frames = [at(180.0), None, at(10.0), at(150.0), None]
-
-    def fetch():
-        f = frames.pop(0)
-        if f is None:
-            raise ConnectionError("between games")
-        return f
-
-    b = OverlayBridge(fetch, lambda s: {"my_win_prob": 0.5, "build_advice": {"skill_order": {"order": "Q > W > E"}}},
-                      save=lambda p: (saved_calls.append(p), {"id": len(saved_calls), "created_at": "now"})[1])
-    b.step()  # 1판 180s
-    b.step()  # 1판 끊김 -> 저장 1회
-    b.step()  # 2판 10s 시작 -> saved 리셋
-    b.step()  # 2판 150s
-    b.step()  # 2판 끊김 -> 저장 2회
+    saved_calls, clock = [], Clock()
+    b = _saving_bridge([at(180.0), None, None, at(10.0), at(150.0), None, None], clock, saved_calls)
+    for _ in range(7):
+        b.step()
+        clock.t += DISCONNECT_SAVE_SEC  # 끊김이 두 번 이어지면 DISCONNECT_SAVE_SEC 를 채운다
     assert len(saved_calls) == 2 and saved_calls[1]["game_time_sec"] == 150
 
 
+def test_new_game_first_seen_after_30s_is_still_saved():
+    """시뮬레이션 F2: 다음 게임을 0:30 이후에 처음 봐도(로딩 중 폴링 실패) 그 게임 결과를 저장한다.
+    게임 시각이 되돌아가거나 챔피언 구성이 바뀌면 새 게임이다."""
+    saved_calls, clock = [], Clock()
+    g2 = at(95.0)
+    for p in g2["allPlayers"]:
+        p["rawChampionName"] = "game_character_displayname_Garen" if p["team"] == "ORDER" else p["rawChampionName"]
+    g2_end = copy.deepcopy(g2)
+    g2_end["gameData"]["gameTime"] = 1600.0
+    g2_end["events"]["Events"].append({"EventName": "GameEnd", "Result": "Lose"})
+    b = _saving_bridge([at(900.0), None, None, g2, g2_end], clock, saved_calls)
+    for _ in range(5):
+        b.step()
+        clock.t += DISCONNECT_SAVE_SEC
+    assert [c["win"] for c in saved_calls] == [None, False]
+    assert game_key(at(900.0)) != game_key(g2)
+    assert game_key(at(900.0)) == game_key(at(10.0))  # 시각만 다르면 같은 경기 구성
+
+
+def test_new_game_detected_by_roster_when_clock_does_not_rewind():
+    """3:00 에 다시하기로 끝난 판 다음 게임을 3:20 에 처음 봐도(시각이 되돌아가지 않음) 챔피언 구성으로 새 게임을 안다."""
+    saved_calls, clock = [], Clock()
+    g1 = at(180.0)
+    g1["events"]["Events"].append({"EventName": "GameEnd", "Result": "Lose"})
+    g2 = at(200.0)
+    g2["allPlayers"][0]["rawChampionName"] = "game_character_displayname_Teemo"
+    g2_end = copy.deepcopy(g2)
+    g2_end["gameData"]["gameTime"] = 1500.0
+    g2_end["events"]["Events"].append({"EventName": "GameEnd", "Result": "Win"})
+    b = _saving_bridge([g1, g2, g2_end], clock, saved_calls)
+    for _ in range(3):
+        b.step()
+        clock.t += 2
+    assert [c["win"] for c in saved_calls] == [False, True]
+
+
 # ── 실게임 시험 전 보강 (AGENTS.md 3-4 "눌러도 초점 유지", "상태 포트가 이미 쓰이는 경우") ──
-from client.bridge import (GWL_EXSTYLE, WS_EX_NOACTIVATE, OverlayBridge, bridge_running,  # noqa: E402
-                           port_busy_message, run_overlay, serve_state)
+from client.bridge import (DISCONNECT_SAVE_SEC, GWL_EXSTYLE, WS_EX_NOACTIVATE, OverlayBridge,  # noqa: E402
+                           bridge_running, game_key, port_busy_message, run_overlay, serve_state)
 
 
 class StyledUser32(FakeUser32):
@@ -1172,6 +1220,48 @@ def test_second_launch_exits_with_message_instead_of_traceback(capsys):
     finally:
         httpd.shutdown()
         httpd.server_close()
+
+
+def test_second_launch_with_popup_reopens_popup_on_running_bridge(monkeypatch, capsys):
+    """시뮬레이션 F5: 실행기를 다시 누르면(팝업을 닫았거나 가려졌다) 오류로 끝내지 않고 도는 브리지에 팝업만 다시 띄운다."""
+    import client.bridge as br
+    first = OverlayBridge(lambda: (_ for _ in ()).throw(OSError("no game")), lambda body: {})
+    httpd = serve_state(first, 0)
+    port = httpd.server_address[1]
+    opened = []
+    monkeypatch.setattr(br, "launch_popup", lambda p, report=None, repin=0.0, **k: opened.append(p) or "swift")
+    monkeypatch.setattr(br.platform, "system", lambda: "Darwin")
+    try:
+        run_overlay(OverlayBridge(lambda: {}, lambda body: {}), port, popup=True, max_steps=1, sleep=lambda _s: None)
+        assert opened == [port]
+        assert "팝업만 다시" in capsys.readouterr().out
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+
+
+def test_closing_swift_popup_stops_bridge(monkeypatch, capsys):
+    """macOS .app 은 터미널이 없어 끌 방법이 없다: swift 팝업을 닫으면 브리지 반복을 끝낸다."""
+    import client.bridge as br
+
+    class Proc:
+        def __init__(self):
+            self.alive = 2
+
+        def poll(self):
+            self.alive -= 1
+            return None if self.alive > 0 else 0
+
+    def fake_launch(port, report=None, repin=0.0, system=None, procs=None):
+        procs.append(("swift", Proc()))
+        return "swift"
+
+    monkeypatch.setattr(br, "launch_popup", fake_launch)
+    steps = []
+    b = OverlayBridge(lambda: (_ for _ in ()).throw(OSError("no game")), lambda body: {})
+    monkeypatch.setattr(b, "step", lambda: steps.append(1) or b.snapshot())
+    run_overlay(b, 0, popup=True, max_steps=10, sleep=lambda _s: None)
+    assert len(steps) == 1 and "팝업을 닫아" in capsys.readouterr().out
 
 
 def test_port_taken_by_other_program(capsys):

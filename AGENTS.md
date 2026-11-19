@@ -211,7 +211,14 @@
 
 LoL은 "테두리 없는 창 모드"여야 위에 뜬다. 전체 화면 독점 모드에서는 어떤 창도 게임 위에 뜨지 않는다. 이 안내는 `/download` 화면과 실행기 첫 출력에도 넣는다(3-6).
 
-**상태 포트가 이미 쓰이는 경우 (2026-11-19)**: 실행기를 두 번 누르면 두 번째 브리지가 `127.0.0.1:8765`를 열지 못한다. 이때 오류 추적을 쏟아내지 않고, 그 포트의 `/bridge/state`가 브리지로 응답하면 "다른 창에서 이미 실행 중이니 그 창을 쓰거나 닫고 다시 실행"을, 아니면 "8765 포트를 다른 프로그램이 쓰고 있으니 `--listen-port`로 바꾸라"를 한 줄로 알리고 종료 코드 1로 끝낸다.
+**상태 포트가 이미 쓰이는 경우 (2026-11-19)**: 실행기를 두 번 누르면 두 번째 브리지가 `127.0.0.1:8765`를 열지 못한다. 이때 오류 추적을 쏟아내지 않고, 그 포트의 `/bridge/state`가 브리지로 응답하면 "다른 창에서 이미 실행 중이니 그 창을 쓰거나 닫고 다시 실행"을, 아니면 "8765 포트를 다른 프로그램이 쓰고 있으니 `--listen-port`로 바꾸라"를 한 줄로 알리고 종료 코드 1로 끝낸다. 단 `--launch-popup`으로 실행했고 그 포트가 브리지라면(팝업을 닫았거나 가려져 실행기를 다시 누른 경우) 오류로 끝내지 않고 도는 브리지에 팝업만 다시 띄운 뒤 종료 코드 0으로 끝낸다(2026-11-20, Windows 는 항상 위 고정이 끝날 때까지 기다린다).
+
+**팝업을 닫으면 브리지도 끝낸다 (macOS swift, 2026-11-20)**: macOS `.app`은 터미널 창이 없어 브리지를 끌 방법이 없다. 그래서 브리지가 띄운 swift 패널이 닫히면 폴링 반복을 끝낸다. Chrome `--app` 창은 실행 파일이 곧바로 끝나는 경우가 있어 이 규칙을 쓰지 않는다(Windows 는 검은 창을 닫으면 끝난다).
+
+**경기 저장·새 게임 판별 (`--save-match`, 2026-11-20 시뮬레이션으로 보강)**
+- 결과가 있으면(`GameEnd`) 그때 한 번 저장한다. 게임 API 가 `DISCONNECT_SAVE_SEC`(15초) 이상 **계속** 끊겼을 때만 경기가 끝난 것으로 보고 마지막 피처를 `win=null`로 저장한다(유효 게임 60초 이상일 때). 경기 중 시간 초과 한두 번으로 미리 저장해 실제 결과를 잃던 문제를 막는다.
+- 새 게임은 게임 시각이 `NEW_GAME_REWIND_SEC`(5초) 넘게 되돌아가거나, `(팀, 챔피언)` 10쌍(`game_key`)이 바뀌면 판별한다(Live Client API 에는 경기 ID 가 없다). 새 게임이면 저장 여부·코칭 간격을 처음으로 돌린다. 브리지가 새 게임을 0:30 이후에 처음 봐도(로딩 중 폴링 실패, 늦게 켬) 그 게임 결과를 저장한다.
+- 서버 계산이 실패하면 브리지는 직전 코칭을 그대로 두고 `coach_error`를 채운다. HUD 는 이때 배지를 `🟠 LIVE · 서버 재연결 중`으로 바꾸고 문구 앞에 "서버 연결이 끊겨 마지막 계산 값을 보여요"를 붙인다(옛 승률을 지금 값처럼 보이지 않게).
 
 **오버레이 화면 (`api/static/overlay.html`)**: 화면이 계산을 새로 하지 않고 `/coach` 응답과 브리지 상태만 옮긴다(데모 시나리오의 환산만 위 규칙 그대로 화면에서 한다).
 
@@ -272,13 +279,19 @@ LoL은 "테두리 없는 창 모드"여야 위에 뜬다. 전체 화면 독점 �
 |---|---|---|
 | `GET /download/bridge.py` | `client/bridge.py` 원본을 `text/x-python; charset=utf-8`으로 반환 | 표준 라이브러리만 사용하므로 추가 패키지 설치가 필요 없다 |
 | `GET /download/overlay_popup.swift` | `client/overlay_popup.swift` 원본을 `text/plain; charset=utf-8`으로 반환 | macOS에서 `swiftc` Always-On-Top 패널 컴파일에 쓴다 |
-| `GET /download/launcher?os=windows\|mac` | 요청 `Host` 헤더(및 `X-Forwarded-Proto`)를 서버 URL로 자동 삽입한 `lol-pacemaker-overlay.bat`(Windows) 또는 `lol-pacemaker-overlay.command`(Mac) 생성 다운로드 | `Host`는 영숫자·`.`·`:`·`-`·`[]`만 허용해 명령 주입을 막고, 잘못된 `os`는 422. 내려받은 스크립트는 `%TEMP%` 또는 `~/.cache`에 최신 `bridge.py`를 받아 `--insecure-local --overlay --launch-popup --save-match`를 자동 실행한다 (Python 미설치 시 안내) |
+| `GET /download/launcher?os=windows\|mac` | 요청 `Host` 헤더(및 `X-Forwarded-Proto`)를 서버 URL로 자동 삽입한 `lol-pacemaker-overlay.bat`(Windows) 또는 `LoL-Pacemaker-macOS.zip`(Mac, `.app` 번들) 생성 다운로드 | `Host`는 영숫자·`.`·`:`·`-`·`[]`만 허용해 명령 주입을 막고, 잘못된 `os`는 422. 내려받은 스크립트는 `%TEMP%` 또는 `~/.cache`에 최신 `bridge.py`를 받아 `--insecure-local --overlay --launch-popup --save-match`를 자동 실행한다 (Python 미설치 시 안내) |
 
 **Windows `.bat` 규칙 (2026-11-19, 실게임 시험 전 보강)**
 - 화면에 찍는 문구는 영문 ASCII만 쓴다. `cmd`가 코드페이지와 파일 인코딩이 어긋나면 한글 줄을 명령으로 잘못 읽을 수 있어서다(브리지가 찍는 한글은 Python이 콘솔에 직접 쓰므로 괜찮다).
 - Python 후보(`python` → `py -3` → `%LocalAppData%\Programs\Python\Python3xx` → `%ProgramFiles%\Python3xx`)마다 `sys.version_info >= (3, 9)`인지 확인한다. Microsoft Store 별칭과 너무 오래된 Python을 함께 거른다. 없으면 winget 설치를 시도한 뒤 같은 후보를 다시 본다.
 - 브리지는 `--record "%APP_DIR%\records"`로 실제 응답을 가명 처리해 남긴다(3-4 "실제 응답 기록"). 시험 뒤 이 폴더를 보내면 맥에서 재현할 수 있다.
 - 실행 전에 "롤 화면 모드를 Borderless(테두리 없는 창 모드)로, 로비에서는 기다리고 게임이 시작되면 HUD가 LIVE로 바뀐다"를 출력한다.
+
+**macOS `.app` 규칙 (2026-11-20)**: `Contents/MacOS/run`은 터미널 없이 돈다(`LSUIElement`). 그래서
+- 모든 출력을 `~/.cache/lol-pace-client/launcher.log`에 남기고(`python3 -u`), 실패는 `osascript` 알림창으로 알린다.
+- 새 Mac 의 `/usr/bin/python3`는 명령줄 도구(CLT)가 있어야 돈다. `xcode-select -p`가 실패하면 알림 뒤 `xcode-select --install`을 띄우고 멈춘다. Python 이 3.9 미만이면 python.org 를 연다.
+- `bridge.py`·`overlay_popup.swift`는 `.new`로 받아 둘 다 받았을 때만 바꾼다. 서버에 연결하지 못하면(HUD 화면도 서버에서 오므로) 알림 뒤 끝낸다.
+- `/download` macOS 카드에 "처음 열 때 '확인되지 않은 개발자' 창이 뜨면 Control+클릭 → 열기(macOS 15 이상은 시스템 설정 → 개인정보 보호 및 보안 → 그래도 열기), 첫 실행은 팝업 준비에 30초쯤, 팝업을 닫으면 프로그램도 끝남"을 적는다.
 
 **`/download` 화면 Windows 안내**: 단계 안내에 ① 브라우저·SmartScreen 경고가 나오면 "추가 정보 → 실행" ② 롤 설정 → 동영상 → 창 모드 "테두리 없음" 필수(전체 화면이면 HUD가 가려짐) ③ HUD는 게임이 시작돼야 LIVE(로비·로딩 중에는 대기) ④ 실행기 창은 하나만(두 번 실행하면 두 번째는 안내 후 종료)을 넣는다.
 

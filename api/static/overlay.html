@@ -264,10 +264,11 @@ function render() {
   const coach = view.coach, b = coach.build_advice, v = buildView(coach);
   const live = view.mode === "live";
   $("live").classList.toggle("on", live);
-  $("liveText").textContent = `${live ? "🟢 게임 중 LIVE" : "🟡 게임 중 시뮬레이션"} (${mmss(view.t)})`;
+  const stale = live && view.stale;  // 서버 계산이 실패해 마지막 값을 보이는 중 (브리지 coach_error)
+  $("liveText").textContent = `${live ? (stale ? "🟠 LIVE · 서버 재연결 중" : "🟢 게임 중 LIVE") : "🟡 게임 중 시뮬레이션"} (${mmss(view.t)})`;
   $("prob").textContent = `${Math.round(v.win_prob * 100)}%`;
   $("tac").className = `tac ${b.state}`; $("tac").textContent = v.tactical_action;
-  $("msg").textContent = v.coach_message;
+  $("msg").textContent = stale ? `서버 연결이 끊겨 마지막 계산 값을 보여요 · ${v.coach_message}` : v.coach_message;
   $("warn").hidden = !(coach.warnings && coach.warnings.length);
   $("scaleNote").textContent = `10분 페이스 환산 · ${mmss(view.t)}`;
   const pw = view.mode === "live" && "pace" in view ? view.pace : paceWarning(view.t);
@@ -381,7 +382,8 @@ document.querySelectorAll("[data-demo]").forEach((btn) => btn.addEventListener("
 function applyLive(st) {
   const body = st.features ? { ...st.features, ...((st.enemy_items || []).length ? { enemy_items: st.enemy_items } : {}) } : null;
   view = { mode: "live", t: st.game_time_sec, coach: st.coach, owned: new Set((st.owned_items || []).map((i) => i.itemID)),
-           level: st.level, next: st.next_skill, when: st.next_skill_when, body, pace: st.pace_warning || null };
+           level: st.level, next: st.next_skill, when: st.next_skill_when, body, pace: st.pace_warning || null,
+           stale: !!st.coach_error };
   render();
 }
 async function poll() {

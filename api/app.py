@@ -217,15 +217,37 @@ def download_launcher(request: Request, os: Literal["windows", "mac"] = Query(..
             media_type="application/octet-stream",
             headers={"Content-Disposition": 'attachment; filename="lol-pacemaker-overlay.bat"'},
         )
+    # .app 은 터미널 없이 돈다(LSUIElement): 실패는 알림창으로 알리고, 기록은 launcher.log 에 남긴다 (AGENTS.md 3-6절)
     run_sh = (
         "#!/usr/bin/env bash\n"
-        "set -euo pipefail\n"
+        "set -uo pipefail\n"
         "APP_DIR=\"$HOME/.cache/lol-pace-client\"\n"
         "mkdir -p \"$APP_DIR/client\"\n"
-        f"curl -fsSL \"{origin}/download/bridge.py\" -o \"$APP_DIR/client/bridge.py\"\n"
-        f"curl -fsSL \"{origin}/download/overlay_popup.swift\" -o \"$APP_DIR/client/overlay_popup.swift\"\n"
+        "exec >>\"$APP_DIR/launcher.log\" 2>&1\n"
+        "echo \"=== $(date '+%F %T') start\"\n"
+        "alert() { /usr/bin/osascript -e \"display alert \\\"LoL Pacemaker\\\" message \\\"$1\\\"\" >/dev/null 2>&1 || true; }\n"
+        "PY=\"$(command -v python3 || true)\"\n"
+        # 새 Mac 의 /usr/bin/python3 는 명령줄 도구(CLT)를 설치해야 돈다. 없으면 설치 창을 띄우고 멈춘다
+        "if [ \"$PY\" = /usr/bin/python3 ] && ! /usr/bin/xcode-select -p >/dev/null 2>&1; then\n"
+        "  alert 'Python 3 실행에 필요한 명령줄 도구가 없습니다. 설치 창에서 설치를 마친 뒤 앱을 다시 여세요.'\n"
+        "  /usr/bin/xcode-select --install || true\n"
+        "  exit 1\n"
+        "fi\n"
+        "if [ -z \"$PY\" ] || ! \"$PY\" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)'; then\n"
+        "  alert 'Python 3.9 이상이 필요합니다. 다운로드 페이지를 엽니다.'\n"
+        "  /usr/bin/open https://www.python.org/downloads/macos/\n"
+        "  exit 1\n"
+        "fi\n"
+        f"if ! curl -fsSL --retry 2 --connect-timeout 10 \"{origin}/download/bridge.py\" -o \"$APP_DIR/client/bridge.py.new\" \\\n"
+        f"   || ! curl -fsSL --retry 2 --connect-timeout 10 \"{origin}/download/overlay_popup.swift\" -o \"$APP_DIR/client/overlay_popup.swift.new\"; then\n"
+        # HUD 화면도 서버에서 받으므로 서버가 안 되면 띄울 것이 없다. 받다 만 파일로 바꾸지 않도록 .new 로 받아 옮긴다
+        f"  alert '서버({origin})에 연결하지 못했습니다. 인터넷 연결이나 서버 상태를 확인하고 다시 여세요.'\n"
+        "  exit 1\n"
+        "fi\n"
+        "mv -f \"$APP_DIR/client/bridge.py.new\" \"$APP_DIR/client/bridge.py\"\n"
+        "mv -f \"$APP_DIR/client/overlay_popup.swift.new\" \"$APP_DIR/client/overlay_popup.swift\"\n"
         "cd \"$APP_DIR\"\n"
-        f"exec python3 -m client.bridge --server \"{origin}\" --insecure-local --overlay --launch-popup --save-match\n"
+        f"exec \"$PY\" -u -m client.bridge --server \"{origin}\" --insecure-local --overlay --launch-popup --save-match\n"
     )
     info_plist = (
         '<?xml version="1.0" encoding="UTF-8"?>\n'

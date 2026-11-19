@@ -75,6 +75,10 @@ GLOW = {"ahead": "#3ddc97", "even": "#ffd34d", "behind": "#ff4d5e"}
 # 3절 허용 범위 (10분 페이스 환산 뒤 자른다)
 LIMITS = {"kills": 100, "assists": 300, "cs": 2000, "dragons": 7, "heralds": 2, "towers": 11}
 COACH_MIN_SECONDS = 5.0
+# 게임 API 가 이만큼 계속 끊겨야 경기가 끝난 것으로 보고 win=null 로 저장한다(한두 번의 시간 초과로 미리 저장하지 않게)
+DISCONNECT_SAVE_SEC = 15.0
+# 게임 시각이 이만큼 이상 되돌아가면 새 게임이다 (챔피언 10명 구성이 바뀌어도 새 게임)
+NEW_GAME_REWIND_SEC = 5.0
 POPUP_SIZE = (380, 560)
 
 
@@ -368,6 +372,11 @@ def game_result(data: dict) -> bool | None:
     return None
 
 
+def game_key(data: dict) -> tuple:
+    """한 경기를 알아보는 값: (팀, 챔피언) 10쌍. Live Client API 에는 경기 ID 가 없다."""
+    return tuple(sorted((str(p.get("team")), champion_of(p) or "") for p in data.get("allPlayers") or []))
+
+
 def match_payload(features: dict, game_time: float, win: bool | None) -> dict:
     """POST /matches 본문 (AGENTS.md 3-5절). 3절 입력 칸 + 게임 시각 + 승패만. 소환사명 등은 넣지 않는다."""
     return {**features, "game_time_sec": int(min(max(game_time, 0), 7200)), "win": win}
@@ -387,6 +396,8 @@ class OverlayBridge:
         self.lock = threading.Lock()
         self.last_coach_at: float | None = None
         self.last_coach_input: dict | None = None
+        self.fail_since: float | None = None  # 게임 API 가 끊기기 시작한 시각
+        self.game_key: tuple | None = None
         self.state = {"connected": False, "source": source, "in_game": False, "game_time_sec": 0.0,
                       "minutes": None, "pace_scale": None, "updated_at": None, "champion": None, "level": None,
                       "owned_items": [], "next_skill": None, "next_skill_when": None, "features": None,
@@ -409,9 +420,12 @@ class OverlayBridge:
         except Exception as e:  # noqa: BLE001  게임 API 가 꺼져 있어도 서버는 살아 있어야 한다
             prev_feats = self.state["features"]
             prev_gt = float(self.state["game_time_sec"] or 0.0)
-            was_live = bool(self.state["connected"])
+            now = self.clock()
+            if self.fail_since is None:
+                self.fail_since = now
+            gone = now - self.fail_since >= DISCONNECT_SAVE_SEC  # 잠깐 끊긴 것(시간 초과 한두 번)은 경기 끝이 아니다
             saved_match, save_error = self.state["saved_match"], self.state["save_error"]
-            if self.save and not self.saved and self.source == "live" and was_live and prev_feats and prev_gt >= 60.0:
+            if self.save and not self.saved and self.source == "live" and gone and prev_feats and prev_gt >= 60.0:
                 try:
                     out = coach_with_fallback(self.save, match_payload(prev_feats, prev_gt, None))
                     self.saved, save_error = True, None
@@ -424,12 +438,17 @@ class OverlayBridge:
             return self.snapshot()
         gt = info["game_time"]
         prev_gt = float(self.state["game_time_sec"] or 0.0)
-        if self.saved and self.source == "live" and prev_gt >= 60.0 and gt < 30.0:
-            # 연달아 새 게임을 시작하면(게임 시각이 초기화됨) 저장·코칭 상태를 리셋
+        self.fail_since = None
+        key = game_key(data)
+        if self.source == "live" and self.game_key is not None and (key != self.game_key
+                                                                    or gt + NEW_GAME_REWIND_SEC < prev_gt):
+            # 새 게임(게임 시각이 되돌아감 또는 챔피언 구성이 바뀜): 저장·코칭 상태를 리셋.
+            # 브리지가 새 게임을 0:30 이후에 처음 봐도(로딩 중 폴링 실패, 늦게 켬) 그 게임 결과를 저장한다
             self.saved = False
             self.last_save_try = None
             self.last_coach_input = None
             self.last_coach_at = None
+        self.game_key = key
         minutes, k = pace_scale(gt)
         features = scale_to_ten_minutes(raw, gt)
         me = _me(data) or {}
@@ -808,8 +827,9 @@ def _pin_windows_topmost_async(pid: int, port: int, report: Callable[[dict], Non
 
 
 def launch_popup(port: int, report: Callable[[dict], None] | None = None, repin_sec: float = 0.0,
-                 system: str | None = None) -> str:
-    """항상 위 팝업을 띄우고 쓴 방식을 돌려준다. 고정 결과는 report(브리지 상태의 popup)로 남긴다."""
+                 system: str | None = None, procs: list | None = None) -> str:
+    """항상 위 팝업을 띄우고 쓴 방식을 돌려준다. 고정 결과는 report(브리지 상태의 popup)로 남긴다.
+    procs 를 주면 띄운 (방식, 프로세스)를 넣는다(run_overlay 가 swift 팝업이 닫혔는지 본다)."""
     system = system or platform.system()
     url = overlay_url(port)
     how, cmd = popup_command(url, system)
@@ -824,6 +844,8 @@ def launch_popup(port: int, report: Callable[[dict], None] | None = None, repin_
 
     if cmd:
         proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        if procs is not None:
+            procs.append((how, proc))
         if how == "chrome" and system == "Windows":
             _pin_windows_topmost_async(proc.pid, port, note, repin_sec, system)
         else:
@@ -841,23 +863,44 @@ def run_overlay(bridge: OverlayBridge, port: int, server: str | None = None, pop
     try:
         httpd = serve_state(bridge, port, http_upstream(server) if server else None)
     except OSError as e:
-        print(port_busy_message(port, bridge_running(port)), file=sys.stderr)
+        running = bridge_running(port)
+        if running and popup:
+            # 실행기를 한 번 더 눌렀다(팝업을 닫았거나 가려졌다): 이미 도는 브리지에 팝업만 다시 띄우고 끝낸다
+            print(f"브리지가 이미 실행 중이라(127.0.0.1:{port}) 팝업만 다시 띄웁니다.")
+            launch_popup(port, None, repin_sec)
+            if platform.system() == "Windows":  # 항상 위 고정 스레드가 끝날 때까지 기다린다
+                sleep(PIN_TRIES * PIN_INTERVAL + PIN_SETTLE_TIMES * PIN_SETTLE_SEC + 1.0)
+            return
+        print(port_busy_message(port, running), file=sys.stderr)
         raise SystemExit(1) from e
     real = httpd.server_address[1]
     print(f"브리지 상태: http://127.0.0.1:{real}/bridge/state (멈추려면 Ctrl+C)")
     if server:
         print(f"HUD: {overlay_url(real)}")
+    owned: list = []
     if popup:
-        launch_popup(real, bridge.set_popup, repin_sec)
+        launch_popup(real, bridge.set_popup, repin_sec, procs=owned)
     steps = 0
+    tty = sys.stdout.isatty()
+    last_line = None
     try:
         while max_steps is None or steps < max_steps:
+            if any(how == "swift" and proc.poll() is not None for how, proc in owned):
+                # macOS 앱(.app)은 터미널이 없어 끌 방법이 없다: 팝업을 닫으면 브리지도 끝낸다
+                print("\n팝업을 닫아 브리지를 끝냅니다.")
+                break
             st = bridge.step()
             steps += 1
             if st["connected"] and st["coach"]:
                 mm, ss = divmod(int(st["game_time_sec"]), 60)
-                print(f"\r게임 중 {mm:02d}:{ss:02d} · 승률 {st['coach']['my_win_prob'] * 100:.0f}% · "
-                      f"다음 스킬 {st['next_skill'] or '-'}   ", end="", flush=True)
+                if tty:  # 터미널이면 한 줄을 덮어 쓴다
+                    print(f"\r게임 중 {mm:02d}:{ss:02d} · 승률 {st['coach']['my_win_prob'] * 100:.0f}% · "
+                          f"다음 스킬 {st['next_skill'] or '-'}   ", end="", flush=True)
+                else:  # macOS .app 의 launcher.log: 2초마다 쌓지 않고 승률·스킬이 바뀔 때만 한 줄
+                    line = f"승률 {st['coach']['my_win_prob'] * 100:.0f}% · 다음 스킬 {st['next_skill'] or '-'}"
+                    if line != last_line:
+                        print(f"게임 중 {mm:02d}:{ss:02d} · {line}", flush=True)
+                        last_line = line
             sleep(POLL_SECONDS)
     except KeyboardInterrupt:
         print()
@@ -932,9 +975,14 @@ def recording(fetch: Callable[[], dict], recorder: Callable[[dict], None]) -> Ca
     return wrapped
 
 
-def fetch_live(base: str, cafile: str | None, insecure_local: bool = False) -> dict:
-    if not base.startswith(("https://127.0.0.1", "https://localhost")):
-        raise ValueError("로컬 게임 API(127.0.0.1)만 읽는다")
+_ctx_cache: dict = {}
+
+
+def _live_context(cafile: str | None, insecure_local: bool) -> ssl.SSLContext:
+    """게임 API 용 TLS 설정. 2초마다 읽으므로 한 번 만들어 다시 쓴다(인증서 파일을 매번 읽지 않게)."""
+    key = (cafile, bool(insecure_local))
+    if key in _ctx_cache:
+        return _ctx_cache[key]
     # 게임 클라이언트는 Riot 이 서명한 자체 인증서를 쓴다. Riot 개발자 문서의 riotgames.pem 으로 확인한다.
     # 확인을 끄는 것은 사용자가 --insecure-local 로 명시했을 때만, 그것도 이 PC(127.0.0.1) 주소에만 허용한다.
     if cafile:
@@ -944,6 +992,14 @@ def fetch_live(base: str, cafile: str | None, insecure_local: bool = False) -> d
         ctx = ssl._create_unverified_context()
     else:
         raise ValueError("--cafile riotgames.pem 을 주거나, 이 PC 에서만 --insecure-local 을 명시한다")
+    _ctx_cache[key] = ctx
+    return ctx
+
+
+def fetch_live(base: str, cafile: str | None, insecure_local: bool = False) -> dict:
+    if not base.startswith(("https://127.0.0.1", "https://localhost")):
+        raise ValueError("로컬 게임 API(127.0.0.1)만 읽는다")
+    ctx = _live_context(cafile, insecure_local)
     with urllib.request.urlopen(base + "/liveclientdata/allgamedata", timeout=3, context=ctx) as r:
         return json.load(r)
 

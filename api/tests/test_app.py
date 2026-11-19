@@ -650,6 +650,11 @@ def test_download_page_and_launcher_scripts(client):
         run_text = zf.read(run_info).decode("utf-8")
         assert "https://jjm.eta.pyhub.kr/download/bridge.py" in run_text
         assert "https://jjm.eta.pyhub.kr/download/overlay_popup.swift" in run_text
+        # 터미널 없는 .app: 실패는 알림창, 기록은 launcher.log. 새 Mac 은 명령줄 도구부터 (AGENTS.md 3-6절)
+        assert 'exec >>"$APP_DIR/launcher.log" 2>&1' in run_text
+        assert "xcode-select -p" in run_text and "xcode-select --install" in run_text
+        assert "sys.version_info >= (3, 9)" in run_text and "display alert" in run_text
+        assert 'bridge.py.new' in run_text and '-u -m client.bridge' in run_text
 
     assert client.get("/download/launcher?os=linux").status_code == 422
     assert client.get("/download/launcher?os=windows", headers={"host": "bad.com;calc"}).status_code == 400
@@ -748,3 +753,10 @@ def test_windows_launcher_is_ascii_and_checks_python_version(client):
     assert text.count("(") == text.count(")")  # cmd 블록 괄호 짝
     page = client.get("/download").text
     assert "테두리 없음" in page and "추가 정보" in page and "LIVE" in page
+
+
+def test_hud_marks_stale_coach_when_server_fails(client):
+    """시뮬레이션 F3: 서버 계산이 실패하면(브리지 coach_error) 옛 승률을 지금 값처럼 보이지 않는다."""
+    t = client.get("/overlay").text
+    assert "stale: !!st.coach_error" in t
+    assert "🟠 LIVE · 서버 재연결 중" in t and "서버 연결이 끊겨 마지막 계산 값을 보여요" in t
