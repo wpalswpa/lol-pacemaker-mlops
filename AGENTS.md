@@ -200,13 +200,16 @@
 | 창 찾기 순서 | 보이는 창(`EnumWindows` + `IsWindowVisible`) 가운데 ① 띄운 프로세스 PID 의 창 ② 제목에 `페이커 오버레이`(HUD 의 `<title>`) 또는 `LoL 페이스메이커`가 든 창 ③ 클래스명 `Chrome_WidgetWin_1`이면서 제목에 `127.0.0.1:<포트>`가 든 창(페이지 제목이 뜨기 전 Chrome 은 주소를 제목으로 쓴다). 앞 단계에서 찾으면 뒤 단계는 보지 않는다. Chrome·Edge 가 이미 켜져 있으면 `--app` 창이 기존 프로세스에 합쳐져 ①이 비므로 ②③이 필요하다. 클래스명만으로는 찾지 않는다(사용자의 평소 브라우저 창까지 항상 위로 올리게 되므로) |
 | 처음 찾기 | 0.25초 간격 최대 25번(약 6초) |
 | 고정 | 찾은 창마다 `SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOSIZE \| SWP_NOMOVE \| SWP_NOACTIVATE)`. 모든 호출에 `SWP_NOACTIVATE`를 넣어 게임에서 입력 초점을 빼앗지 않는다 |
+| 눌러도 초점 유지 (2026-11-19) | 고정 직전에 창 확장 스타일(`GWL_EXSTYLE`, `GetWindowLongPtrW`·`SetWindowLongPtrW`, 32비트는 `…LongW`)에 `WS_EX_NOACTIVATE`(0x08000000)를 더한다. HUD 버튼(최소화·투명도·이펙트)을 눌러도 창이 활성화되지 않아 게임이 계속 키 입력을 받는다(macOS `nonactivatingPanel`과 같은 목적). 이미 들어 있으면 다시 쓰지 않는다. 함수가 없거나 실패해도 고정은 계속한다(초점 처리는 보조 기능이라 `popup` 상태를 바꾸지 않는다). 재고정 때마다 같은 확인을 한다 |
 | 처음 굳히기 재고정(항상) | 첫 고정 직후 1초 간격으로 10번(약 10초) 같은 순서로 다시 찾아 같은 플래그로 다시 고정한다(`PIN_SETTLE_TIMES`·`PIN_SETTLE_SEC`). 띄운 직후 게임 창을 눌러 항상 위가 풀리는 경우를 막는다. 다시 못 찾으면 `lost`로 적고 남은 횟수를 계속 시도한다. `repins`는 이 10번부터 센다 |
 | 주기적 재고정(선택) | `--repin-sec N`(기본 0 = 처음 굳히기 10번 뒤 멈춤). 켜면 처음 굳히기 뒤 N초마다 같은 순서로 다시 찾아 같은 플래그로 다시 고정한다(게임이 앞으로 나오며 항상 위가 풀리는 경우). 다시 못 찾으면 `lost`로 적고 계속 시도한다 |
 | 조용한 실패 금지 | 결과를 브리지 상태의 `popup`에 적는다(아래 표). 못 찾으면 `failed`와 이유(찾은 단계와 횟수)를 `error`에 남기고 터미널에도 한 줄 찍는다. Chrome·Edge 가 없어 기본 브라우저로 열었으면 `failed`, `error`는 "Chrome·Edge 가 없어 항상 위로 고정할 수 없다" |
 
 브리지 상태 `popup` (팝업을 안 띄웠으면 `null`): `how`(`swift`·`chrome`·`browser`), `status`(`not_windows`·`searching`·`pinned`·`lost`·`failed`), `method`(`pid`·`title`·`class` 또는 `null`), `windows`(고정한 창 수), `repins`(재고정 횟수), `error`(없으면 `null`).
 
-LoL은 "테두리 없는 창 모드"여야 위에 뜬다. 전체 화면 독점 모드에서는 어떤 창도 게임 위에 뜨지 않는다.
+LoL은 "테두리 없는 창 모드"여야 위에 뜬다. 전체 화면 독점 모드에서는 어떤 창도 게임 위에 뜨지 않는다. 이 안내는 `/download` 화면과 실행기 첫 출력에도 넣는다(3-6).
+
+**상태 포트가 이미 쓰이는 경우 (2026-11-19)**: 실행기를 두 번 누르면 두 번째 브리지가 `127.0.0.1:8765`를 열지 못한다. 이때 오류 추적을 쏟아내지 않고, 그 포트의 `/bridge/state`가 브리지로 응답하면 "다른 창에서 이미 실행 중이니 그 창을 쓰거나 닫고 다시 실행"을, 아니면 "8765 포트를 다른 프로그램이 쓰고 있으니 `--listen-port`로 바꾸라"를 한 줄로 알리고 종료 코드 1로 끝낸다.
 
 **오버레이 화면 (`api/static/overlay.html`)**: 화면이 계산을 새로 하지 않고 `/coach` 응답과 브리지 상태만 옮긴다(데모 시나리오의 환산만 위 규칙 그대로 화면에서 한다).
 
@@ -268,6 +271,13 @@ LoL은 "테두리 없는 창 모드"여야 위에 뜬다. 전체 화면 독점 �
 | `GET /download/bridge.py` | `client/bridge.py` 원본을 `text/x-python; charset=utf-8`으로 반환 | 표준 라이브러리만 사용하므로 추가 패키지 설치가 필요 없다 |
 | `GET /download/overlay_popup.swift` | `client/overlay_popup.swift` 원본을 `text/plain; charset=utf-8`으로 반환 | macOS에서 `swiftc` Always-On-Top 패널 컴파일에 쓴다 |
 | `GET /download/launcher?os=windows\|mac` | 요청 `Host` 헤더(및 `X-Forwarded-Proto`)를 서버 URL로 자동 삽입한 `lol-pacemaker-overlay.bat`(Windows) 또는 `lol-pacemaker-overlay.command`(Mac) 생성 다운로드 | `Host`는 영숫자·`.`·`:`·`-`·`[]`만 허용해 명령 주입을 막고, 잘못된 `os`는 422. 내려받은 스크립트는 `%TEMP%` 또는 `~/.cache`에 최신 `bridge.py`를 받아 `--insecure-local --overlay --launch-popup --save-match`를 자동 실행한다 (Python 미설치 시 안내) |
+
+**Windows `.bat` 규칙 (2026-11-19, 실게임 시험 전 보강)**
+- 화면에 찍는 문구는 영문 ASCII만 쓴다. `cmd`가 코드페이지와 파일 인코딩이 어긋나면 한글 줄을 명령으로 잘못 읽을 수 있어서다(브리지가 찍는 한글은 Python이 콘솔에 직접 쓰므로 괜찮다).
+- Python 후보(`python` → `py -3` → `%LocalAppData%\Programs\Python\Python3xx` → `%ProgramFiles%\Python3xx`)마다 `sys.version_info >= (3, 9)`인지 확인한다. Microsoft Store 별칭과 너무 오래된 Python을 함께 거른다. 없으면 winget 설치를 시도한 뒤 같은 후보를 다시 본다.
+- 실행 전에 "롤 화면 모드를 Borderless(테두리 없는 창 모드)로, 로비에서는 기다리고 게임이 시작되면 HUD가 LIVE로 바뀐다"를 출력한다.
+
+**`/download` 화면 Windows 안내**: 단계 안내에 ① 브라우저·SmartScreen 경고가 나오면 "추가 정보 → 실행" ② 롤 설정 → 동영상 → 창 모드 "테두리 없음" 필수(전체 화면이면 HUD가 가려짐) ③ HUD는 게임이 시작돼야 LIVE(로비·로딩 중에는 대기) ④ 실행기 창은 하나만(두 번 실행하면 두 번째는 안내 후 종료)을 넣는다.
 
 ## 4. 출력 계약
 

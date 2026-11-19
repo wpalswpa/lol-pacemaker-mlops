@@ -1106,3 +1106,84 @@ def test_resets_saved_flag_when_new_game_starts():
     b.step()  # 2판 150s
     b.step()  # 2판 끊김 -> 저장 2회
     assert len(saved_calls) == 2 and saved_calls[1]["game_time_sec"] == 150
+
+
+# ── 실게임 시험 전 보강 (AGENTS.md 3-4 "눌러도 초점 유지", "상태 포트가 이미 쓰이는 경우") ──
+from client.bridge import (GWL_EXSTYLE, WS_EX_NOACTIVATE, OverlayBridge, bridge_running,  # noqa: E402
+                           port_busy_message, run_overlay, serve_state)
+
+
+class StyledUser32(FakeUser32):
+    """확장 스타일 함수를 가진 user32 대역. styles: {hwnd: 현재 확장 스타일}."""
+
+    def __init__(self, windows, styles=None, fail=False):
+        super().__init__(windows)
+        self.styles, self.fail, self.puts = dict(styles or {}), fail, []
+
+    def GetWindowLongPtrW(self, h, idx):  # noqa: N802
+        if self.fail:
+            raise OSError("access denied")
+        assert idx == GWL_EXSTYLE
+        return self.styles.get(h, 0x100)
+
+    def SetWindowLongPtrW(self, h, idx, value):  # noqa: N802
+        self.puts.append((h, idx, value))
+        self.styles[h] = value
+        return 0
+
+
+def test_pin_adds_noactivate_so_clicking_hud_keeps_game_focus():
+    win = {2: (PID, "페이커 오버레이", CHROME_CLASS, True)}
+    u32 = StyledUser32(win)
+    pin_topmost(Win32Windows(u32, FakeCT), PID, PORT, [].append, sleep=lambda _s: None, settle=2)
+    assert u32.styles[2] == 0x100 | WS_EX_NOACTIVATE  # 원래 스타일은 지키고 비트만 더한다
+    assert len(u32.puts) == 1  # 재고정 2번에서는 이미 들어 있어 다시 쓰지 않는다
+    assert pins(u32) == [2, 2, 2]
+
+
+def test_pin_still_pins_when_style_functions_missing_or_failing():
+    win = {2: (PID, "페이커 오버레이", CHROME_CLASS, True)}
+    u32, reports, _ = run_pin(win)  # FakeUser32 에는 확장 스타일 함수가 없다
+    assert pins(u32) == [2] and reports[-1]["status"] == "pinned"
+    assert Win32Windows(u32, FakeCT).no_activate(2) is False
+    bad = StyledUser32(win, fail=True)
+    reports = []
+    pin_topmost(Win32Windows(bad, FakeCT), PID, PORT, reports.append, sleep=lambda _s: None, settle=0)
+    assert pins(bad) == [2] and reports[-1] == {"status": "pinned", "method": "pid", "windows": 1,
+                                                "repins": 0, "error": None}
+
+
+def test_port_busy_message_tells_what_to_do():
+    assert "이미 실행 중" in port_busy_message(8765, True)
+    assert "--listen-port" in port_busy_message(8765, False)
+
+
+def test_second_launch_exits_with_message_instead_of_traceback(capsys):
+    first = OverlayBridge(lambda: (_ for _ in ()).throw(OSError("no game")), lambda body: {})
+    httpd = serve_state(first, 0)
+    port = httpd.server_address[1]
+    try:
+        assert bridge_running(port) is True
+        second = OverlayBridge(lambda: {}, lambda body: {})
+        with pytest.raises(SystemExit) as ex:
+            run_overlay(second, port, max_steps=1, sleep=lambda _s: None)
+        assert ex.value.code == 1
+        assert "이미 실행 중" in capsys.readouterr().err
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+
+
+def test_port_taken_by_other_program(capsys):
+    import socket
+    s = socket.socket()
+    s.bind(("127.0.0.1", 0))
+    s.listen(1)
+    port = s.getsockname()[1]
+    try:
+        assert bridge_running(port, timeout=0.3) is False
+        with pytest.raises(SystemExit):
+            run_overlay(OverlayBridge(lambda: {}, lambda body: {}), port, max_steps=1, sleep=lambda _s: None)
+        assert "--listen-port" in capsys.readouterr().err
+    finally:
+        s.close()

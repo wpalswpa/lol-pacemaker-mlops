@@ -734,3 +734,17 @@ def test_coach_briefing_fallback_and_llm_mock(client, monkeypatch):
     res3 = client.post("/coach/briefing", json=payload)
     assert res3.status_code == 200
     assert res3.json()["source"] == "fallback_rule"
+
+
+def test_windows_launcher_is_ascii_and_checks_python_version(client):
+    """AGENTS.md 3-6 "Windows .bat 규칙": ASCII 문구, CRLF, 3.9 이상 확인, Borderless 안내, 공백 경로 따옴표."""
+    raw = client.get("/download/launcher?os=windows", headers={"host": "<서버 IP>"}).content
+    assert all(b < 128 for b in raw)
+    assert b"\n" not in raw.replace(b"\r\n", b"")
+    text = raw.decode()
+    assert "sys.version_info >= (3, 9)" in text
+    assert "Borderless" in text
+    assert '"PY_CMD="%ProgramFiles%\\Python%%V\\python.exe""' in text  # Program Files 공백 경로도 실행되게
+    assert text.count("(") == text.count(")")  # cmd 블록 괄호 짝
+    page = client.get("/download").text
+    assert "테두리 없음" in page and "추가 정보" in page and "LIVE" in page

@@ -566,6 +566,24 @@ def serve_state(bridge: OverlayBridge, port: int = 8765, upstream: Upstream | No
     return httpd
 
 
+def bridge_running(port: int, timeout: float = 1.0) -> bool:
+    """그 포트에서 이미 브리지가 응답하는지(/bridge/state 가 JSON 에 connected 를 담아 돌려주는지)."""
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/bridge/state", timeout=timeout) as r:
+            return "connected" in json.load(r)
+    except Exception:  # noqa: BLE001  응답이 없거나 브리지가 아니면 False
+        return False
+
+
+def port_busy_message(port: int, running: bool) -> str:
+    """상태 포트를 못 열 때 한 줄 안내 (AGENTS.md 3-4 "상태 포트가 이미 쓰이는 경우")."""
+    if running:
+        return (f"브리지가 다른 창에서 이미 실행 중입니다(127.0.0.1:{port}). "
+                "그 창을 그대로 쓰거나, 닫고 다시 실행하세요.")
+    return (f"127.0.0.1:{port} 포트를 다른 프로그램이 쓰고 있습니다. "
+            "--listen-port 로 다른 포트를 지정해 다시 실행하세요.")
+
+
 def overlay_url(port: int) -> str:
     """팝업 주소. HUD 를 브리지(127.0.0.1)가 내주므로 상태 읽기가 같은 출처다."""
     return f"http://127.0.0.1:{port}/overlay?bridge_url=http://127.0.0.1:{port}/bridge/state"
@@ -643,6 +661,7 @@ def build_swift_popup() -> str | None:
 HWND_TOPMOST = -1
 SWP_NOSIZE, SWP_NOMOVE, SWP_NOACTIVATE = 0x0001, 0x0002, 0x0010
 PIN_FLAGS = SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE
+GWL_EXSTYLE, WS_EX_NOACTIVATE = -20, 0x08000000
 OVERLAY_TITLES = ("페이커 오버레이", "LoL 페이스메이커")
 CHROME_CLASS = "Chrome_WidgetWin_1"
 PIN_TRIES, PIN_INTERVAL = 25, 0.25
@@ -684,7 +703,22 @@ class Win32Windows:
     def class_name(self, hwnd) -> str:
         return self._text(self.u.GetClassNameW, hwnd, 256)
 
+    def no_activate(self, hwnd) -> bool:
+        """눌러도 활성화되지 않게 WS_EX_NOACTIVATE 를 더한다(게임이 키 입력을 계속 받는다). 못 하면 False."""
+        get = getattr(self.u, "GetWindowLongPtrW", None) or getattr(self.u, "GetWindowLongW", None)
+        put = getattr(self.u, "SetWindowLongPtrW", None) or getattr(self.u, "SetWindowLongW", None)
+        if get is None or put is None:
+            return False
+        style = int(get(hwnd, GWL_EXSTYLE))
+        if not style & WS_EX_NOACTIVATE:
+            put(hwnd, GWL_EXSTYLE, style | WS_EX_NOACTIVATE)
+        return True
+
     def pin(self, hwnd) -> bool:
+        try:
+            self.no_activate(hwnd)
+        except Exception:  # noqa: BLE001  초점 처리는 보조 기능이라 실패해도 고정은 한다 (AGENTS.md 3-4)
+            pass
         return bool(self.u.SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, PIN_FLAGS))
 
 
@@ -757,6 +791,13 @@ def _pin_windows_topmost_async(pid: int, port: int, report: Callable[[dict], Non
             user32.SetWindowPos.argtypes = [wintypes.HWND, wintypes.HWND, ctypes.c_int, ctypes.c_int,
                                             ctypes.c_int, ctypes.c_int, wintypes.UINT]
             user32.SetWindowPos.restype = wintypes.BOOL
+            # 확장 스타일 읽기·쓰기: 64비트는 …LongPtrW, 32비트 Python 에는 그 이름이 없어 …LongW 를 쓴다
+            for get_name, put_name in (("GetWindowLongPtrW", "SetWindowLongPtrW"), ("GetWindowLongW", "SetWindowLongW")):
+                get_fn, put_fn = getattr(user32, get_name, None), getattr(user32, put_name, None)
+                if get_fn is not None and put_fn is not None:
+                    get_fn.argtypes, get_fn.restype = [wintypes.HWND, ctypes.c_int], ctypes.c_ssize_t
+                    put_fn.argtypes, put_fn.restype = [wintypes.HWND, ctypes.c_int, ctypes.c_ssize_t], ctypes.c_ssize_t
+                    break
             pin_topmost(Win32Windows(user32, ctypes), pid, port, report, repin_sec=repin_sec)
         except Exception as e:  # noqa: BLE001  조용히 죽지 않고 상태에 남긴다
             report({"status": "failed", "error": f"{type(e).__name__}: {e}"[:200]})
@@ -796,7 +837,11 @@ def launch_popup(port: int, report: Callable[[dict], None] | None = None, repin_
 def run_overlay(bridge: OverlayBridge, port: int, server: str | None = None, popup: bool = False,
                 sleep: Callable[[float], None] = time.sleep, max_steps: int | None = None,
                 repin_sec: float = 0.0) -> None:
-    httpd = serve_state(bridge, port, http_upstream(server) if server else None)
+    try:
+        httpd = serve_state(bridge, port, http_upstream(server) if server else None)
+    except OSError as e:
+        print(port_busy_message(port, bridge_running(port)), file=sys.stderr)
+        raise SystemExit(1) from e
     real = httpd.server_address[1]
     print(f"브리지 상태: http://127.0.0.1:{real}/bridge/state (멈추려면 Ctrl+C)")
     if server:
