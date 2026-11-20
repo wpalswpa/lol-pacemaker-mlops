@@ -750,6 +750,7 @@ def test_windows_launcher_is_ascii_and_checks_python_version(client):
     assert "sys.version_info >= (3, 9)" in text
     assert "Borderless" in text
     assert '"PY_CMD="%ProgramFiles%\\Python%%V\\python.exe""' in text  # Program Files 공백 경로도 실행되게
+    assert "pythonw" in text and "--log-file" in text and "--exit-on-close" in text
     assert text.count("(") == text.count(")")  # cmd 블록 괄호 짝
     page = client.get("/download").text
     assert "테두리 없음" in page and "추가 정보" in page and "LIVE" in page
@@ -760,3 +761,14 @@ def test_hud_marks_stale_coach_when_server_fails(client):
     t = client.get("/overlay").text
     assert "stale: !!st.coach_error" in t
     assert "🟠 LIVE · 서버 재연결 중" in t and "서버 연결이 끊겨 마지막 계산 값을 보여요" in t
+
+
+def test_meta_items_returns_price_map_and_hidden_from_openapi(client, app_module):
+    """W1: GET /meta/items 는 아이템 가격표를 돌려주고 OpenAPI 도구 목록에는 숨긴다."""
+    res = client.get("/meta/items")
+    assert res.status_code == 200
+    body = res.json()
+    assert "version" in body and isinstance(body["prices"], dict) and len(body["prices"]) >= 20
+    assert body["prices"]["3020"] == 1100
+    assert "/meta/items" not in app_module.app.openapi()["paths"]
+

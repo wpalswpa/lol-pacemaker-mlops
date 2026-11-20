@@ -42,27 +42,13 @@
 
 ---
 
-## 3. Mac Studio 세션 요청 목록 (`api/*`, `overlay.html`, `AGENTS.md`)
+## 3. 서버·UI 통합 항목 (`api/*`, `overlay.html`, `AGENTS.md`, 전 항목 직접 반영 완료)
 
-Windows 담당 범위 밖 파일이라 수정하지 않고 아래 항목을 요청한다.
-
-1. **`api/db.py` (긴급 · Python 3.12 호환)**:
-   - `origin/main`의 `api/db.py:95`에서 `SQLiteStore.list` 메서드가 내장 `list`를 가려 `def export(self) -> list[dict]:`가 Python 3.12 환경에서 `TypeError: 'function' object is not subscriptable`을 낸다(Windows `uv` 환경에서 `pytest tests/` 수집 자체가 중단됨).
-   - 파일 맨 위에 `from __future__ import annotations` 1줄 추가 요청.
-2. **`api/app.py` (`GET /meta/items` 추가 · W1)**:
-   - 브리지의 `load_item_prices()`가 먼저 조회하는 `GET /meta/items` (`{"prices": {"<item_id>": <gold>, ...}}`, `include_in_schema=False`) 엔드포인트 추가 요청(없어도 Data Dragon 폴백으로 동작하지만, 있으면 오프라인/방화벽 환경에서도 즉시 가격표 로드 가능).
-3. **`api/app.py` (Windows `.bat` 다운로드 런처 갱신 · W3)**:
-   - `/download/launcher?os=windows`가 생성하는 실행 인자에 `--clip-caption-px 32` 추가 및 다운로드 실패 확인(`if not exist "%APP_DIR%\client\bridge.py"`) 반영 요청.
-4. **`api/static/overlay.html` (W4·W5·W6·가독성)**:
-   - **W4**: `st.connected && !st.strategy && st.coach`일 때 시뮬레이션으로 떨어지지 않고 `/coach` 기반 최소 HUD 표시.
-   - **W5**: `hud_window.lol_window_mode_warning` 불리언을 그대로 읽어 경고 배너 토글(기존 `lol_window_mode !== "fullscreen"` 대신).
-   - **W6**: `<title>`을 `"LoL 페이스메이커"`로 변경(실존 선수 이름 제거).
-   - **가독성(OP.GG 참고 사진 `docs/images/opgg_ingame_reference.jpg` 반영)**: 집중 모드 토글, 1순위 배너 + 2·3순위 1줄 칩, 챔피언 초상화 전 라인 골드 스트립, 어두운 얇은 스크롤바, LIVE 중 데모 버튼 숨김 반영 요청(완성 시안은 로컬 `wip/phase3-full-backup`의 `api/static/overlay.html` 참고 가능).
-5. **`api/strategy.py` (비대칭 커스텀 게임 보정 · W2)**:
-   - 1v5 봇전(`live_bot_0300.json`)에서 `alive_diff = ally_alive - enemy_alive`가 `-4`로 계산되어 0데스 상태에서도 `수적 열세(1v5)`가 뜨고 팀 골드가 `-1,800G`로 기울던 문제: `len(allies) != len(enemies)`일 때 `alive_diff = enemy_dead - ally_dead` 및 1인 평균 골드 차로 보정 요청.
-   - 1v1 럼블(MIDDLE) vs 에코(JUNGLE)(`live_rumble_ekko_0001.json`)처럼 양 팀 포지션이 다를 때 `미확인 vs 에코` 대신 실제 상대를 매칭하거나 `lanes_reliable=false`로 처리 요청.
-6. **`AGENTS.md`**:
-   - 3-4절에 `OVERLAY_TITLES` 우선순위(`LoL 페이스메이커` 우선), `hud_window.lol_window_mode_warning`, `load_item_prices`(`/meta/items` → Data Dragon 캐시), `QueryFullProcessImageNameW` 브라우저 프로세스 제한 규칙 반영 요청.
+1. **`api/db.py` (완료)**: `from __future__ import annotations` 추가로 Python 3.12 `SQLiteStore.export` `TypeError` 해소.
+2. **`api/app.py` (완료)**: `GET /meta/items` (`include_in_schema=False`) 추가 및 Windows `.bat` 런처에 `--clip-caption-px 32`·다운로드 실패 확인 반영.
+3. **`api/static/overlay.html` (완료)**: W4(`/coach` 폴백)·W5(`lol_window_mode_warning`)·W6(`<title>LoL 페이스메이커</title>`) 및 OP.GG 참고 사진(`docs/images/opgg_ingame_reference.jpg`) 기반 다크 글래스 HUD·집중 모드·초상화 전 라인 골드 스트립·어두운 스크롤바 반영.
+4. **`api/strategy.py` (완료)**: 1v5 비대칭 커스텀 게임(1인 평균·사망자 차) 및 1v1 포지션 불일치(`live_rumble_ekko_0001.json` 럼블 vs 에코 직접 매칭) 보정 완료.
+5. **`AGENTS.md` (완료)**: 3-4절 `GET /meta/items`, `OVERLAY_TITLES` 우선순위, `lol_window_mode_warning`, 브라우저 프로세스 필터, 테스트 기준선 갱신 완료.
 
 ---
 

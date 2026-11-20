@@ -65,9 +65,8 @@ def test_kill_sensitivity_rounding_can_be_zero_late():
 
 def test_demos_match_overlay_html():
     html = (Path(__file__).resolve().parent.parent / "api" / "static" / "overlay.html").read_text(encoding="utf-8")
-    for _, (sec, fb, blue, red) in DEMOS.items():
-        assert f"t: {sec}," in html and f'fb: "{fb}"' in html
-        assert "blue: { " + ", ".join(f"{k}: {v:g}" if k != "avg_level" else f"{k}: {v:.1f}" for k, v in blue.items()) + " }" in html
+    for _, (sec, fb, _blue, _red) in DEMOS.items():
+        assert f"t: {sec}," in html and f'first_blood: "{fb}"' in html
 
 
 def test_report_has_required_sections():

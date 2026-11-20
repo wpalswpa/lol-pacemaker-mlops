@@ -6,6 +6,8 @@
 
 개인 식별자는 받지 않는다. 이 모듈은 받은 값을 그대로 적고, 무엇을 받을지는 api/app.py 의 MatchIn 이 정한다.
 """
+from __future__ import annotations
+
 import json
 import logging
 import os

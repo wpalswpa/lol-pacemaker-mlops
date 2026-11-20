@@ -171,11 +171,28 @@ def test_validator_unit_rules():
     assert v("마법사의 신발을 신고 망각의 구를 사세요.", pl) is None  # 조사를 떼고 비교
 
 
-@pytest.mark.parametrize("path", ["/", "/overlay"])
-def test_pages_have_briefing_box_with_source(client, path):
+@pytest.mark.parametrize("path,endpoint,fallback_label", [
+    ("/", "/coach/briefing", "규칙 문장"),
+    ("/overlay", "/strategy/briefing", "동적 전략"),
+])
+def test_pages_have_briefing_box_with_source(client, path, endpoint, fallback_label):
     t = client.get(path).text
     assert "AI 감독 브리핑" in t and 'id="briefText"' in t and 'id="briefSrc"' in t
-    assert 'fetch("/coach/briefing"' in t
-    assert "LLM · ${r.llm_model}" in t and "규칙 문장" in t                    # source 표시
+    assert f'fetch("{endpoint}"' in t
+    assert "LLM · ${r.llm_model}" in t and fallback_label in t                    # source 표시
     assert '$("briefText").textContent = r.briefing' in t                          # 글자는 textContent 로만
     assert 'briefText").innerHTML' not in t and 'briefSrc").innerHTML' not in t
+
+
+def test_h5_h8_m6_m7_m8_overlay_html_contracts(client):
+    t = client.get("/overlay").text
+    assert "BRIEF_MIN_MS = 20000" in t                  # H5: 최소 20초 간격
+    assert "x.category" in t                            # H5: 전략 제목 대신 category 로 키 생성
+    assert "coachFallbackView" in t                     # H8: strategy 없을 때 coach 폴백
+    assert '"X-Bridge-Token"' in t                      # M6: 브리지 제어 토큰 헤더
+    assert "stale: !!st.strategy_error" in t            # M7: strategy_error 만 stale 판정
+    assert "reqMode !== view.mode" in t or "view.mode !== reqMode" in t  # M7: 모드 변경 시 늦은 응답 폐기
+    assert "applyOpac(true);" in t                      # M7: 초기 로드 시 저장된 투명도 OS 창 동기화
+    assert '"브리핑 없음"' in t and '"동적 전략"' in t     # M8: AGENTS 문서와 실패/출처 문구 일치
+    assert "<title>LoL 페이스메이커</title>" in t         # W6: 실존 선수명 대신 서비스 제목 사용
+    assert "lol_window_mode_warning" in t                # W5: 동적 경고 플래그 연동

@@ -129,11 +129,23 @@
 
 ### 3-4. 게임 중 오버레이 (`client/bridge.py --overlay`, `GET /overlay`)
 
-기본 모드(3-2)가 10분에 한 번 알리는 것과 달리, 오버레이 모드는 게임 시작부터 끝까지 2초마다 로컬 게임 API를 읽어 게임 창 위의 작은 HUD(380×560)에 보여 준다. 쓰는 곳은 3-1과 같다(관전·리플레이·연습 모드, 랭크 게임 중에는 쓰지 않는다. 12절).
+기본 모드(3-2)가 10분에 한 번 알리는 것과 달리, 오버레이 모드는 게임 시작부터 끝까지 2초마다 로컬 게임 API(`allgamedata`)를 읽어 게임 화면 위의 프레임 없는 작은 HUD(380×560)에 보여 준다. 쓰는 곳은 3-1과 같다(관전·리플레이·연습 모드, 랭크 게임 중에는 쓰지 않는다. 12절).
 
-**10분 페이스 환산 (`extract_features_from_liveclient`)**
+**실시간 종합 전장 컨텍스트 추출 (`extract_live_context`) 및 동적 전략 엔진 (`POST /strategy`, `POST /strategy/briefing`)**
 
-모델은 10분 스냅샷으로 학습했다. 다른 시각의 점수판을 그대로 넣으면 3분에는 격차가 작아 보이고 25분에는 모든 격차가 과장된다. 그래서 누적 값을 "지금 속도로 10분이 되었을 때"의 값으로 바꿔 넣는다.
+오버레이 HUD는 기존 10분 선형 환산(`× 10/t`)을 쓰지 않고, 게임 진행 중 공개되는 실시간 정보 전체를 종합해 유동적으로 전략을 제시한다. (기존 10분 모델·`/predict`·`/coach`·`/matches` 파이프라인과 `extract_features_from_liveclient`·`pace_warning` 함수는 MLOps 서빙·전적 저장 호환용으로 유지한다.)
+
+| 추출 항목 | 출처 (`allgamedata`) | 전략 반영 방식 |
+|---|---|---|
+| 게임 시각·페이즈 | `gameData.gameTime` | 초반 라인전(0~14분)·중반 운영(14~25분)·후반 바론/장로(25분+) 구간별 전략 분기 |
+| 내 상태·보유 골드 | `activePlayer.currentGold`·`level`·`abilities`, 내 `allPlayers` 행 | 보유 골드는 귀환/구매 타이밍 안내에만 쓰고 판세(승률) 계산에는 넣지 않는다. 90초 전 무아이템 시 시작 아이템 안내, 하위템 보유분 차감 계산 |
+| 전 라인 상황 (5 vs 5) | `allPlayers` 10명(`position`·`summonerSpells` 강타 여부·`champion`·`scores`·`level`·`items`·`isDead`·`respawnTimer`) | 위치 정보가 4명 이상이면 5라인 매치업·아군 캐리(본인 제외) 분석, 3명 이하(봇전·미배정)면 `매치업 미확인`으로 표시하고 라인 기반 카드·서폿 CS 경고를 생략. 상대 0명(연습 모드)이면 판세·라인·교전 카드를 생략하고 빌드·귀환만 표시 |
+| 팀 아이템 골드·생존 수 | `allPlayers[].items` 가격 합, `isDead` | 시간대별 스케일로 실시간 판세 산출(8~12분 구간에서는 학습된 10분 ML 모델 예측과 35% 블렌딩), 수적 우위·수성 경보 간 모순 콜 자동 제거 |
+| 오브젝트·포탑·모멘텀 | `events.Events` (`DragonKill` 일반/장로 분리·`HeraldKill`·`HordeKill`·`BaronKill`·`TurretKilled`·`InhibKilled`·`ChampionKill`) | 일반 드래곤 스택(3스택 영혼 경고)·장로 버프·공허 유충·바론 버프·라인별 포탑·억제기 차이·최근 3분 교전 추세 반영. 각 수치는 `/strategy` 허용 상한으로 잘라 422를 막는다 |
+
+**10분 페이스 환산 (`extract_features_from_liveclient`, 전적 저장·레거시 `/coach` 호환용)**
+
+모델은 10분 스냅샷으로 학습했다. 전적 저장(`/matches`)과 기존 `/coach` 호출 경로는 아래 환산 규칙을 유지한다.
 
 | 항목 | 규칙 |
 |---|---|
@@ -144,9 +156,9 @@
 | `first_blood`·`my_side`·챔피언 칸 | 그대로 |
 
 - 10:00(600초)에서는 배율이 1이라 기본 모드 입력과 같다.
-- **한계**: 환산한 승률은 데이터로 검증하지 않은 가정이다. 성능 게이트와 Parity는 10분 스냅샷에서만 확인했다. 시간대별 실제 승패 데이터가 없어 정확도는 잴 수 없고, 분포 이탈과 민감도만 쟀다(`docs/pace_scaling_analysis.md`, Issue #19). 그래서 화면에 `10분 페이스 환산`과 아래 시각 경고를 함께 적는다. 발표·문서에 "게임 전 구간에서 정확하다"고 쓰지 않는다.
+- **한계**: 10분 환산 승률은 10분 근처(7:30~12:00)에서만 학습 분포 안에 있다(`docs/pace_scaling_analysis.md`, Issue #19). 그래서 오버레이 실시간 코칭에서는 환산 승률 대신 전 구간 실시간 종합 판세(`/strategy`)를 쓰고, 8~12분 구간에서만 학습된 10분 모델 값을 참고 블렌딩한다.
 
-**시각 경고 `pace_warning(game_time_sec)`** (`docs/pace_scaling_analysis.md` 5절 표에서 정했다. 경계 시각은 그 구간에 들어간다)
+**시각 경고 `pace_warning(game_time_sec)`** (`docs/pace_scaling_analysis.md` 5절 표, 브리지 상태 호환 필드)
 
 | 구간 | `level` | 문구(`text`) | 근거(전 경기 투영, 가정 점수판) |
 |---|---|---|---|
@@ -155,10 +167,10 @@
 | 12:00 ~ 20:00 미만 (`720`초부터) | `late` | `12분 이후 · 10분 모델 범위 밖(레벨) · 승률은 참고만` | 팀 평균 레벨이 학습 1~99% 밖 92% 이상, 킬 +1이 반올림으로 0인 경기 20% 이상 |
 | 20:00 이후 (`1200`초부터) | `very_late` | `20분 이후 · 포탑 차이도 범위 밖 · 우세·열세 방향만 보세요` | 위에 더해 포탑 차이가 학습 범위 밖 14%(20:00)·31%(25:00) |
 
-- 브리지 상태에 `pace_warning`(`{"level", "text"}` 또는 `null`)으로 싣고, HUD 는 승률 칸 아래 한 줄에 textContent로 보여 준다. 데모는 HUD 가 같은 경계(450·720·1200초)와 문구로 스스로 계산한다.
-- 서버 `/coach`의 `warnings`(학습 최소~최대 밖, 4절)와는 따로다. `warnings`는 값 하나하나를, 시각 경고는 시각 때문에 생기는 이탈을 알린다.
+- 브리지 상태에 `pace_warning`(`{"level", "text"}` 또는 `null`)을 유지한다.
+- 오버레이 HUD는 `/strategy` 응답(실시간 종합 판세·전 라인·유동 전략·보유 골드 연동 빌드)을 우선 표시하고, `/strategy`가 없을 때만 기존 `/coach` 응답으로 폴백한다.
 
-**`/coach` 호출**: 첫 호출은 바로, 그 뒤에는 환산 입력이 직전 호출과 다르고 직전 호출에서 5초(`COACH_MIN_SECONDS`) 넘게 지났을 때만 부른다. 422 대응은 3-1과 같다. 호출이 실패하면 직전 응답을 그대로 두고 `coach_error`에 이유를 적는다.
+**`/coach` 및 `/strategy` 호출**: 첫 호출은 바로, 그 뒤에는 입력이 직전 호출과 다르고 최소 간격(`COACH_MIN_SECONDS` 5초, 전략은 `STRATEGY_MIN_SECONDS` 3초) 넘게 지났을 때만 부른다. `/coach` 422 대응은 3-1과 같다. 호출이 실패하면 직전 응답을 그대로 두고 `coach_error`·`strategy_error`에 이유를 적는다.
 
 **보유 아이템 `extract_owned_items(allgamedata)`**: `activePlayer`와 이름(`riotId`·`riotIdGameName`·`summonerName`)이 같은 선수, 없으면 `allPlayers`의 첫 선수의 `items`에서 `[{itemID, displayName, count, slot}]`.
 
@@ -168,30 +180,43 @@
 - `abilities`(로컬 API `activePlayer.abilities`의 `abilityLevel`)가 있으면 계획을 1레벨부터 따라가며 실제로 찍은 수가 계획보다 적은 첫 스킬을 `when: "now"`로, 다 찍었으면 다음 레벨의 계획 스킬을 `when: "next_level"`로 낸다. 없으면 이번 레벨의 계획 스킬을 `"now"`로 낸다.
 - `order`가 `null`(규칙표에 없는 챔피언)이면 6·11·16레벨의 R만 내고 그 밖에는 `null`.
 
-**로컬 상태 서버**: `--overlay`면 `127.0.0.1:<--listen-port, 기본 8765>`에만 HTTP 서버를 연다. `GET /bridge/state`는 아래 JSON을 `Access-Control-Allow-Origin: *`, `Access-Control-Allow-Private-Network: true`, `Cache-Control: no-store`와 함께 돌려준다(`OPTIONS`도 같은 헤더로 204). 그 밖의 경로는 404. 게임 API를 읽지 못해도 서버는 멈추지 않고 `connected: false`와 마지막 상태를 돌려준다.
+**로컬 상태 서버**: `--overlay`면 `127.0.0.1:<--listen-port, 기본 8765>`에만 HTTP 서버를 연다. `GET /bridge/state`는 아래 JSON(자체 `bridge_version` sha256 앞 12자 포함)을 `Access-Control-Allow-Origin: *`, `Access-Control-Allow-Private-Network: true`, `Cache-Control: no-store`와 함께 돌려준다(`OPTIONS`도 같은 헤더로 204). 추가로 `POST /bridge/window`(투명도 `alpha`/`opacity`, 클릭 통과 `click_through`, 표시 여부 `visible`, 드래그 이동 `dx`·`dy`, 위치 리셋 `reset_pos`, 창 재부착 `reattach`)와 `POST /bridge/shutdown`(HUD 및 백그라운드 브리지 종료)은 **CORS를 열지 않고**, `Content-Type: application/json`과 시작 시 생성한 무작위 토큰 헤더 `X-Bridge-Token`이 일치할 때만 처리한다(`Content-Length`가 숫자가 아니거나 음수면 400, 토큰 불일치 403, Content-Type 불일치 415). 그 밖의 경로는 404. 게임 API를 읽지 못해도 서버는 멈추지 않고 `connected: false`와 마지막 상태를 돌려준다.
 
 | 필드 | 뜻 |
 |---|---|
+| `bridge_version` | `client/bridge.py` 파일의 sha256 앞 12자. 포트를 점유한 기존 브리지와 판이 다르면 실행기를 멈추고 교체 안내를 찍는다 |
 | `connected` / `source` | 게임 API(또는 `--file`)를 이번에 읽었는지, `"live"`·`"file"` |
-| `in_game` / `game_time_sec` / `minutes` / `pace_scale` | 게임 중인지(`gameTime > 0`), 경과 초, 환산에 쓴 분과 배율 |
+| `in_game` / `game_time_sec` / `minutes` / `pace_scale` | 게임 중인지(`gameTime > 0`), 경과 초, 호환 환산 분·배율 |
 | `updated_at` | 마지막으로 읽은 시각(유닉스 초) |
-| `champion` / `level` | 내 챔피언 영문 ID, 내 레벨(`activePlayer.level`) |
+| `champion` / `level` / `current_gold` | 내 챔피언 영문 ID, 내 레벨(`activePlayer.level`), 내 현재 보유 골드 |
 | `owned_items` | `extract_owned_items` 결과 |
-| `next_skill` / `next_skill_when` | 위 규칙. 스킬 순서는 마지막 `coach.build_advice.skill_order.order` |
-| `features` / `raw_features` | 환산한 `/coach` 입력, 환산 전 입력 |
-| `coach` / `coach_error` / `error` | 마지막 `/coach` 응답(없으면 `null`), 호출 실패 이유, 게임 API 읽기 실패 이유 |
+| `next_skill` / `next_skill_when` | 위 규칙. 스킬 순서는 마지막 `strategy` 또는 `coach`의 `build_advice.skill_order.order` |
+| `features` / `raw_features` / `live_context` | 환산 `/coach` 입력, 환산 전 입력, 전체 실시간 전장 컨텍스트(`/strategy` 입력) |
+| `coach` / `coach_error` / `strategy` / `strategy_error` / `error` | 마지막 `/coach`·`/strategy` 응답과 실패 이유, 게임 API 읽기 실패 이유 |
 | `enemy_items` | 마지막으로 `/coach`에 넣은 상대 위협의 공개 아이템 ID(3-1절) |
-| `popup` | 팝업 실행 방식과 Windows 항상 위 고정 결과(아래 "팝업"), 안 띄웠으면 `null` |
+| `popup` / `hud_window` | 팝업 실행·항상 위 고정 결과, Windows 인게임 팝업 창 상태(`frameless`·`alpha`·`click_through`·`visible`·`lol_detected`·`lol_window_mode`) |
 | `pace_warning` | 위 "시각 경고" 결과 `{level, text}`, 해당 없으면 `null` |
 
-**HUD 의 AI 감독 브리핑**: HUD 는 화면에 그린 `coach`의 캐시 키(4절 `POST /coach/briefing` 캐시와 같은 다섯 값)가 바뀔 때만 `POST /coach/briefing`을 같은 출처로 부른다. 본문은 LIVE 면 `features`에 `enemy_items`(있으면)를 더한 것, 데모면 데모 입력. 한 번에 하나만 보내고, `AI 감독 브리핑` 칸에 `briefing`과 출처를 textContent로 넣는다. 실패하면 칸에 "브리핑 없음"을 적고 나머지 HUD 는 그대로 둔다.
+**HUD 의 AI 감독 브리핑**: HUD 는 `/strategy` 응답의 핵심 전장 키(페이즈·유불리·챔피언·전 라인 상태·상위 2개 전략 **카테고리**·승률 2% 단위)가 바뀌고 직전 요청(실패 포함)에서 최소 20초가 지났을 때 `POST /strategy/briefing`을 같은 출처로 부른다. 요청 도중 화면 모드(LIVE/데모)가 바뀌면 늦게 온 응답은 버린다. 한 번에 하나만 보내고, `AI 감독 브리핑` 칸에 `briefing`과 출처(`LLM · {model}` 또는 `동적 전략`)를 textContent로 넣는다. 실패하면 칸에 "브리핑 없음"을 적고 나머지 HUD 는 그대로 둔다.
 
-**팝업 `--launch-popup`**: `http://127.0.0.1:<포트>/overlay?bridge_url=http://127.0.0.1:<포트>/bridge/state`를 380×560 창으로 화면 우측 상단에 띄운다(`--server`는 `--api`와 같은 옵션).
+**팝업 `--launch-popup`**: `http://127.0.0.1:<포트>/overlay?bridge_url=http://127.0.0.1:<포트>/bridge/state&token=<무작위 토큰>`을 380×560 인게임 팝업 HUD로 띄운다(`--server`는 `--api`와 같은 옵션).
 
-- **HUD 는 브리지가 같은 출처에서 내준다.** 공개 주소(`http://<고정 IP>`, `https://<내 도메인>`)에서 연 페이지는 브라우저의 로컬 네트워크 접근 제한 때문에 `127.0.0.1` 브리지를 읽지 못한다(Chromium 159에서 `Permission was denied`로 막히고 시뮬레이션 배지에 머무는 것을 확인). 그래서 오버레이 모드의 로컬 서버는 네 경로만 `--server`로 그대로 넘긴다: `GET /overlay`, `GET /meta/champions`, `POST /coach`, `POST /coach/briefing`(POST 본문 64 KB 이하, 넘으면 413). 서버의 상태 코드·본문을 그대로 돌려주고, 서버에 닿지 못하면 502 `{"detail": "서버에 연결하지 못했다"}`. 이 네 경로는 CORS를 열지 않는다(같은 출처 전용). 그 밖의 경로(`/matches` 등)는 404이고, 전적 저장은 브리지 프로세스가 직접 부른다.
+- **HUD 는 브리지가 같은 출처에서 내준다.** 공개 주소(`http://<고정 IP>`, `https://<내 도메인>`)에서 연 페이지는 브라우저의 로컬 네트워크 접근 제한 때문에 `127.0.0.1` 브리지를 읽지 못한다(Chromium 159에서 `Permission was denied`로 막히고 시뮬레이션 배지에 머무는 것을 확인). 그래서 오버레이 모드의 로컬 서버는 여섯 경로만 `--server`로 그대로 넘긴다: `GET /overlay`, `GET /meta/champions`, `POST /coach`, `POST /coach/briefing`, `POST /strategy`, `POST /strategy/briefing`(POST 본문 64 KB 이하, 넘으면 413; 시간 제한은 `/strategy/briefing` 15초, 나머지 8초). 서버의 상태 코드·본문을 그대로 돌려주고, 서버에 닿지 못하면 502 `{"detail": "서버에 연결하지 못했다"}`. 이 여섯 경로는 CORS를 열지 않는다(같은 출처 전용). 그 밖의 경로(`/matches` 등)는 404이고, 전적 저장은 브리지 프로세스가 직접 부른다.
 
 1. macOS이고 `swiftc`가 있으면 `client/overlay_popup.swift`를 사용자 캐시 폴더에 컴파일(소스가 바뀌었을 때만)해 실행한다. `NSPanel`을 `.floating` 단계로 띄우고 모든 데스크톱·전체 화면 보조 창으로 두며, 눌러도 게임에서 입력 초점을 빼앗지 않는다(`nonactivatingPanel`).
-2. 아니면 Chrome `--app=<URL> --window-size=380,560`(항상 위는 보장하지 않는다), 그것도 없으면 기본 브라우저. 전용 프로필(`--user-data-dir`)은 처음 열 때 환영 화면·기본 브라우저 묻기가 HUD를 가릴 수 있어 `--no-first-run --no-default-browser-check`를 함께 넣는다(2026-11-20).
+2. Windows에서는 Chrome·Edge `--app=<URL> --window-size=380,560`에 백그라운드 타이머 스로틀링 방지 플래그(`--disable-background-timer-throttling --disable-renderer-backgrounding --disable-backgrounding-occluded-windows`)와 `--no-first-run --no-default-browser-check`를 함께 넣어 띄운 뒤, Win32 API로 **제목 표시줄과 테두리를 제거(`WS_CAPTION | WS_THICKFRAME` 해제)**하고 **`WS_EX_TOOLWINDOW | WS_EX_LAYERED | WS_EX_NOACTIVATE`**를 적용해 작업표시줄에 뜨지 않는 반투명 인게임 팝업 HUD로 전환한다.
+
+**Windows 인게임 팝업 제어 (`Win32Windows` + `WindowsHudController`)**
+
+| 기능 | Win32 구현 | 설명 |
+|---|---|---|
+| 프레임 없는 팝업 | `GWL_STYLE`에서 `WS_CAPTION \| WS_THICKFRAME \| WS_MINIMIZEBOX \| WS_MAXIMIZEBOX \| WS_SYSMENU` 제거 + `WS_POPUP` 부여, `GWL_EXSTYLE`에 `WS_EX_TOPMOST` 포함, 선택 `--clip-caption-px N` 시 `SetWindowRgn` | 하얀 Chrome 제목 표시줄과 창 테두리를 없애고 Windows 10/11 전체 화면 최적화(FSO) 환경에서도 팝업 오버레이 밴드로 띄움 |
+| 작업표시줄 숨김 + 실제 OS 반투명 | 처음 `WS_EX_TOOLWINDOW` 부여 시 `SW_HIDE` → 스타일 적용 → `SetLayeredWindowAttributes(hwnd, 0, alpha, LWA_ALPHA)` → `SW_SHOWNA` | 작업표시줄·Alt-Tab에서 빠지고 HUD 뒤 게임 화면이 실제로 비침 |
+| 클릭 통과 토글 (`F8`) | `WS_EX_TRANSPARENT` 토글 (`GetAsyncKeyState(VK_F8)`) | 교전 중 마우스가 HUD 위를 지나가도 클릭이 게임으로 통과 |
+| HUD 숨김/표시 (`F9`) | `ShowWindow(hwnd, SW_HIDE / SW_SHOWNA)` (`GetAsyncKeyState(VK_F9)`), 숨김 중 자동 종료 건너뜀 | 게임 중 원할 때 즉시 숨김/복귀, 숨긴 동안 `--exit-on-close` 오종료 방지 |
+| LoL 게임 창 자동 추적 + FSO Z-순서 유지 | 시작 시 `SetProcessDpiAwarenessContext(-4)` 시도, `IsIconic` 건너뜀, 실제 HUD `GetWindowRect` 크기와 `MonitorFromWindow`·`GetMonitorInfoW` 영역(전체 화면이면 `rcMonitor`, 창 모드면 `rcWork`) 안으로 좌표 제한. LoL 창이 포그라운드(`GetForegroundWindow`)가 되거나 주기 틱(약 0.3초)마다 `visible=True`인 동안 `HWND_TOPMOST`(`SWP_NOACTIVATE \| SWP_NOOWNERZORDER`)로 Z-순서를 유지 | 듀얼 모니터·DPI 배율 화면 밖 이탈 방지, Windows 10/11 FSO 전체 화면(`WindowMode=0`)에서도 게임 클릭 직후 HUD가 뒤로 밀리지 않게 유지 |
+| 화면 모드 점검 | 실행 중 LoL 프로세스 경로에서 `Config/Game.cfg`의 `WindowMode`를 동적으로 확인하고 `hud_window.lol_window_mode_warning`으로 전달 | Windows 10/11 FSO 환경에서는 전체 화면(`0`)에서도 `WS_POPUP`+Z-순서 유지로 표시를 시도하며, LoL 감지+HUD 표시 중이면 경고를 끄고 가려질 때만 테두리 없음(`2`) 전환을 안내 |
+| 가격표 자동 캐시 | 시작 시 `GET /meta/items` → Data Dragon `versions.json`+`item.json` 순으로 아이템 가격표를 받아 7일 캐시, 실패 시 `items[].price` 폴백 | `item_gold` 0원 오류 방지 (표준 라이브러리만 사용) |
 
 **실제 응답 기록 `--record <폴더>` (2026-11-20, 실게임 시험용)**: 켜면 LIVE 응답(`allgamedata`)을 게임 시각 1분마다 한 번(첫 응답 포함) `<폴더>/<실행 시각>/allgamedata_<MM>m<SS>s.json`으로 남긴다. 실제 응답 구조(CS 정의, 챔피언 이름, 이벤트 이름)를 맥에서 재현해 고치고 시험 자료로 쓰기 위해서다. 저장 전에 선수 식별 값(`summonerName`·`riotId`·`riotIdGameName`·`riotIdTagLine`, 이벤트의 `Recipient`·`KillerName`·`VictimName`·`Assisters`)을 한 실행 안에서 같은 이름이면 같은 가명(`P1`…)으로 바꾼다(12절: 개인 식별자는 남기지 않는다). 쓰기 실패는 브리지를 멈추지 않고 터미널에 한 번만 한 줄로 알린다. 기본은 꺼짐이고, Windows 실행기는 `%TEMP%\lol-pace-client\records`로 켠다.
 
@@ -199,7 +224,7 @@
 
 | 항목 | 규칙 |
 |---|---|
-| 창 찾기 순서 | 보이는 창(`EnumWindows` + `IsWindowVisible`) 가운데 ① 띄운 프로세스 PID 의 창 ② 제목에 `페이커 오버레이`(HUD 의 `<title>`) 또는 `LoL 페이스메이커`가 든 창 ③ 클래스명 `Chrome_WidgetWin_1`이면서 제목에 `127.0.0.1:<포트>`가 든 창(페이지 제목이 뜨기 전 Chrome 은 주소를 제목으로 쓴다). 앞 단계에서 찾으면 뒤 단계는 보지 않는다. Chrome·Edge 가 이미 켜져 있으면 `--app` 창이 기존 프로세스에 합쳐져 ①이 비므로 ②③이 필요하다. 클래스명만으로는 찾지 않는다(사용자의 평소 브라우저 창까지 항상 위로 올리게 되므로) |
+| 창 찾기 순서 | 보이는 창(`EnumWindows` + `IsWindowVisible`) 가운데 **`QueryFullProcessImageNameW`로 `chrome.exe`·`msedge.exe`·`chromium.exe` 프로세스만 허용**(VS Code·Electron 앱 오매칭 차단). ① 띄운 프로세스 PID 의 창 ② 제목에 `LoL 페이스메이커`(HUD `<title>`, 우선) 또는 `페이커 오버레이`(하위 호환)가 들며 일반 브라우저 탭 접미사(` - Google Chrome` 등)가 없는 창 ③ 클래스명 `Chrome_WidgetWin_1`이면서 제목에 `127.0.0.1:<포트>`가 든 창. 앞 단계에서 찾으면 뒤 단계는 보지 않으며 최대 1개 창만 선택한다 |
 | 처음 찾기 | 0.25초 간격 최대 25번(약 6초) |
 | 고정 | 찾은 창마다 `SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOSIZE \| SWP_NOMOVE \| SWP_NOACTIVATE)`. 모든 호출에 `SWP_NOACTIVATE`를 넣어 게임에서 입력 초점을 빼앗지 않는다 |
 | 눌러도 초점 유지 (2026-11-19) | 고정 직전에 창 확장 스타일(`GWL_EXSTYLE`, `GetWindowLongPtrW`·`SetWindowLongPtrW`, 32비트는 `…LongW`)에 `WS_EX_NOACTIVATE`(0x08000000)를 더한다. HUD 버튼(최소화·투명도·이펙트)을 눌러도 창이 활성화되지 않아 게임이 계속 키 입력을 받는다(macOS `nonactivatingPanel`과 같은 목적). 이미 들어 있으면 다시 쓰지 않는다. 함수가 없거나 실패해도 고정은 계속한다(초점 처리는 보조 기능이라 `popup` 상태를 바꾸지 않는다). 재고정 때마다 같은 확인을 한다 |
@@ -209,9 +234,12 @@
 
 브리지 상태 `popup` (팝업을 안 띄웠으면 `null`): `how`(`swift`·`chrome`·`browser`), `status`(`not_windows`·`searching`·`pinned`·`lost`·`failed`), `method`(`pid`·`title`·`class` 또는 `null`), `windows`(고정한 창 수), `repins`(재고정 횟수), `error`(없으면 `null`).
 
-LoL은 "테두리 없는 창 모드"여야 위에 뜬다. 전체 화면 독점 모드에서는 어떤 창도 게임 위에 뜨지 않는다. 이 안내는 `/download` 화면과 실행기 첫 출력에도 넣는다(3-6).
+Windows 10/11 전체 화면 최적화(FSO) 환경에서는 전체 화면(`WindowMode=0`)에서도 `WS_POPUP`+`HWND_TOPMOST` 실시간 Z-순서 유지로 인게임 팝업 HUD 표시를 시도한다. 다만 FSO가 꺼져 있거나 GPU 드라이버가 DWM을 우회하는 진짜 DirectX 독점 전체 화면으로 진입해 HUD가 가려질 때는 LoL 화면 모드를 "테두리 없음(Borderless)"으로 바꾸면 해결된다(Riot Vanguard 정책상 미서명 DLL 인젝션은 쓰지 않는다). 이 안내는 `/download` 화면과 실행기 첫 출력에도 넣는다(3-6).
 
-**상태 포트가 이미 쓰이는 경우 (2026-11-19)**: 실행기를 두 번 누르면 두 번째 브리지가 `127.0.0.1:8765`를 열지 못한다. 이때 오류 추적을 쏟아내지 않고, 그 포트의 `/bridge/state`가 브리지로 응답하면 "다른 창에서 이미 실행 중이니 그 창을 쓰거나 닫고 다시 실행"을, 아니면 "8765 포트를 다른 프로그램이 쓰고 있으니 `--listen-port`로 바꾸라"를 한 줄로 알리고 종료 코드 1로 끝낸다. 단 `--launch-popup`으로 실행했고 그 포트가 브리지라면(팝업을 닫았거나 가려져 실행기를 다시 누른 경우) 오류로 끝내지 않고 도는 브리지에 팝업만 다시 띄운 뒤 종료 코드 0으로 끝낸다(2026-11-20, Windows 는 항상 위 고정이 끝날 때까지 기다린다).
+**상태 포트가 이미 쓰이는 경우 (2026-11-19 · 2026-11-20 판 비교·재부착 보강)**: 실행기를 두 번 누르면 두 번째 브리지가 `127.0.0.1:8765`를 열지 못한다. 이때 오류 추적을 쏟아내지 않고 그 포트의 `/bridge/state`를 읽는다.
+- 브리지가 아니거나 응답이 없으면 "8765 포트를 다른 프로그램이 쓰고 있으니 `--listen-port`로 바꾸라"를 알리고 종료 코드 1.
+- 브리지이지만 `bridge_version`이 현재 파일과 다르면 "옛 브리지가 실행 중이니 닫고 다시 실행" 한 줄을 찍고 종료 코드 1로 끝낸다(옛 브리지에 새 팝업을 붙이지 않는다).
+- `--launch-popup`이고 `bridge_version`이 같으면 도는 브리지에 팝업을 다시 띄운 뒤 `POST /bridge/window {"reattach": true}`(토큰 헤더 포함)를 보내 프레임 제거·F8/F9가 새 창에 붙게 하고 종료 코드 0으로 끝낸다.
 
 **팝업을 닫으면 브리지도 끝낸다 (macOS swift, 2026-11-20)**: macOS `.app`은 터미널 창이 없어 브리지를 끌 방법이 없다. 그래서 브리지가 띄운 swift 패널이 닫히면 폴링 반복을 끝낸다. Chrome `--app` 창은 실행 파일이 곧바로 끝나는 경우가 있어 이 규칙을 쓰지 않는다(Windows 는 검은 창을 닫으면 끝난다).
 
@@ -220,23 +248,19 @@ LoL은 "테두리 없는 창 모드"여야 위에 뜬다. 전체 화면 독점 �
 - 새 게임은 게임 시각이 `NEW_GAME_REWIND_SEC`(5초) 넘게 되돌아가거나, `(팀, 챔피언)` 10쌍(`game_key`)이 바뀌면 판별한다(Live Client API 에는 경기 ID 가 없다). 새 게임이면 저장 여부·코칭 간격을 처음으로 돌린다. 브리지가 새 게임을 0:30 이후에 처음 봐도(로딩 중 폴링 실패, 늦게 켬) 그 게임 결과를 저장한다.
 - 서버 계산이 실패하면 브리지는 직전 코칭을 그대로 두고 `coach_error`를 채운다. HUD 는 이때 배지를 `🟠 LIVE · 서버 재연결 중`으로 바꾸고 문구 앞에 "서버 연결이 끊겨 마지막 계산 값을 보여요"를 붙인다(옛 승률을 지금 값처럼 보이지 않게).
 
-**오버레이 화면 (`api/static/overlay.html`)**: 화면이 계산을 새로 하지 않고 `/coach` 응답과 브리지 상태만 옮긴다(데모 시나리오의 환산만 위 규칙 그대로 화면에서 한다).
+**오버레이 화면 (`api/static/overlay.html`)**: 화면이 계산을 새로 하지 않고 `/strategy` 응답과 브리지 상태만 옮긴다.
 
 | 칸 | 무엇을 보고 | 어떻게 보여 주나 |
 |---|---|---|
-| 상태 배지 | 브리지 `connected`, `game_time_sec` | 연결되면 `🟢 게임 중 LIVE (MM:SS)`, 아니면 `🟡 게임 중 시뮬레이션 (MM:SS)`(데모 시나리오 시각) |
-| 이펙트 토글 | 사용자 | `이펙트 ON`·`이펙트 OFF`. 끄면 구매·스킬 강조 테두리의 빛과 애니메이션을 바로 없앤다(배지는 남김). `aria-pressed`, 브라우저에 기억(저장 실패해도 동작) |
-| 승률 (`win_prob`) | `my_win_prob` | 제목 `실시간 게임 중 승률`, 그 아래 `10분 페이스 환산` |
-| 전술 배지 (`tactical_action`) | `build_advice.state` | 3-3의 테두리 문구(`우세 · 적극 교전 가능` 등) |
-| 한 줄 코칭 (`coach_message`) | `coaching[0].message` | 목표가 없으면 `지금 페이스 유지` |
-| 시작 아이템 (`starter_items`) | `build_advice.starter_items` | 아이콘 카드 |
-| 구매 순서 (`boots`, `core_items`) | `build_advice.recommended_items` | `1단계 신발 → 2단계 하위템 → 3단계 코어` 카드. 규칙표가 정한 구매 순서가 이 세 단계라 코어 아이템 3개를 따로 지어내지 않는다 |
-| 상황별 아이템 (`situational_items`) | `build_advice.situational_items` | 아이콘 카드와 `why` |
-| 보유 표시 | `owned_items[].itemID` | 같은 `item_id` 카드에 `✓ 보유 완료`와 반투명 |
-| 지금 구매 추천 | 구매 순서 중 보유하지 않은 첫 카드 | `지금 구매 추천` 배지와 금색 맥박 테두리. 카드를 누르면 화면 안에서 보유를 바꿔 강조가 다음 카드로 옮겨 간다(브리지에 연결된 동안에는 2초마다 실제 인벤토리로 다시 맞춘다) |
-| 스킬 키 | `skill_order.order`, `next_skill` | 키캡 줄과 이번에 찍을 키 카드(`[Q]`·`[R]` 등)에 청록 맥박 테두리. 데모에서는 시나리오 레벨로 위 계획을 계산 |
+| 상단 바 | 브리지 `connected`, `game_time_sec`, `hud_window` | 드래그 이동 핸들 + `🟢 게임 중 LIVE (MM:SS)` / `🟡 게임 중 시뮬레이션 (MM:SS)` 배지, `이펙트 ON/OFF`, 투명도(`100%`/`88%`/`72%`, 실제 Win32 창 알파 연동), 클릭 통과(`F8`)·숨김(`F9`) 안내, 접기(`−`) |
+| 실시간 판세 (`win_prob`) | `strategy.win_prob`, `phase_label`, `team_gold_diff`, `alive_summary` | 제목 `실시간 게임 중 승률`, 게임 페이즈(초반·중반·후반)·추정 팀 골드 차·생존 인원·핵심 요인 칩 표시 (`10분 페이스 환산`·`학습 범위 밖 경고` 미표시) |
+| 전 라인 현황 | `strategy.lanes` | `탑 · 정글 · 미드 · 원딜 · 서폿` 5개 라인별 챔피언과 우세·박빙·열세 색깔 배지 |
+| 실시간 맞춤 전략 | `strategy.strategies` | 현재 게임 시간·보유 골드·전 라인·오브젝트·생존 인원·상대 아이템을 종합한 우선순위 전략 카드 2~3장 |
+| 아이템·보유 골드 | `strategy.build_advice`, `strategy.recall_advice`, `owned_items` | 현재 보유 골드와 즉시 구매 가능 여부, 시작·상황별 아이템, 3단계 구매 순서(보유 `✓ 보유 완료`, 다음 미보유 카드 `지금 구매 추천` 금색 맥박 테두리) |
+| 스킬 키 | `skill_order.order`, `next_skill` | 키캡 줄과 이번에 찍을 키 카드(`[Q]`·`[R]` 등)에 청록 맥박 테두리 |
+| AI 감독 브리핑 | `POST /strategy/briefing` | 로컬 Ollama 또는 외부 LLM이 실시간 전장 컨텍스트로 생성한 유동 전략 2문장(`LLM · {model}`) 또는 동적 종합 전략 문장(`동적 전략`) |
 | 폴링 | `?bridge_url=`(기본 `http://127.0.0.1:8765/bridge/state`) | 2초마다. 실패하면 시뮬레이션으로 둔다 |
-| 데모 | `초반 우세 06:30`·`중반 박빙 14:20`·`후반 열세 23:10` | 시나리오의 누적 점수판을 위 규칙으로 환산해 같은 출처의 `/coach`를 부른다. 데모를 누르면 상태 배지를 누를 때까지 LIVE 결과로 덮지 않는다 |
+| 데모 | `초반 우세 06:30`·`중반 박빙 14:20`·`후반 열세 23:10` | 세 시간대의 10인 실시간 전장 스냅샷을 `/strategy`·`/strategy/briefing`에 보내 유동 전략 변화를 바로 확인한다 |
 
 글자는 모두 `textContent`로 넣고(브리지·서버 응답을 HTML로 해석하지 않는다), 아이콘 주소는 정수 `item_id`와 `/meta/champions`의 `version`으로만 만든다. 동작 줄이기 설정이면 깜빡임 없이 색만.
 
@@ -281,9 +305,10 @@ LoL은 "테두리 없는 창 모드"여야 위에 뜬다. 전체 화면 독점 �
 | `GET /download/overlay_popup.swift` | `client/overlay_popup.swift` 원본을 `text/plain; charset=utf-8`으로 반환 | macOS에서 `swiftc` Always-On-Top 패널 컴파일에 쓴다 |
 | `GET /download/launcher?os=windows\|mac` | 요청 `Host` 헤더(및 `X-Forwarded-Proto`)를 서버 URL로 자동 삽입한 `lol-pacemaker-overlay.bat`(Windows) 또는 `LoL-Pacemaker-macOS.zip`(Mac, `.app` 번들) 생성 다운로드 | `Host`는 영숫자·`.`·`:`·`-`·`[]`만 허용해 명령 주입을 막고, 잘못된 `os`는 422. 내려받은 스크립트는 `%TEMP%` 또는 `~/.cache`에 최신 `bridge.py`를 받아 `--insecure-local --overlay --launch-popup --save-match`를 자동 실행한다 (Python 미설치 시 안내) |
 
-**Windows `.bat` 규칙 (2026-11-19, 실게임 시험 전 보강)**
-- 화면에 찍는 문구는 영문 ASCII만 쓴다. `cmd`가 코드페이지와 파일 인코딩이 어긋나면 한글 줄을 명령으로 잘못 읽을 수 있어서다(브리지가 찍는 한글은 Python이 콘솔에 직접 쓰므로 괜찮다).
+**Windows `.bat` 규칙 (2026-11-19, 실게임 시험 전 보강 · 2026-11-20 무터미널 실행)**
+- 화면에 찍는 문구는 영문 ASCII만 쓴다. `cmd`가 코드페이지와 파일 인코딩이 어긋나면 한글 줄을 명령으로 잘못 읽을 수 있어서다(브리지가 찍는 한글은 Python이 로그 파일에 직접 쓰므로 괜찮다).
 - Python 후보(`python` → `py -3` → `%LocalAppData%\Programs\Python\Python3xx` → `%ProgramFiles%\Python3xx`)마다 `sys.version_info >= (3, 9)`인지 확인한다. Microsoft Store 별칭과 너무 오래된 Python을 함께 거른다. 없으면 winget 설치를 시도한 뒤 같은 후보를 다시 본다.
+- 브리지는 `pythonw.exe`(또는 `pyw -3`)로 백그라운드 실행(`start "" /B`)하고 `--log-file "%APP_DIR%\launcher.log" --exit-on-close`를 넘겨 검은 터미널 창이 남지 않게 한다. HUD의 `×` 버튼(`POST /bridge/shutdown`)을 누르거나 HUD 창을 닫아 폴링이 끊기면 백그라운드 브리지도 자동 종료된다.
 - 브리지는 `--record "%APP_DIR%\records"`로 실제 응답을 가명 처리해 남긴다(3-4 "실제 응답 기록"). 시험 뒤 이 폴더를 보내면 맥에서 재현할 수 있다.
 - 실행 전에 "롤 화면 모드를 Borderless(테두리 없는 창 모드)로, 로비에서는 기다리고 게임이 시작되면 HUD가 LIVE로 바뀐다"를 출력한다.
 
@@ -445,6 +470,26 @@ LoL은 "테두리 없는 창 모드"여야 위에 뜬다. 전체 화면 독점 �
 
 **화면**: 웹 시뮬레이터(`/`, 3-3절)와 오버레이(`/overlay`, 3-4절)에 `AI 감독 브리핑` 칸을 두고 `briefing`과 출처(`source`가 `llm`이면 `LLM · {llm_model}`, 아니면 `규칙 문장`)를 textContent로만 넣는다. 실서버는 키가 없어 `fallback_rule`로 답하는 것까지 확인했다(2026-11-18).
 
+### `POST /strategy` 및 `POST /strategy/briefing` (실시간 인게임 종합 전략, `include_in_schema=False`)
+
+오버레이 HUD 전용 엔드포인트다. 입력은 `client/bridge.py`의 `extract_live_context`가 만드는 실시간 전장 JSON(`game_time_sec`, `my_side`, `first_blood`, `me`, `allies`, `enemies`, `objectives`, `momentum`)이며 `api/strategy.py`가 계산한다.
+
+| 출력 필드 | 보장 |
+|---|---|
+| `game_time_sec` / `phase` / `phase_label` | 경과 초, `"early"`(<840s)·`"mid"`(840~1499s)·`"late"`(≥1500s), 한국어 페이즈명 |
+| `win_prob` / `state` / `state_ko` / `tactical_badge` | 실시간 판세 0.05~0.95(`me.current_gold` 미포함), `"ahead"`(>0.56)·`"even"`·`"behind"`(<0.44), 페이즈별 배지 |
+| `ml_blended` / `practice_mode` / `lanes_reliable` | 8~12분 ML 모델 블렌딩 여부, 상대 0명 연습 모드 여부, 위치 확인 선수 4명 이상 여부 |
+| `team_gold_diff` / `kills` / `alive` / `key_factors` | 양 팀 추정 골드 차(아이템 골드 기반, `current_gold` 제외), 팀 킬·생존 수, 핵심 근거 최대 3개 |
+| `lanes` / `ally_carry` | 5라인 매치업(`lanes_reliable=false`이면 `lane_ko="매치업 미확인"`, 연습 모드면 빈 배열), 아군 캐리(본인 제외) |
+| `enemy_comp` / `objectives` | 상대 5인 전체 AD/AP/탱커/치유 집계, 일반 드래곤·장로·공허 유충·바론·포탑·억제기 집계 |
+| `recall_advice` / `strategies` / `build_advice` / `summary_briefing` | 시작 아이템·하위템 차감 보유 골드 귀환 조언, 모순 제거된 우선순위 전략 카드 최대 3장, 조합 반영 빌드, 동적 요약 |
+| `model` / `model_version` | `/health`와 같은 값 |
+
+`POST /strategy/briefing`은 `/strategy` 응답 전체에 `briefing`, `source`(`"llm"` 또는 `"dynamic_rule"`), `llm_model`, `fallback_reason`을 더해 돌려준다.
+- 로컬 LLM 주소 판별은 `urlparse(url).hostname`이 `localhost`·`127.0.0.1`·`host.docker.internal`·`::1`인 경우만 허용한다.
+- 검사기 `validate_strategy_briefing`: ① 3문장 이상 거절(`sentences: n`) ② `payload` 모든 값·문자열 속 숫자(쉼표·정수 반올림 허용, `1대1` 제외)에 없는 숫자 거절(`number: x`) ③ `recommended_items` 및 `payload` 문자열 안에 없는 아이템 이름 거절(`item: 이름`).
+- 캐시 키는 전략 제목 대신 `(phase, state, my_champion, lanes 상태, 상위 2개 전략 category, recommended_items, win_prob 2% 단위)`를 쓰고 수명은 20초다.
+
 ### `GET /meta/champions` (웹 시뮬레이터용, `include_in_schema=False`)
 
 `api/game_data.json`을 화면용으로 줄여 돌려준다. 도구 스키마(`/openapi.json`)에는 나오지 않는다.
@@ -577,7 +622,7 @@ p_blue   = 1 / (1 + exp(−gold_est / 2500))
 - **정확도 0.68의 근거**: 사전 분석에서 규칙 기준선의 평가셋 정확도가 약 0.71이고, 공개 지표 로지스틱 회귀도 약 0.71이었다. 정확도로는 둘이 비슷하므로 주 기준은 확률 품질(Brier·LogLoss)로 두고, 정확도는 "규칙보다 3%p 넘게 떨어진 고장 난 모델"을 막는 하한으로만 쓴다.
 - **Brier를 주 기준으로 두는 이유**: 이 서비스는 "승률 43%", "+10.2%p"처럼 확률을 숫자로 보여 준다. 맞힌 비율보다 확률이 실제 빈도와 맞는지가 중요하다.
 
-**자동 테스트 기준선**: 2026-11-18 `uv run pytest -q` **312 passed**, skipped 0. 이보다 줄면 커밋 메시지와 `인수인계.md`에 이유를 적는다.
+**자동 테스트 기준선**: 2026-11-21 `uv run pytest api client tests -q -rs` **410 passed**(`uv sync --all-groups` 환경에서 skipped 0; `dev` 그룹만 설치된 환경에서는 `pandas`·`sklearn`이 필요한 재학습 로더 검사 2건이 건너뛰어지며 이는 `pyproject.toml`의 `train` 그룹 분리 정책 때문이다). 이보다 줄면 커밋 메시지와 `인수인계.md`에 이유를 적는다.
 
 **UI 점검(헤드리스 Chromium, Playwright)**: `/`, `/download`, `/slides`(일곱 장 모두), `/overlay`를 PC 1280×800·모바일 390×844(·태블릿 700×900)에서 열어 `documentElement.scrollWidth <= clientWidth`, 화면 밖으로 나간 요소 0개. 세 페이지 상단 메뉴에 `/overlay` 링크가 없고, 상단 메뉴로 `/` → `/download` → `/` → `/download` → `/slides` → `/` 클릭 이동이 모두 그 주소로 간다. `/`의 `인게임 HUD 미리보기`를 누르면 `/overlay` 팝업(400×580, `window.name` `lolHud`)이 뜨고 가로 넘침 0, 승률 숫자가 채워지며, 한 번 더 눌러도 창이 늘지 않는다. console error·pageerror 0건(팝업 포함). `/overlay`는 브리지가 없으면 `127.0.0.1:8765` 연결 거부가 console error로 찍히므로 브리지를 저장 응답(`--file ... --overlay`)으로 띄워 둔 상태에서 잰다.
 
@@ -677,7 +722,7 @@ models/onnx/current.json          {"model_version", "set_at", "run"}
 
 - 상대 팀의 가려진 정보(골드, 경험치, 와드, 위치, 쿨다운)를 읽거나 추정해 입력으로 받지 않는다.
 - 랭크 게임 중에 쓰는 오버레이를 만들지 않는다. 3-4절의 오버레이는 관전·리플레이·연습 모드용이다.
-- 전술 지시("지금 바론 가라")를 내리지 않는다. API는 정량 목표치만 준다. 웹 시뮬레이터의 3단계 행동 카드(3-3절)는 상태별 일반 원칙 문구이고 시각·대상을 정한 지시가 아니다.
+- OpenAPI AI 에이전트 도구(`/predict`·`/coach`)는 정량 목표치와 수치 근거만 주며 개별 전술 지시("지금 바론 가라")를 내리지 않는다. 반면 `include_in_schema=False`인 인게임 오버레이 전용 경로(`/strategy`·`/strategy/briefing`, 3-4절)는 관전·리플레이·연습 모드의 공개 점수판·이벤트·생존 타이머·보유 골드를 근거로 한 **상황별 운영 원칙·타이밍 가이드 카드**를 허용한다(상대의 가려진 위치·시야·쿨다운을 추정하는 지시는 여전히 금지). 웹 시뮬레이터의 3단계 행동 카드(3-3절)는 상태별 일반 원칙 문구다.
 - 베팅·배당 산출에 쓰지 않는다.
 - 서빙 서버에 scikit-learn·PyTorch를 설치하지 않는다(이미지는 `onnxruntime`만).
 - Riot 타임라인 대량 수집기는 이번 범위에 넣지 않는다(개발용 키가 24시간마다 만료되고 아직 승인된 키가 없다). EC2 워커 자리는 그 수집기를 위해 비워 둔 것이다.

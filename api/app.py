@@ -21,6 +21,7 @@ from api import db, llm_coach
 from api.build import GAME, RULES, resolve_my, resolve_threat
 from api.contract import FEATURES, CoachResponse, GameState, Health, MatchIn, PredictResponse, to_features
 from api.service import STEPS_PATH, PaceService, load_json
+from api.strategy import LiveStrategyRequest, analyze_live_strategy
 
 IMPLS = ("rule", "sklearn", "dl", "onnx")
 
@@ -101,6 +102,56 @@ def coach_briefing(state: GameState) -> dict:
     return {**coach_res, **llm_coach.generate_briefing(coach_res)}
 
 
+def _reference_10m_prob(req: LiveStrategyRequest) -> float | None:
+    """8~12분 구간에서는 학습된 10분 ML 모델 예측을 참고 블렌딩 값으로 계산한다."""
+    if not (480.0 <= req.game_time_sec <= 720.0):
+        return None
+    if not req.allies and not req.enemies:
+        return None
+    blue_players = req.allies if req.my_side == "blue" else req.enemies
+    red_players = req.enemies if req.my_side == "blue" else req.allies
+
+    def _team(ps, dragons, heralds, towers):
+        lv = (sum(p.level for p in ps) / len(ps)) if ps else float(req.me.level)
+        return {
+            "kills": min(sum(p.kills for p in ps), 100),
+            "assists": min(sum(p.assists for p in ps), 300),
+            "cs": min(sum(p.cs for p in ps), 2000),
+            "avg_level": max(1.0, min(18.0, lv)),
+            "dragons": min(dragons, 7),
+            "heralds": min(heralds, 2),
+            "towers": min(towers, 11),
+        }
+
+    obj = req.objectives
+    if req.my_side == "blue":
+        blue = _team(blue_players, obj.my_dragons, obj.my_heralds, obj.my_towers)
+        red = _team(red_players, obj.enemy_dragons, obj.enemy_heralds, obj.enemy_towers)
+    else:
+        blue = _team(blue_players, obj.enemy_dragons, obj.enemy_heralds, obj.enemy_towers)
+        red = _team(red_players, obj.my_dragons, obj.my_heralds, obj.my_towers)
+    fb = req.first_blood or ("red" if req.my_side == "blue" else "blue")
+    try:
+        gs = GameState(blue=blue, red=red, first_blood=fb, my_side=req.my_side)
+        return float(service.predict(gs)["my_win_prob"])
+    except Exception:  # noqa: BLE001
+        return None
+
+
+@app.post("/strategy", include_in_schema=False)
+def live_strategy(req: LiveStrategyRequest) -> dict:
+    """실시간 인게임 종합 정보(킬·골드·미니언·아이템·상대 조합·전 라인·오브젝트) 기반 유동 전략 분석."""
+    res = analyze_live_strategy(req, reference_10m_prob=_reference_10m_prob(req))
+    return _tag(res)
+
+
+@app.post("/strategy/briefing", include_in_schema=False)
+def live_strategy_briefing(req: LiveStrategyRequest) -> dict:
+    """실시간 전장 종합 스냅샷을 로컬 Ollama 또는 외부 LLM에 전달해 유동 전략 브리핑을 생성한다."""
+    res = _tag(analyze_live_strategy(req, reference_10m_prob=_reference_10m_prob(req)))
+    return {**res, **llm_coach.generate_strategy_briefing(res)}
+
+
 # 웹 시뮬레이터의 챔피언 선택·초상화용 (AGENTS.md 4절 GET /meta/champions). 도구 스키마에는 넣지 않는다
 _META = {
     "version": GAME["version"],
@@ -112,9 +163,25 @@ _META = {
 }
 
 
+_META_ITEMS = {
+    "version": GAME["version"],
+    "prices": {
+        str(iid): int(info["gold"])
+        for iid, info in (GAME.get("items") or {}).items()
+        if isinstance(info, dict) and isinstance(info.get("gold"), (int, float))
+    },
+}
+
+
 @app.get("/meta/champions", include_in_schema=False)
 def meta_champions() -> dict:
     return _META
+
+
+@app.get("/meta/items", include_in_schema=False)
+def meta_items() -> dict:
+    """W1: 브리지 item_gold 계산용 아이템 가격표 (Data Dragon 기준, 도구 스키마 숨김)."""
+    return _META_ITEMS
 
 
 @app.get("/", include_in_schema=False)
@@ -184,9 +251,10 @@ def download_launcher(request: Request, os: Literal["windows", "mac"] = Query(..
             "chcp 65001 >nul\r\n"
             "setlocal\r\n"
             "echo [LoL Pacemaker] Preparing the in-game overlay...\r\n"
-            "echo   - LoL settings: Video - Window Mode = Borderless (full screen hides the HUD)\r\n"
+            "echo   - LoL settings: Windows 10/11 FSO fullscreen supported; switch to Borderless if hidden\r\n"
+            "echo   - In-game hotkeys: F8 = click-through toggle, F9 = hide/show HUD\r\n"
             "echo   - The HUD waits in the lobby and turns LIVE once the game starts.\r\n"
-            "echo   - Keep only this one window open.\r\n"
+            "echo   - Close any older HUD window (X button) before updating.\r\n"
             "set \"PY_CMD=\"\r\n"
             + find_py +
             "if not defined PY_CMD (\r\n"
@@ -206,11 +274,27 @@ def download_launcher(request: Request, os: Literal["windows", "mac"] = Query(..
             "if errorlevel 1 (\r\n"
             f"  powershell -NoProfile -Command \"Invoke-WebRequest -Uri '{origin}/download/bridge.py' -OutFile '%APP_DIR%\\client\\bridge.py'\"\r\n"
             ")\r\n"
+            "if not exist \"%APP_DIR%\\client\\bridge.py\" (\r\n"
+            "  echo [LoL Pacemaker] Failed to download bridge.py from server.\r\n"
+            "  pause\r\n"
+            "  exit /b 1\r\n"
+            ")\r\n"
             "pushd \"%APP_DIR%\"\r\n"
-            "echo [LoL Pacemaker] Starting the always-on-top HUD. Close this window to stop.\r\n"
-            f"%PY_CMD% -m client.bridge --server \"{origin}\" --insecure-local --overlay --launch-popup --repin-sec 3 --save-match --record \"%APP_DIR%\\records\"\r\n"
+            "set \"PYW_CMD=\"\r\n"
+            "if /I \"%PY_CMD%\"==\"python\" (where pythonw >nul 2>nul && set \"PYW_CMD=pythonw\")\r\n"
+            "if /I \"%PY_CMD%\"==\"py -3\" (where pyw >nul 2>nul && set \"PYW_CMD=pyw -3\")\r\n"
+            "if not defined PYW_CMD (\r\n"
+            "  for %%V in (314 313 312 311 310 39) do if not defined PYW_CMD if exist "
+            "\"%LocalAppData%\\Programs\\Python\\Python%%V\\pythonw.exe\" "
+            "set \"PYW_CMD=\"%LocalAppData%\\Programs\\Python\\Python%%V\\pythonw.exe\"\"\r\n"
+            "  for %%V in (314 313 312 311 310 39) do if not defined PYW_CMD if exist "
+            "\"%ProgramFiles%\\Python%%V\\pythonw.exe\" set \"PYW_CMD=\"%ProgramFiles%\\Python%%V\\pythonw.exe\"\"\r\n"
+            ")\r\n"
+            "if not defined PYW_CMD set \"PYW_CMD=%PY_CMD%\"\r\n"
+            "echo [LoL Pacemaker] Starting frameless HUD in background (no terminal window). Use X on HUD to exit.\r\n"
+            f"start \"\" /B %PYW_CMD% -m client.bridge --server \"{origin}\" --insecure-local --overlay --launch-popup --repin-sec 3 --clip-caption-px 32 --save-match --record \"%APP_DIR%\\records\" --log-file \"%APP_DIR%\\launcher.log\" --exit-on-close\r\n"
             "popd\r\n"
-            "pause\r\n"
+            "exit /b 0\r\n"
         )
         return Response(
             content=script.encode("utf-8"),
