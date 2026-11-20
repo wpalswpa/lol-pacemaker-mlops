@@ -8,14 +8,13 @@
 
 | 용도 | 주소 | 설명 |
 |---|---|---|
-| **데스크톱 원클릭 다운로드** | **`http://<서버 IP>/download`** | Windows(`.bat`) · macOS(`.zip`) 내려받아 더블클릭 실행 |
-| **웹 시뮬레이터 · 전적 DB** | **`http://<서버 IP>/`** | 설치 없이 브라우저에서 코칭 체험 및 PostgreSQL 전적 저장 |
-| **인게임 HUD 미리보기** | **`http://<서버 IP>/overlay`** | 초컴팩트 `[ㅁ]→[ㅁ]→[ㅁ]` 아이템 · 인라인 스킬 이펙트 · 최소화/투명도 |
-| **5분 발표 웹 슬라이드** | **`http://<서버 IP>/slides`** | 7장 웹 프레젠테이션 (`→`·스페이스로 이동) |
-| **서버·모델 상태 확인** | **`http://<서버 IP>/health`** | 코드 판(`app_version`) · 모델 판(`model_version`) 조회 |
+| **데스크톱 원클릭 다운로드** | **`https://jjm.eta.pyhub.kr/download`** | Windows(`.bat`) · macOS(`.zip`) 내려받아 더블클릭 실행 |
+| **웹 시뮬레이터 · 전적 DB** | **`https://jjm.eta.pyhub.kr/`** | 설치 없이 브라우저에서 코칭 체험 및 PostgreSQL 전적 저장 |
+| **인게임 HUD 미리보기** | **`https://jjm.eta.pyhub.kr/overlay`** | 초컴팩트 `[ㅁ]→[ㅁ]→[ㅁ]` 아이템 · 인라인 스킬 이펙트 · 최소화/투명도 |
+| **서버·모델 상태 확인** | **`https://jjm.eta.pyhub.kr/health`** | 코드 판(`app_version`) · 모델 판(`model_version`) 조회 |
 
 ### PC 인게임 오버레이 10초 실행 (터미널 입력 불필요)
-1. **`http://<서버 IP>/download`** 에서 OS에 맞는 파일 다운로드
+1. **`https://jjm.eta.pyhub.kr/download`** 에서 OS에 맞는 파일 다운로드
 2. 더블클릭 실행 (Windows는 Python 3 자동 확인/설치, macOS는 `.app` 번들 실행)
 3. 롤 화면 설정을 **`테두리 없음(Borderless)`**으로 두고 연습모드·리플레이 시작
 
@@ -50,11 +49,11 @@
 
 | 항목 | 실측 수치 | 근거 |
 |---|---|---|
-| **자동 테스트** | **312 passed**, skipped 0 | `uv run pytest -q` |
+| **자동 테스트** | **390 passed**, skipped 0 | `.venv/bin/pytest -q` |
 | **성능 게이트 (`m1` → `m2`)** | `m1`(500경기) Brier 0.1891 → `m2`(5,000경기) **0.1824** (규칙 대비 +4.84%) | [docs/model_comparison.md](docs/model_comparison.md) |
 | **ONNX 일치 (Parity)** | 원본 sklearn vs ONNX 23건 최대 오차 `1.19e-07` (허용 `0.0001`) | `training/check_parity.py` |
-| **서빙 부하 (로컬 / 실서버)** | 로컬 ONNX `/predict` p95 **0.73ms**, 실서버 160건 동시 10건 **성공률 100%** | [docs/benchmark_summary.json](docs/benchmark_summary.json), [docs/benchmark_cloud_summary.json](docs/benchmark_cloud_summary.json) |
-| **클라우드 승격 · 롤백** | `model.yml` 2회 승격 · `rollback.yml` **16초 롤백** 실서버 완료 | GitHub Actions 실행 이력 |
+| **서빙 부하 (로컬 / 실서버)** | 로컬 ONNX `/predict` p95 **0.73ms**, 실서버 HTTPS 60건·HTTP 160건 **오류율 0.00%** | [docs/benchmark_summary.json](docs/benchmark_summary.json), [docs/benchmark_cloud_summary.json](docs/benchmark_cloud_summary.json) |
+| **클라우드 승격 · 롤백** | `model.yml` 2회 승격 · `rollback.yml` **16초 롤백** (약 1.5~4.2초 끊김 실측) | GitHub Actions 실행 이력 |
 
 ---
 
