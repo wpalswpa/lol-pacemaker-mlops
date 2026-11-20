@@ -1184,7 +1184,7 @@ class Win32Windows:
     def process_name(self, hwnd) -> str | None:
         """창 소유 프로세스의 실행 파일명(소문자 basename)을 반환한다. kernel32 없으면 None."""
         full = self.process_path(hwnd)
-        return os.path.basename(full).lower() if full else None
+        return full.replace("\\", "/").rsplit("/", 1)[-1].lower() if full else None
 
     def is_allowed_browser(self, hwnd) -> bool:
         """VS Code·Antigravity 같은 Electron 앱을 건드리지 않도록 chrome/msedge 프로세스만 허용한다."""
