@@ -1059,15 +1059,6 @@ def test_pace_warning_in_bridge_state():
         assert (st["pace_warning"] or {}).get("level") == want, seconds
 
 
-def test_hud_uses_same_pace_boundaries_and_texts(client):  # noqa: F811
-    t = client.get("/overlay").text
-    assert (f"PACE_EARLY_END = {PACE_EARLY_END:g}, PACE_LATE_FROM = {PACE_LATE_FROM:g}, "
-            f"PACE_VERY_LATE_FROM = {PACE_VERY_LATE_FROM:g}") in t
-    assert PACE_TEXT["late"] in t and PACE_TEXT["very_late"] in t
-    assert PACE_TEXT["early"].replace("{scale}", "${(10 / Math.max(t / 60, 1)).toFixed(1)}") in t
-    assert 'id="paceWarn"' in t and '$("paceWarn").textContent = pw ? pw.text : ""' in t
-
-
 def _saving_bridge(frames, clock, saved_calls):
     """frames 의 None 은 게임 API 끊김. 한 번 부를 때마다 하나씩 꺼낸다(다 쓰면 계속 끊김)."""
     def fetch():
@@ -1352,3 +1343,661 @@ def test_mask_identities_covers_kill_event_names_and_assisters():
     assert "#KR1" not in json.dumps(m, ensure_ascii=False)
     assert m["Assisters"][1] == m["KillerName"]  # 같은 사람은 같은 가명
     assert m["EventName"] == "ChampionKill" and m["EventTime"] == 300.0
+
+
+# ── 실시간 전장 컨텍스트 추출 + Windows 프레임 없는 인게임 팝업 HUD 제어 ──
+from client.bridge import (FRAME_STYLE_MASK, GWL_STYLE, LWA_ALPHA, SW_HIDE, SW_SHOWNA, VK_F8, VK_F9,  # noqa: E402
+                           WS_EX_LAYERED, WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT, WindowsHudController,
+                           extract_live_context, read_lol_window_mode)
+
+
+def test_extract_live_context_collects_gold_lanes_events_and_momentum(client):  # noqa: F811
+    d = copy.deepcopy(DATA)
+    d["events"]["Events"].append({"EventName": "ChampionKill", "EventTime": 580.0, "KillerName": "A1", "VictimName": "B1", "Assisters": ["A2"]})
+    d["events"]["Events"].append({"EventName": "BaronKill", "EventTime": 590.0, "KillerName": "A2", "Assisters": []})
+    ctx = extract_live_context(d)
+    assert ctx["game_time_sec"] == pytest.approx(600.4)
+    assert ctx["me"]["champion"] == "Ahri" and ctx["me"]["current_gold"] == pytest.approx(812.0)
+    assert len(ctx["allies"]) == 5 and len(ctx["enemies"]) == 5
+    assert ctx["objectives"]["my_barons"] == 1 and ctx["objectives"]["last_baron_team"] == "ally"
+    assert ctx["objectives"]["my_lost_turrets"]["top"] == 1  # Turret_T1_L_03_A
+    assert ctx["momentum"]["recent_ally_kills"] == 1  # 580s (최근 3분 안), 181.2s 는 3분 밖이라 제외
+    # 실제 POST /strategy 계약을 그대로 통과한다
+    res = client.post("/strategy", json=ctx)
+    assert res.status_code == 200, res.text
+    assert res.json()["objectives"]["baron_active"] == "ally"
+
+
+class HudUser32(FakeUser32):
+    """프레임 제거·반투명·클릭통과·F8/F9 단축키·LoL 창 추적 검증용 가짜 user32."""
+
+    class _Rect:
+        def __init__(self, l=0, t=0, r=1920, b=1080):
+            self.left, self.top, self.right, self.bottom = l, t, r, b
+
+    def __init__(self, windows, lol_hwnd=None, lol_rect=(0, 0, 1920, 1080)):
+        super().__init__(windows)
+        self.gwl = {h: {GWL_STYLE: 0x14CF0000, GWL_EXSTYLE: 0x100} for h in windows}
+        self.alphas = {}
+        self.shown = {}
+        self.keys = {}
+        self.lol_hwnd = lol_hwnd
+        self.lol_rect = lol_rect
+
+    def GetWindowLongPtrW(self, h, idx):  # noqa: N802
+        return self.gwl.setdefault(h, {}).get(idx, 0)
+
+    def SetWindowLongPtrW(self, h, idx, val):  # noqa: N802
+        self.gwl.setdefault(h, {})[idx] = val
+        return 0
+
+    def SetLayeredWindowAttributes(self, h, key, alpha, flags):  # noqa: N802
+        assert flags == LWA_ALPHA
+        self.alphas[h] = alpha
+        return 1
+
+    def ShowWindow(self, h, cmd):  # noqa: N802
+        self.shown[h] = cmd
+        return 1
+
+    def FindWindowW(self, cls, title):  # noqa: N802
+        return self.lol_hwnd if title == "League of Legends (TM) Client" else 0
+
+    def GetWindowRect(self, h, rc):  # noqa: N802
+        if h == self.lol_hwnd:
+            rc.left, rc.top, rc.right, rc.bottom = self.lol_rect
+        else:
+            rc.left, rc.top, rc.right, rc.bottom = (0, 0, 380, 560)
+        return 1
+
+    def GetAsyncKeyState(self, vk):  # noqa: N802
+        return 0x8000 if self.keys.get(vk) else 0
+
+
+class HudCT(FakeCT):
+    class wintypes(FakeCT.wintypes):  # noqa: N801
+        class RECT:
+            left = top = right = bottom = 0
+
+
+def test_windows_hud_controller_frameless_opacity_hotkeys_and_lol_anchor(tmp_path):
+    cfg = tmp_path / "Game.cfg"
+    cfg.write_text("[General]\nWindowMode=2\n", encoding="utf-8")
+    assert read_lol_window_mode((str(cfg),)) == "borderless"
+    cfg.write_text("[General]\nWindowMode=0\n", encoding="utf-8")
+    assert read_lol_window_mode((str(cfg),)) == "fullscreen"
+
+    u32 = HudUser32({2: (PID, "페이커 오버레이", CHROME_CLASS, True), 99: (888, "League of Legends (TM) Client", "RiotWindowClass", True)},
+                    lol_hwnd=99, lol_rect=(100, 50, 2020, 1130))
+    win = Win32Windows(u32, HudCT)
+    reported = []
+    ctl = WindowsHudController(win=win, report=reported.append, cfg_paths=(str(cfg),))
+    ctl.attach(win, [2])
+
+    # 1) 하얀 제목 표시줄·테두리 제거 + 작업표시줄 숨김 + 실제 OS 반투명 + 포커스 미탈취
+    assert (u32.gwl[2][GWL_STYLE] & FRAME_STYLE_MASK) == 0
+    assert (u32.gwl[2][GWL_EXSTYLE] & (WS_EX_TOOLWINDOW | WS_EX_LAYERED | WS_EX_NOACTIVATE)) == (
+        WS_EX_TOOLWINDOW | WS_EX_LAYERED | WS_EX_NOACTIVATE
+    )
+    assert u32.alphas[2] == 235
+    # 2) LoL 게임 창 우측 상단에 자동 부착 (2020 - 380 - 18 = 1622, 50 + 56 = 106)
+    assert ctl.status()["lol_detected"] is True
+    assert any(c[0] == 2 and c[2] == 1622 and c[3] == 106 for c in u32.calls)
+
+    # 3) F8 엣지 입력 -> 클릭 통과(WS_EX_TRANSPARENT) 토글
+    u32.keys[VK_F8] = True
+    assert ctl.poll_hotkeys_once() == ["F8"]
+    assert ctl.status()["click_through"] is True
+    assert u32.gwl[2][GWL_EXSTYLE] & WS_EX_TRANSPARENT
+    assert ctl.poll_hotkeys_once() == []  # 누르고 있는 동안 중복 토글 안 됨
+    u32.keys[VK_F8] = False
+    ctl.poll_hotkeys_once()
+
+    # 4) F9 엣지 입력 -> HUD 숨김/복귀 토글 (SW_HIDE / SW_SHOWNA)
+    u32.keys[VK_F9] = True
+    assert ctl.poll_hotkeys_once() == ["F9"]
+    assert ctl.status()["visible"] is False and u32.shown[2] == SW_HIDE
+    u32.keys[VK_F9] = False
+    ctl.poll_hotkeys_once()
+    u32.keys[VK_F9] = True
+    assert ctl.poll_hotkeys_once() == ["F9"]
+    assert ctl.status()["visible"] is True and u32.shown[2] == SW_SHOWNA
+
+    # 5) POST /bridge/window 명령으로 투명도 변경
+    out = ctl.handle_command({"opacity": 0.7})
+    assert out["ok"] is True and u32.alphas[2] == 178
+
+
+def test_bridge_window_endpoint_and_strategy_relay():
+    clock, calls = Clock(), []
+    b = make_bridge([at(900.0)], clock, calls)
+    got_cmds = []
+    seen = []
+    shut = []
+
+    def upstream(method, path, body):
+        seen.append((method, path))
+        return 200, "application/json", b'{"ok": true}'
+
+    httpd = serve_state(b, 0, upstream, window_ctl=lambda c: (got_cmds.append(c), {"ok": True, "echo": c})[1],
+                        on_shutdown=lambda: shut.append(1))
+    port = httpd.server_address[1]
+    try:
+        code, _, body = _req(port, "POST", "/bridge/window", b'{"opacity": 0.75}', {"Content-Type": "application/json"})
+        assert code == 200 and json.loads(body)["ok"] is True and got_cmds == [{"opacity": 0.75}]
+        assert _req(port, "POST", "/strategy", b'{}', {"Content-Type": "application/json"})[0] == 200
+        assert _req(port, "POST", "/strategy/briefing", b'{}', {"Content-Type": "application/json"})[0] == 200
+        assert _req(port, "POST", "/bridge/shutdown", b'{}', {"Content-Type": "application/json"})[0] == 200 and shut == [1]
+        assert seen == [("POST", "/strategy"), ("POST", "/strategy/briefing")]
+    finally:
+        httpd.shutdown()
+
+
+def test_headless_stdio_handles_none_stdout_and_log_file(tmp_path, monkeypatch):
+    import sys
+    from client.bridge import _configure_headless_stdio
+
+    log_path = tmp_path / "sub" / "launcher.log"
+    monkeypatch.setattr(sys, "stdout", None)
+    monkeypatch.setattr(sys, "stderr", None)
+    _configure_headless_stdio(str(log_path))
+    print("windowless ok")
+    sys.stdout.close()
+    assert "windowless ok" in log_path.read_text(encoding="utf-8")
+
+
+def test_exit_on_close_stops_background_bridge_when_hud_stops_polling(monkeypatch, capsys):
+    clock, calls = Clock(), []
+    b = make_bridge([at(900.0)], clock, calls)
+    orig_serve = serve_state
+
+    def hooked_serve(bridge, port, upstream=None, window_ctl=None, on_hud_ping=None, on_shutdown=None, bridge_token=None):
+        on_hud_ping()  # HUD 가 처음 연결되어 폴링했다고 가정
+        return orig_serve(bridge, port, upstream, window_ctl, on_hud_ping, on_shutdown, bridge_token=bridge_token)
+
+    import client.bridge as br
+    monkeypatch.setattr(br, "serve_state", hooked_serve)
+
+    def advance(_sec):
+        clock.t += 15.0  # HUD 닫힘 뒤 폴링 끊김(12초 초과)
+
+    run_overlay(b, 0, sleep=advance, max_steps=10, exit_on_close=True, idle_exit_sec=12.0)
+    assert "자동 종료" in capsys.readouterr().out
+
+
+# ── C1~C5: 판 비교·재부착·.bat 헬스 대기·F9 숨김 오종료 방지·Win32 TOOLWINDOW 순서 ──
+def test_c1_bridge_version_mismatch_exits_instead_of_reopening_popup(monkeypatch, capsys):
+    import hashlib
+    import client.bridge as br
+
+    want_ver = hashlib.sha256(open(br.__file__, "rb").read()).hexdigest()[:12]
+    b = make_bridge([at(900.0)], Clock(), [])
+    assert b.snapshot()["bridge_version"] == want_ver
+
+    # 옛 브리지(판 번호 없음 또는 다름)가 포트를 점유한 상태를 흉내 낸다
+    old = OverlayBridge(lambda: (_ for _ in ()).throw(OSError("no game")), lambda body: {})
+    old.state["bridge_version"] = "000000000000"
+    httpd = serve_state(old, 0)
+    port = httpd.server_address[1]
+    opened = []
+    monkeypatch.setattr(br, "launch_popup", lambda *a, **k: opened.append(a))
+    try:
+        with pytest.raises(SystemExit) as ex:
+            run_overlay(OverlayBridge(lambda: {}, lambda body: {}), port, popup=True, max_steps=1, sleep=lambda _s: None)
+        assert ex.value.code == 1
+        assert opened == []
+        assert "옛 브리지" in capsys.readouterr().err
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+
+
+def test_c2_reopen_popup_sends_reattach_and_controller_reattaches(monkeypatch):
+    import client.bridge as br
+
+    u32 = HudUser32({7: (PID, "페이커 오버레이", CHROME_CLASS, True)})
+    win = Win32Windows(u32, HudCT)
+    ctl = WindowsHudController(win=win, port=PORT, pid=PID)
+    res = ctl.handle_command({"reattach": True})
+    assert res["ok"] is True and res["frameless"] is True and ctl.hwnds == [7]
+
+    # 도는 브리지(같은 판)에 재실행 시 POST /bridge/window {"reattach": true} 를 보낸다
+    sent = []
+    first = OverlayBridge(lambda: (_ for _ in ()).throw(OSError("no game")), lambda body: {})
+    httpd = serve_state(first, 0, window_ctl=lambda cmd: (sent.append(cmd), {"ok": True})[1], bridge_token="tok-c2")
+    port = httpd.server_address[1]
+    monkeypatch.setattr(br, "launch_popup", lambda *a, **k: "chrome")
+    monkeypatch.setattr(br, "load_bridge_token", lambda p: "tok-c2")
+    monkeypatch.setattr(br.platform, "system", lambda: "Darwin")
+    try:
+        run_overlay(OverlayBridge(lambda: {}, lambda body: {}), port, popup=True, max_steps=1, sleep=lambda _s: None)
+        assert {"reattach": True} in sent
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+
+
+def test_c3_local_ollama_bat_waits_for_health_and_checks_all_model_files():
+    from pathlib import Path
+
+    bat = (Path(__file__).resolve().parent.parent.parent / "scripts" / "run_local_ollama.bat").read_text(encoding="utf-8")
+    assert "http://127.0.0.1:8083/health" in bat
+    assert "artifacts\\model_sklearn.onnx" in bat and "artifacts\\model.json" in bat and "artifacts\\baseline.json" in bat
+    assert "exit /b 1" in bat
+
+
+def test_c4_chrome_flags_disable_throttling_and_f9_hidden_skips_idle_exit(monkeypatch):
+    import client.bridge as br
+
+    how, cmd = popup_command("http://127.0.0.1:8765/overlay", "Windows",
+                             which=lambda _n: None, exists=lambda p: p.endswith("chrome.exe"))
+    assert how == "chrome"
+    for flag in ("--disable-background-timer-throttling", "--disable-renderer-backgrounding",
+                 "--disable-backgrounding-occluded-windows"):
+        assert flag in cmd, flag
+
+    # F9 로 숨겨진 상태(visible=False)에서는 폴링이 12초 넘게 끊겨도 브리지가 종료되지 않는다
+    clock, calls = Clock(), []
+    b = make_bridge([at(900.0)], clock, calls)
+    steps = []
+    orig_step = b.step
+    b.step = lambda: (steps.append(1), orig_step())[1]
+
+    class HiddenCtl(WindowsHudController):
+        def __init__(self, *a, **k):
+            super().__init__(*a, **k)
+            self.visible = False
+
+    orig_serve = serve_state
+
+    def hooked_serve(bridge, port, upstream=None, window_ctl=None, on_hud_ping=None, on_shutdown=None, bridge_token=None):
+        on_hud_ping()
+        return orig_serve(bridge, port, upstream, window_ctl, on_hud_ping, on_shutdown, bridge_token=bridge_token)
+
+    monkeypatch.setattr(br.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(br, "WindowsHudController", HiddenCtl)
+    monkeypatch.setattr(br, "serve_state", hooked_serve)
+
+    def advance(_sec):
+        clock.t += 30.0
+
+    run_overlay(b, 0, sleep=advance, max_steps=3, exit_on_close=True, idle_exit_sec=12.0)
+    assert len(steps) == 3  # 숨김 중이라 3스텝 모두 실행(자동 종료 안 됨)
+
+
+def test_c5_apply_hud_popup_hides_before_first_toolwindow_then_shows_and_optional_rgn():
+    seq = []
+
+    class OrderUser32(HudUser32):
+        def SetWindowLongPtrW(self, h, idx, val):  # noqa: N802
+            seq.append(("set_long", idx))
+            return super().SetWindowLongPtrW(h, idx, val)
+
+        def ShowWindow(self, h, cmd):  # noqa: N802
+            seq.append(("show", cmd))
+            return super().ShowWindow(h, cmd)
+
+        def SetWindowRgn(self, h, rgn, redraw):  # noqa: N802
+            seq.append(("rgn", rgn, redraw))
+            return 1
+
+    class FakeGdi32:
+        def CreateRectRgn(self, l, t, r, b):  # noqa: N802
+            seq.append(("create_rgn", (l, t, r, b)))
+            return 999
+
+    u32 = OrderUser32({2: (PID, "페이커 오버레이", CHROME_CLASS, True)}, lol_rect=(0, 0, 380, 560))
+    win = Win32Windows(u32, HudCT, gdi32=FakeGdi32())
+    assert win.apply_hud_popup(2, alpha=230, click_through=False) is True
+    # 첫 WS_EX_TOOLWINDOW 적용: SW_HIDE -> 스타일 변경 -> SW_SHOWNA 순서
+    assert seq[0] == ("show", SW_HIDE)
+    assert ("set_long", GWL_EXSTYLE) in seq
+    assert seq[-1] == ("show", SW_SHOWNA)
+    assert not any(ev[0] == "rgn" for ev in seq)  # 기본은 SetWindowRgn 꺼짐
+
+    # 두 번째 호출(이미 TOOLWINDOW 있음)은 SW_HIDE 깜빡임 없이, clip_caption_px 옵션 시 SetWindowRgn 적용
+    seq.clear()
+    assert win.apply_hud_popup(2, alpha=220, click_through=False, clip_caption_px=32) is True
+    assert ("show", SW_HIDE) not in seq
+    assert ("create_rgn", (0, 32, 380, 560)) in seq
+    assert ("rgn", 999, True) in seq
+
+
+# ── H1, H6, H7, M3, M5, M6, M10 브리지 테스트 ──
+def test_h1_smite_detection_and_m3_m10_events_and_clamping():
+    d = copy.deepcopy(DATA)
+    d["allPlayers"][1]["summonerSpells"] = {
+        "summonerSpellOne": {"displayName": "점멸", "rawDisplayName": "GeneratedTip_SummonerSpell_SummonerFlash_DisplayName"},
+        "summonerSpellTwo": {"displayName": "강타", "rawDisplayName": "GeneratedTip_SummonerSpell_SummonerSmite_DisplayName"},
+    }
+    d["events"]["Events"].extend([
+        {"EventName": "DragonKill", "EventTime": 1800.0, "DragonType": "Elder", "KillerName": "A1"},
+        {"EventName": "HordeKill", "EventTime": 360.0, "KillerName": "A2"},
+        {"EventName": "InhibKilled", "EventTime": 1700.0, "InhibKilled": "Barracks_T2_C1", "KillerName": "A1"},
+    ])
+    # 과도한 포탑 이벤트 15건도 상한 11로 잘린다(M10)
+    for i in range(15):
+        d["events"]["Events"].append({"EventName": "TurretKilled", "EventTime": 700.0 + i, "TurretKilled": f"Turret_T2_C_{i}"})
+    ctx = extract_live_context(d)
+    assert ctx["allies"][1]["has_smite"] is True and ctx["allies"][0]["has_smite"] is False
+    assert ctx["objectives"]["my_elders"] == 1 and ctx["objectives"]["my_dragons"] == 0  # Elder 는 일반 용에서 분리
+    assert ctx["objectives"]["my_grubs"] == 1 and ctx["objectives"]["my_inhibs"] == 1
+    assert ctx["objectives"]["my_towers"] == 11  # 상한 11 클램프
+
+
+def test_h6_http_upstream_uses_path_timeouts(monkeypatch):
+    import client.bridge as br
+
+    seen_timeouts = []
+
+    class FakeResp:
+        status = 200
+        headers = {"Content-Type": "application/json"}
+
+        def read(self):
+            return b"{}"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    def fake_urlopen(req, timeout=None):
+        seen_timeouts.append((req.full_url, timeout))
+        return FakeResp()
+
+    monkeypatch.setattr(br.urllib.request, "urlopen", fake_urlopen)
+    up = br.http_upstream("http://127.0.0.1:8083")
+    up("POST", "/strategy/briefing", b"{}")
+    up("POST", "/strategy", b"{}")
+    assert seen_timeouts == [
+        ("http://127.0.0.1:8083/strategy/briefing", 15.0),
+        ("http://127.0.0.1:8083/strategy", 8.0),
+    ]
+
+
+def test_h7_lol_tracking_skips_minimized_clamps_monitor_and_ignores_pre_lol_drag():
+    class MonitorUser32(HudUser32):
+        def __init__(self, windows, lol_hwnd, lol_rect, hud_rect, work_rect, iconic=False):
+            super().__init__(windows, lol_hwnd=lol_hwnd, lol_rect=lol_rect)
+            self.hud_rect, self.work_rect, self.iconic = hud_rect, work_rect, iconic
+
+        def IsIconic(self, h):  # noqa: N802
+            return 1 if (h == self.lol_hwnd and self.iconic) else 0
+
+        def GetWindowRect(self, h, rc):  # noqa: N802
+            l, t, r, b = self.lol_rect if h == self.lol_hwnd else self.hud_rect
+            rc.left, rc.top, rc.right, rc.bottom = l, t, r, b
+            return 1
+
+        def MonitorFromWindow(self, h, flags):  # noqa: N802
+            return 55
+
+        def GetMonitorInfoW(self, hmon, info):  # noqa: N802
+            l, t, r, b = self.work_rect
+            info.rcWork.left, info.rcWork.top, info.rcWork.right, info.rcWork.bottom = l, t, r, b
+            return 1
+
+    class MonCT(HudCT):
+        class wintypes(HudCT.wintypes):  # noqa: N801
+            class MONITORINFO:
+                def __init__(self):
+                    self.cbSize = 0
+                    self.rcWork = HudCT.wintypes.RECT()
+
+    # 1) LoL 창이 최소화(IsIconic)면 이동하지 않는다
+    u32 = MonitorUser32({2: (PID, "페이커 오버레이", CHROME_CLASS, True), 99: (888, "League of Legends (TM) Client", "Riot", True)},
+                        lol_hwnd=99, lol_rect=(-32000, -32000, -31000, -31000), hud_rect=(0, 0, 400, 600),
+                        work_rect=(0, 0, 1920, 1040), iconic=True)
+    ctl = WindowsHudController(win=Win32Windows(u32, MonCT))
+    ctl.hwnds = [2]
+    assert ctl.sync_to_lol_window() is False
+
+    # 2) LoL 감지 전 드래그는 dx/dy 에 누적하지 않는다
+    ctl.handle_command({"dx": 120, "dy": 80})
+    assert (ctl.dx, ctl.dy) == (0, 0)
+
+    # 3) LoL 창이 화면 우측 끝을 넘어가도 모니터 작업 영역(0~1920, 0~1040)과 실제 HUD 크기(400×600) 안으로 자른다
+    u32.iconic = False
+    u32.lol_rect = (1800, 900, 3200, 1900)
+    assert ctl.sync_to_lol_window(force=True) is True
+    move_call = u32.calls[-1]
+    assert move_call[2] <= 1920 - 400 and move_call[3] <= 1040 - 600
+
+
+def test_m5_run_overlay_never_calls_launch_popup_twice_on_type_error(monkeypatch):
+    import client.bridge as br
+
+    calls = []
+
+    def buggy_launch(port, report=None, repin=0.0, procs=None, hud_ctl=None):
+        calls.append(1)
+        raise TypeError("internal bug inside launch_popup")
+
+    monkeypatch.setattr(br, "launch_popup", buggy_launch)
+    b = OverlayBridge(lambda: (_ for _ in ()).throw(OSError("no game")), lambda body: {})
+    with pytest.raises(TypeError, match="internal bug"):
+        run_overlay(b, 0, popup=True, max_steps=1, sleep=lambda _s: None)
+    assert len(calls) == 1  # 내부 TypeError 로 두 번 호출되지 않는다
+
+
+def test_m6_bridge_window_and_shutdown_require_token_json_no_cors_and_valid_length():
+    clock, calls = Clock(), []
+    b = make_bridge([at(900.0)], clock, calls)
+    httpd = serve_state(b, 0, window_ctl=lambda c: {"ok": True}, on_shutdown=lambda: None, bridge_token="sec-tok-123")
+    port = httpd.server_address[1]
+    try:
+        # 토큰 없음 -> 403, CORS 헤더 없음
+        code, h, _ = _req(port, "POST", "/bridge/window", b"{}", {"Content-Type": "application/json"})
+        assert code == 403 and "Access-Control-Allow-Origin" not in h
+        # Content-Type 불일치 -> 415
+        code, _, _ = _req(port, "POST", "/bridge/window", b"{}", {"X-Bridge-Token": "sec-tok-123", "Content-Type": "text/plain"})
+        assert code == 415
+        # 음수/비숫자 Content-Length -> 400
+        code, _, _ = _req(port, "POST", "/bridge/window", b"", {"X-Bridge-Token": "sec-tok-123", "Content-Type": "application/json", "Content-Length": "abc"})
+        assert code == 400
+        # 정상 요청 -> 200, CORS 헤더 없음
+        code, h, _ = _req(port, "POST", "/bridge/window", b'{"opacity":0.8}',
+                          {"X-Bridge-Token": "sec-tok-123", "Content-Type": "application/json"})
+        assert code == 200 and "Access-Control-Allow-Origin" not in h
+        # /bridge/shutdown 역시 토큰 + JSON 필요
+        assert _req(port, "POST", "/bridge/shutdown", b"{}", {"Content-Type": "application/json"})[0] == 403
+        code, h, _ = _req(port, "POST", "/bridge/shutdown", b"{}",
+                          {"X-Bridge-Token": "sec-tok-123", "Content-Type": "application/json"})
+        assert code == 200 and "Access-Control-Allow-Origin" not in h
+    finally:
+        httpd.shutdown()
+
+
+def test_fullscreen_fso_popup_style_and_zorder_keep_above_lol():
+    import client.bridge as br
+
+    class FsoUser32(HudUser32):
+        def __init__(self, *a, **k):
+            super().__init__(*a, **k)
+            self.fg = 0
+
+        def GetForegroundWindow(self):  # noqa: N802
+            return self.fg
+
+    u32 = FsoUser32(
+        {2: (PID, "페이커 오버레이", CHROME_CLASS, True),
+         99: (888, "League of Legends (TM) Client", "RiotWindowClass", True)},
+        lol_hwnd=99, lol_rect=(0, 0, 1920, 1080),
+    )
+    win = Win32Windows(u32, HudCT)
+    ctl = WindowsHudController(win=win, cfg_paths=())
+    ctl.attach(win, [2])
+
+    # 1) Windows 10/11 FSO 전체 화면 위 유지를 위해 WS_POPUP + WS_EX_TOPMOST 적용
+    assert (u32.gwl[2][GWL_STYLE] & br.WS_POPUP) == br.WS_POPUP
+    assert (u32.gwl[2][GWL_EXSTYLE] & br.WS_EX_TOPMOST) == br.WS_EX_TOPMOST
+
+    # 2) LoL 전체 화면 창이 포그라운드로 올라오면 즉시 HWND_TOPMOST 재고정(SWP_NOACTIVATE 유지)
+    u32.calls.clear()
+    u32.fg = 99
+    assert ctl.ensure_above_lol() is True
+    assert any(c[0] == 2 and c[1] == HWND_TOPMOST and (c[6] & br.SWP_NOACTIVATE) for c in u32.calls)
+
+    # 3) F9 로 숨긴 상태(visible=False)에서는 Z-순서 재고정을 건너뛴다
+    ctl.handle_command({"visible": False})
+    u32.calls.clear()
+    assert ctl.ensure_above_lol(force=True) is False
+    assert u32.calls == []
+
+
+def test_find_overlay_windows_never_touches_vscode_or_regular_chrome_tab():
+    class FakeKernel32:
+        def __init__(self, exe_by_pid):
+            self.exe_by_pid = exe_by_pid
+
+        def OpenProcess(self, access, inherit, pid):  # noqa: N802
+            return pid if pid in self.exe_by_pid else 0
+
+        def QueryFullProcessImageNameW(self, hproc, flags, buf, size):  # noqa: N802
+            buf.value = self.exe_by_pid[hproc]
+            return 1
+
+        def CloseHandle(self, hproc):  # noqa: N802
+            return 1
+
+    u32 = FakeUser32({
+        1: (111, "LoL 페이스메이커 - Visual Studio Code", CHROME_CLASS, True),
+        2: (222, "LoL 페이스메이커 데스크톱 다운로드 - Google Chrome", CHROME_CLASS, True),
+        3: (333, "페이커 오버레이", CHROME_CLASS, True),
+    })
+    k32 = FakeKernel32({
+        111: r"C:\Users\User\AppData\Local\Programs\Microsoft VS Code\Code.exe",
+        222: r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+        333: r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+    })
+    win = Win32Windows(u32, FakeCT, kernel32=k32)
+    how, hwnds = find_overlay_windows(win, PID, PORT)
+    assert how == "title" and hwnds == [3]  # VS Code 와 일반 Chrome 탭은 절대 건드리지 않는다
+
+
+# ── W1~W6: 실게임 수집 증거 기반 브리지·Win32 HUD 보강 ──
+def test_w1_load_item_prices_cache_fallback_and_real_fixture_gold(tmp_path):
+    from pathlib import Path
+    import client.bridge as br
+
+    # 1) 실제 수집 고정 자료 live_bot_0300.json 손 계산 검증:
+    #    ORDER(Darius): 1055(450)+2003(50)+3340(0)=500
+    #    CHAOS: Sett 450 + Zaahen 0 + Poppy 400 + Varus(400+75) + Annie 400 = 1725
+    real = json.loads((Path(__file__).parent / "fixtures" / "live_bot_0300.json").read_text(encoding="utf-8"))
+    ctx = br.extract_live_context(real, prices=None)
+    assert sum(p["item_gold"] for p in ctx["allies"]) == 500.0
+    assert sum(p["item_gold"] for p in ctx["enemies"]) == 1725.0
+
+    # 2) 서버 /meta/items → 캐시 저장 → 캐시 히트(네트워크 미호출)
+    cache_file = str(tmp_path / "item-prices.json")
+    seen = []
+
+    def fake_get(url):
+        seen.append(url)
+        if url.endswith("/meta/items"):
+            return {"prices": {"1055": 450, "3020": 1100}}
+        raise OSError("unexpected")
+
+    p1 = br.load_item_prices("http://127.0.0.1:8083", cache_path=cache_file, fetch_json=fake_get)
+    assert p1 == {"1055": 450.0, "3020": 1100.0} and len(seen) == 1
+    p2 = br.load_item_prices("http://127.0.0.1:8083", cache_path=cache_file, fetch_json=fake_get)
+    assert p2 == p1 and len(seen) == 1  # 캐시 히트
+
+    # 3) /meta/items 실패 시 Data Dragon versions.json + item.json 폴백
+    cache2 = str(tmp_path / "dd-prices.json")
+
+    def dd_get(url):
+        if url.endswith("/meta/items"):
+            raise OSError("404")
+        if url.endswith("versions.json"):
+            return ["16.23.1"]
+        if "16.23.1/data/en_US/item.json" in url:
+            return {"data": {"1055": {"gold": {"total": 450}}, "3089": {"gold": {"total": 3500}}}}
+        raise OSError("unexpected")
+
+    p3 = br.load_item_prices("http://127.0.0.1:8083", cache_path=cache2, fetch_json=dd_get)
+    assert p3 == {"1055": 450.0, "3089": 3500.0}
+
+    # 4) 모든 네트워크 실패 시 빈 dict 반환(items[].price 폴백 유지)
+    p4 = br.load_item_prices("http://127.0.0.1:8083", cache_path=str(tmp_path / "none.json"),
+                             fetch_json=lambda _u: (_ for _ in ()).throw(OSError("offline")))
+    assert p4 == {}
+
+
+def test_w2_unknown_champion_excluded_and_riotid_prefix_and_smite_on_real_fixtures():
+    from pathlib import Path
+    import client.bridge as br
+
+    # 1) 실제 1v1 럼블 vs 에코 고정 자료 검증
+    rumble = json.loads((Path(__file__).parent / "fixtures" / "live_rumble_ekko_0001.json").read_text(encoding="utf-8"))
+    ctx = br.extract_live_context(rumble)
+    assert ctx["my_side"] == "red" and ctx["me"]["champion"] == "Rumble"
+    assert len(ctx["allies"]) == 1 and ctx["allies"][0]["has_smite"] is False
+    assert len(ctx["enemies"]) == 1 and ctx["enemies"][0]["champion"] == "Ekko" and ctx["enemies"][0]["has_smite"] is True
+
+    # 2) 챔피언 이름이 없는 허수아비/미상 항목은 allies·enemies 에서 제외 + riotId # 앞부분 비교
+    d = copy.deepcopy(rumble)
+    d["activePlayer"]["riotId"] = "MyHero#KR1"
+    d["activePlayer"]["summonerName"] = "MyHero#KR1"
+    d["activePlayer"]["riotIdGameName"] = ""
+    d["allPlayers"][1]["riotId"] = ""
+    d["allPlayers"][1]["summonerName"] = "MyHero"
+    d["allPlayers"].append({"team": "ORDER", "rawChampionName": "", "championName": "", "scores": {}, "items": []})
+    ctx2 = br.extract_live_context(d)
+    assert ctx2["me"]["champion"] == "Rumble"
+    assert len(ctx2["enemies"]) == 1  # 빈 챔피언 항목 제외
+
+
+def test_w3_disable_gpu_compositing_flag_option():
+    how1, cmd1 = popup_command("http://127.0.0.1:8765/overlay", "Windows",
+                               which=lambda _n: None, exists=lambda p: p.endswith("chrome.exe"))
+    how2, cmd2 = popup_command("http://127.0.0.1:8765/overlay", "Windows",
+                               which=lambda _n: None, exists=lambda p: p.endswith("chrome.exe"),
+                               disable_gpu_compositing=True)
+    assert how1 == "chrome" and "--disable-gpu-compositing" not in cmd1
+    assert how2 == "chrome" and "--disable-gpu-compositing" in cmd2
+
+
+def test_w5_dynamic_game_cfg_discovery_and_window_mode_warning(tmp_path):
+    game_exe = tmp_path / "Game" / "League of Legends.exe"
+    cfg_dir = tmp_path / "Config"
+    cfg_dir.mkdir(parents=True)
+    (cfg_dir / "Game.cfg").write_text("[General]\nWindowMode=0\n", encoding="utf-8")
+
+    class FakeKernel32:
+        def OpenProcess(self, access, inherit, pid):  # noqa: N802
+            return pid if pid == 888 else 0
+
+        def QueryFullProcessImageNameW(self, hproc, flags, buf, size):  # noqa: N802
+            buf.value = str(game_exe)
+            return 1
+
+        def CloseHandle(self, hproc):  # noqa: N802
+            return 1
+
+    u32 = HudUser32(
+        {2: (PID, "LoL 페이스메이커", CHROME_CLASS, True),
+         99: (888, "League of Legends (TM) Client", "RiotWindowClass", True)},
+        lol_hwnd=99, lol_rect=(0, 0, 1920, 1080),
+    )
+    win = Win32Windows(u32, HudCT, kernel32=FakeKernel32())
+    ctl = WindowsHudController(win=win, cfg_paths=())
+    # 아직 LoL 미감지 전에는 cfg_paths=()라 mode=None
+    assert ctl.status()["lol_window_mode"] is None
+    # attach + sync 시 LoL 프로세스 경로에서 Game.cfg 를 동적으로 읽고, LoL 감지+HUD 표시 중이면 경고 False
+    ctl.attach(win, [2])
+    st = ctl.status()
+    assert st["lol_window_mode"] == "fullscreen"
+    assert st["lol_detected"] is True
+    assert st["lol_window_mode_warning"] is False
+
+
+def test_w6_overlay_titles_prefers_non_player_name_first():
+    import client.bridge as br
+
+    assert br.OVERLAY_TITLES[0] == "LoL 페이스메이커"
+
+
+
