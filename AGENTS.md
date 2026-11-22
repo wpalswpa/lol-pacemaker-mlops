@@ -7,7 +7,7 @@
 | 규칙 | 이유 | 예외 |
 |---|---|---|
 | 계약·기준을 바꾸려면 이 파일을 먼저 고치고 구현한다. 구현 결과가 달라지면 이 파일을 다시 맞춘다 | 테스트와 다른 서버가 이 파일을 정답으로 쓴다. 코드만 바뀌면 정답이 조용히 움직인다 | 없음 |
-| AWS 키, 서버 IP, 도메인, 계정명, SSH 키, 버킷·인스턴스 이름을 코드·워크플로·문서에 적지 않는다. 워크플로는 `${{ github.token }}`, `${{ vars.* }}`, `${{ secrets.* }}`만 쓰고, 문서는 `<고정 IP>`, `<내 도메인>`처럼 자리 표시로 쓴다 | 저장소가 공개되거나 서버가 바뀌어도 코드를 고치지 않게 하고, 유출을 막는다 | 없음 |
+| AWS 키, 서버 IP, 계정명, SSH 키, 버킷·인스턴스 이름을 코드·워크플로·문서에 적지 않는다. 워크플로는 `${{ github.token }}`, `${{ vars.* }}`, `${{ secrets.* }}`만 쓰고, 문서는 `<고정 IP>`처럼 자리 표시로 쓴다 | 저장소가 공개되거나 서버가 바뀌어도 코드를 고치지 않게 하고, 유출을 막는다 | `README.md`·`인수인계.md`의 공개 시연 HTTPS 도메인(`https://jjm.eta.pyhub.kr`) |
 | 토큰·비밀키·실명·연락처·개인 신상을 어디에도 쓰지 않는다 | 공개 저장소·발표 자료로 그대로 나간다 | 없음 |
 | git push, AWS 자원(Lightsail·EC2·S3·IAM) 생성·변경, GitHub 변수 등록은 로컬 검증을 끝내고 사용자 승인을 받은 뒤에 한다 | 비용과 공개 범위가 바뀌는 외부 쓰기다 | 없음 |
 | 원본 CSV(`data/*.csv`)와 학습 산출물(`artifacts/`)은 커밋하지 않는다 | 원본 데이터의 재배포 조건을 확인하지 않았다. 모델 판은 버킷이 보관한다 | 테스트 고정 자료 `api/tests/fixtures/`, `client/tests/fixtures/` |
@@ -203,36 +203,37 @@
 
 - **HUD 는 브리지가 같은 출처에서 내준다.** 공개 주소(`http://<고정 IP>`, `https://<내 도메인>`)에서 연 페이지는 브라우저의 로컬 네트워크 접근 제한 때문에 `127.0.0.1` 브리지를 읽지 못한다(Chromium 159에서 `Permission was denied`로 막히고 시뮬레이션 배지에 머무는 것을 확인). 그래서 오버레이 모드의 로컬 서버는 여섯 경로만 `--server`로 그대로 넘긴다: `GET /overlay`, `GET /meta/champions`, `POST /coach`, `POST /coach/briefing`, `POST /strategy`, `POST /strategy/briefing`(POST 본문 64 KB 이하, 넘으면 413; 시간 제한은 `/strategy/briefing` 15초, 나머지 8초). 서버의 상태 코드·본문을 그대로 돌려주고, 서버에 닿지 못하면 502 `{"detail": "서버에 연결하지 못했다"}`. 이 여섯 경로는 CORS를 열지 않는다(같은 출처 전용). 그 밖의 경로(`/matches` 등)는 404이고, 전적 저장은 브리지 프로세스가 직접 부른다.
 
-1. macOS이고 `swiftc`가 있으면 `client/overlay_popup.swift`를 사용자 캐시 폴더에 컴파일(소스가 바뀌었을 때만)해 실행한다. `NSPanel`을 `.floating` 단계로 띄우고 모든 데스크톱·전체 화면 보조 창으로 두며, 눌러도 게임에서 입력 초점을 빼앗지 않는다(`nonactivatingPanel`).
-2. Windows에서는 Chrome·Edge `--app=<URL> --window-size=380,560`에 백그라운드 타이머 스로틀링 방지 플래그(`--disable-background-timer-throttling --disable-renderer-backgrounding --disable-backgrounding-occluded-windows`)와 `--no-first-run --no-default-browser-check`를 함께 넣어 띄운 뒤, Win32 API로 **제목 표시줄과 테두리를 제거(`WS_CAPTION | WS_THICKFRAME` 해제)**하고 **`WS_EX_TOOLWINDOW | WS_EX_LAYERED | WS_EX_NOACTIVATE`**를 적용해 작업표시줄에 뜨지 않는 반투명 인게임 팝업 HUD로 전환한다.
+1. Electron 런타임(`ELECTRON_PATH`, 로컬 `node_modules/.bin/electron`, 전역 `electron`)과 `client/overlay_electron.js`가 있으면 **`transparent: true, frame: false` 투명 오버레이 창**(`alwaysOnTop: "screen-saver"`, `skipTaskbar: true`, `hasShadow: false`)으로 띄운다. 카드 밖 투명 영역에서는 `setIgnoreMouseEvents(true, { forward: true })`로 마우스 클릭을 게임으로 통과시키고, 카드 위에 커서가 올라오면(`F8` 전체 클릭 통과가 꺼져 있을 때) 클릭을 받는다.
+2. macOS이고 `swiftc`가 있으면 `client/overlay_popup.swift`를 사용자 캐시 폴더에 컴파일(소스가 바뀌었을 때만)해 실행한다. `NSPanel`을 `.borderless, .nonactivatingPanel`과 `isOpaque = false`, `backgroundColor = .clear`로 `.floating` 단계에 띄워 창 틀과 바깥 사각 배경 없이 위젯 카드만 게임 위에 뜨게 하며, 눌러도 게임에서 입력 초점을 빼앗지 않는다.
+3. Windows에서 Electron이 없을 때는 Chrome·Edge `--app=<URL> --window-size=380,560`에 백그라운드 타이머 스로틀링 방지 플래그(`--disable-background-timer-throttling --disable-renderer-backgrounding --disable-backgrounding-occluded-windows`)와 `--no-first-run --no-default-browser-check`를 함께 넣어 띄운 뒤, Win32 API로 **제목 표시줄과 테두리를 제거(`WS_CAPTION | WS_THICKFRAME` 해제)**하고 **`WS_EX_TOOLWINDOW | WS_EX_LAYERED | WS_EX_NOACTIVATE`**와 DPI 배율(`GetDpiForWindow`) 반영 상단 자르기·둥근 모서리 리전(`CreateRoundRectRgn` / `CreateRectRgn`)을 적용해 작업표시줄에 뜨지 않는 인게임 팝업 HUD로 전환한다.
 
 **Windows 인게임 팝업 제어 (`Win32Windows` + `WindowsHudController`)**
 
 | 기능 | Win32 구현 | 설명 |
 |---|---|---|
-| 프레임 없는 팝업 | `GWL_STYLE`에서 `WS_CAPTION \| WS_THICKFRAME \| WS_MINIMIZEBOX \| WS_MAXIMIZEBOX \| WS_SYSMENU` 제거 + `WS_POPUP` 부여, `GWL_EXSTYLE`에 `WS_EX_TOPMOST` 포함, 선택 `--clip-caption-px N` 시 `SetWindowRgn` | 하얀 Chrome 제목 표시줄과 창 테두리를 없애고 Windows 10/11 전체 화면 최적화(FSO) 환경에서도 팝업 오버레이 밴드로 띄움 |
+| 프레임 없는 다중 위젯 리전 팝업 | `GWL_STYLE`에서 `WS_CAPTION \| WS_THICKFRAME \| WS_MINIMIZEBOX \| WS_MAXIMIZEBOX \| WS_SYSMENU` 제거 + `WS_POPUP` 부여, `GWL_EXSTYLE`에 `WS_EX_TOPMOST` 포함. HUD가 보낸 보이는 `.hud-card` 좌표 목록(`rects`)을 `GetDpiForWindow` 배율 보정 후 `CreateRoundRectRgn` + `CombineRgn(RGN_OR)` + `SetWindowRgn`으로 합쳐 **위젯 카드 영역만 남기고 카드 밖 빈 배경과 Chrome 제목 표시줄을 OS 수준에서 완전히 도려냄** (`rects` 미전달 시 `--clip-caption-px N` 상단 자르기 폴백) | Electron 없이 Chrome·Edge `--app` 폴백으로 뜰 때도 사각 인터넷 창 배경이 남지 않고 OP.GG처럼 개별 위젯만 인게임 화면 위에 공존하며, 잘려 나간 빈 영역 클릭은 게임으로 즉시 통과 |
 | 작업표시줄 숨김 + 실제 OS 반투명 | 처음 `WS_EX_TOOLWINDOW` 부여 시 `SW_HIDE` → 스타일 적용 → `SetLayeredWindowAttributes(hwnd, 0, alpha, LWA_ALPHA)` → `SW_SHOWNA` | 작업표시줄·Alt-Tab에서 빠지고 HUD 뒤 게임 화면이 실제로 비침 |
 | 클릭 통과 토글 (`F8`) | `WS_EX_TRANSPARENT` 토글 (`GetAsyncKeyState(VK_F8)`) | 교전 중 마우스가 HUD 위를 지나가도 클릭이 게임으로 통과 |
 | HUD 숨김/표시 (`F9`) | `ShowWindow(hwnd, SW_HIDE / SW_SHOWNA)` (`GetAsyncKeyState(VK_F9)`), 숨김 중 자동 종료 건너뜀 | 게임 중 원할 때 즉시 숨김/복귀, 숨긴 동안 `--exit-on-close` 오종료 방지 |
-| LoL 게임 창 자동 추적 + FSO Z-순서 유지 | 시작 시 `SetProcessDpiAwarenessContext(-4)` 시도, `IsIconic` 건너뜀, 실제 HUD `GetWindowRect` 크기와 `MonitorFromWindow`·`GetMonitorInfoW` 영역(전체 화면이면 `rcMonitor`, 창 모드면 `rcWork`) 안으로 좌표 제한. LoL 창이 포그라운드(`GetForegroundWindow`)가 되거나 주기 틱(약 0.3초)마다 `visible=True`인 동안 `HWND_TOPMOST`(`SWP_NOACTIVATE \| SWP_NOOWNERZORDER`)로 Z-순서를 유지 | 듀얼 모니터·DPI 배율 화면 밖 이탈 방지, Windows 10/11 FSO 전체 화면(`WindowMode=0`)에서도 게임 클릭 직후 HUD가 뒤로 밀리지 않게 유지 |
+| LoL 게임 창 자동 추적 + FSO Z-순서·스타일 유지 | 시작 시 `SetProcessDpiAwarenessContext(-4)` 시도, `IsIconic` 건너뜀, 실제 HUD `GetWindowRect` 크기와 `MonitorFromWindow`·`GetMonitorInfoW` 영역(전체 화면이면 `rcMonitor`, 창 모드면 `rcWork`) 안으로 좌표 제한. LoL 창이 포그라운드(`GetForegroundWindow`)가 되거나 주기 틱(약 0.3초)마다 `visible=True`인 동안 `HWND_TOPMOST`(`SWP_NOACTIVATE \| SWP_NOOWNERZORDER`)로 Z-순서를 유지하고, 미부착 상태거나 Chrome이 프레임을 복원했으면 자동으로 재부착(`reattach`/스타일 재적용) | 첫 프로필 생성 지연(>6초)·듀얼 모니터·DPI 배율·창 클릭 후 프레임 복원을 모두 방어 |
 | 화면 모드 점검 | 실행 중 LoL 프로세스 경로에서 `Config/Game.cfg`의 `WindowMode`를 동적으로 확인하고 `hud_window.lol_window_mode_warning`으로 전달 | Windows 10/11 FSO 환경에서는 전체 화면(`0`)에서도 `WS_POPUP`+Z-순서 유지로 표시를 시도하며, LoL 감지+HUD 표시 중이면 경고를 끄고 가려질 때만 테두리 없음(`2`) 전환을 안내 |
 | 가격표 자동 캐시 | 시작 시 `GET /meta/items` → Data Dragon `versions.json`+`item.json` 순으로 아이템 가격표를 받아 7일 캐시, 실패 시 `items[].price` 폴백 | `item_gold` 0원 오류 방지 (표준 라이브러리만 사용) |
 
 **실제 응답 기록 `--record <폴더>` (2026-11-20, 실게임 시험용)**: 켜면 LIVE 응답(`allgamedata`)을 게임 시각 1분마다 한 번(첫 응답 포함) `<폴더>/<실행 시각>/allgamedata_<MM>m<SS>s.json`으로 남긴다. 실제 응답 구조(CS 정의, 챔피언 이름, 이벤트 이름)를 맥에서 재현해 고치고 시험 자료로 쓰기 위해서다. 저장 전에 선수 식별 값(`summonerName`·`riotId`·`riotIdGameName`·`riotIdTagLine`, 이벤트의 `Recipient`·`KillerName`·`VictimName`·`Assisters`)을 한 실행 안에서 같은 이름이면 같은 가명(`P1`…)으로 바꾼다(12절: 개인 식별자는 남기지 않는다). 쓰기 실패는 브리지를 멈추지 않고 터미널에 한 번만 한 줄로 알린다. 기본은 꺼짐이고, Windows 실행기는 `%TEMP%\lol-pace-client\records`로 켠다.
 
-**Windows 항상 위 고정 (`pin_topmost`, Chrome·Edge `--app` 창)**: Windows 에서 2번으로 띄웠을 때만 이 경로를 탄다(`platform.system() == "Windows"`). macOS·Linux 는 `ctypes.windll`을 건드리지 않고 `popup.status`를 `not_windows`로 적는다.
+**Windows 항상 위 고정 (`pin_topmost`, Electron 및 Chrome·Edge `--app` 창)**: Windows 에서 `electron` 또는 `chrome` 방식으로 띄웠을 때만 이 경로를 탄다(`platform.system() == "Windows"`). macOS·Linux 는 `ctypes.windll`을 건드리지 않고 `popup.status`를 `not_windows`로 적는다.
 
 | 항목 | 규칙 |
 |---|---|
-| 창 찾기 순서 | 보이는 창(`EnumWindows` + `IsWindowVisible`) 가운데 **`QueryFullProcessImageNameW`로 `chrome.exe`·`msedge.exe`·`chromium.exe` 프로세스만 허용**(VS Code·Electron 앱 오매칭 차단). ① 띄운 프로세스 PID 의 창 ② 제목에 `LoL 페이스메이커`(HUD `<title>`, 우선) 또는 `페이커 오버레이`(하위 호환)가 들며 일반 브라우저 탭 접미사(` - Google Chrome` 등)가 없는 창 ③ 클래스명 `Chrome_WidgetWin_1`이면서 제목에 `127.0.0.1:<포트>`가 든 창. 앞 단계에서 찾으면 뒤 단계는 보지 않으며 최대 1개 창만 선택한다 |
+| 창 찾기 순서 | 보이는 창(`EnumWindows` + `IsWindowVisible`) 가운데 **`QueryFullProcessImageNameW`로 `chrome.exe`·`msedge.exe`·`chromium.exe`·`electron.exe` 프로세스만 허용**(VS Code·Antigravity 같은 외부 Electron 앱은 제목 접미사 `NON_APP_TITLE_SUFFIXES`로 차단). ① 띄운 프로세스 PID 의 창 ② 제목에 `LoL 페이스메이커`(HUD `<title>`, 우선) 또는 `페이커 오버레이`(하위 호환)가 들며 일반 브라우저·편집기 접미사(` - Google Chrome`, ` - Visual Studio Code` 등)가 없는 창 ③ 클래스명 `Chrome_WidgetWin_1`이면서 제목에 `127.0.0.1:<포트>`가 든 창. 앞 단계에서 찾으면 뒤 단계는 보지 않으며 최대 1개 창만 선택한다 |
 | 처음 찾기 | 0.25초 간격 최대 25번(약 6초) |
 | 고정 | 찾은 창마다 `SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOSIZE \| SWP_NOMOVE \| SWP_NOACTIVATE)`. 모든 호출에 `SWP_NOACTIVATE`를 넣어 게임에서 입력 초점을 빼앗지 않는다 |
 | 눌러도 초점 유지 (2026-11-19) | 고정 직전에 창 확장 스타일(`GWL_EXSTYLE`, `GetWindowLongPtrW`·`SetWindowLongPtrW`, 32비트는 `…LongW`)에 `WS_EX_NOACTIVATE`(0x08000000)를 더한다. HUD 버튼(최소화·투명도·이펙트)을 눌러도 창이 활성화되지 않아 게임이 계속 키 입력을 받는다(macOS `nonactivatingPanel`과 같은 목적). 이미 들어 있으면 다시 쓰지 않는다. 함수가 없거나 실패해도 고정은 계속한다(초점 처리는 보조 기능이라 `popup` 상태를 바꾸지 않는다). 재고정 때마다 같은 확인을 한다 |
 | 처음 굳히기 재고정(항상) | 첫 고정 직후 1초 간격으로 10번(약 10초) 같은 순서로 다시 찾아 같은 플래그로 다시 고정한다(`PIN_SETTLE_TIMES`·`PIN_SETTLE_SEC`). 띄운 직후 게임 창을 눌러 항상 위가 풀리는 경우를 막는다. 다시 못 찾으면 `lost`로 적고 남은 횟수를 계속 시도한다. `repins`는 이 10번부터 센다 |
-| 주기적 재고정(선택) | `--repin-sec N`(기본 0 = 처음 굳히기 10번 뒤 멈춤). 켜면 처음 굳히기 뒤 N초마다 같은 순서로 다시 찾아 같은 플래그로 다시 고정한다(게임이 앞으로 나오며 항상 위가 풀리는 경우). 다시 못 찾으면 `lost`로 적고 계속 시도한다 |
+| 주기적 재고정(선택) | `--repin-sec N`(기본 0 = 처음 굳히기 10번 뒤 멈춤). 켜면 처음 굳히기 뒤(또는 첫 25번 안에 못 찾았을 때도) N초마다 같은 순서로 다시 찾아 같은 플래그로 다시 고정한다(첫 프로필 생성이 6초를 넘기거나 게임이 앞으로 나오며 항상 위가 풀리는 경우). 다시 못 찾으면 `lost`로 적고 계속 시도한다 |
 | 조용한 실패 금지 | 결과를 브리지 상태의 `popup`에 적는다(아래 표). 못 찾으면 `failed`와 이유(찾은 단계와 횟수)를 `error`에 남기고 터미널에도 한 줄 찍는다. Chrome·Edge 가 없어 기본 브라우저로 열었으면 `failed`, `error`는 "Chrome·Edge 가 없어 항상 위로 고정할 수 없다" |
 
-브리지 상태 `popup` (팝업을 안 띄웠으면 `null`): `how`(`swift`·`chrome`·`browser`), `status`(`not_windows`·`searching`·`pinned`·`lost`·`failed`), `method`(`pid`·`title`·`class` 또는 `null`), `windows`(고정한 창 수), `repins`(재고정 횟수), `error`(없으면 `null`).
+브리지 상태 `popup` (팝업을 안 띄웠으면 `null`): `how`(`electron`·`swift`·`chrome`·`browser`), `status`(`not_windows`·`searching`·`pinned`·`lost`·`failed`), `method`(`pid`·`title`·`class` 또는 `null`), `windows`(고정한 창 수), `repins`(재고정 횟수), `error`(없으면 `null`).
 
 Windows 10/11 전체 화면 최적화(FSO) 환경에서는 전체 화면(`WindowMode=0`)에서도 `WS_POPUP`+`HWND_TOPMOST` 실시간 Z-순서 유지로 인게임 팝업 HUD 표시를 시도한다. 다만 FSO가 꺼져 있거나 GPU 드라이버가 DWM을 우회하는 진짜 DirectX 독점 전체 화면으로 진입해 HUD가 가려질 때는 LoL 화면 모드를 "테두리 없음(Borderless)"으로 바꾸면 해결된다(Riot Vanguard 정책상 미서명 DLL 인젝션은 쓰지 않는다). 이 안내는 `/download` 화면과 실행기 첫 출력에도 넣는다(3-6).
 
@@ -241,24 +242,21 @@ Windows 10/11 전체 화면 최적화(FSO) 환경에서는 전체 화면(`Window
 - 브리지이지만 `bridge_version`이 현재 파일과 다르면 "옛 브리지가 실행 중이니 닫고 다시 실행" 한 줄을 찍고 종료 코드 1로 끝낸다(옛 브리지에 새 팝업을 붙이지 않는다).
 - `--launch-popup`이고 `bridge_version`이 같으면 도는 브리지에 팝업을 다시 띄운 뒤 `POST /bridge/window {"reattach": true}`(토큰 헤더 포함)를 보내 프레임 제거·F8/F9가 새 창에 붙게 하고 종료 코드 0으로 끝낸다.
 
-**팝업을 닫으면 브리지도 끝낸다 (macOS swift, 2026-11-20)**: macOS `.app`은 터미널 창이 없어 브리지를 끌 방법이 없다. 그래서 브리지가 띄운 swift 패널이 닫히면 폴링 반복을 끝낸다. Chrome `--app` 창은 실행 파일이 곧바로 끝나는 경우가 있어 이 규칙을 쓰지 않는다(Windows 는 검은 창을 닫으면 끝난다).
+**팝업을 닫으면 브리지도 끝낸다 (macOS swift / Electron, 2026-11-20)**: macOS `.app`이나 무터미널 실행에서는 터미널 창이 없어 브리지를 끌 방법이 없다. 그래서 브리지가 띄운 `swift` 또는 `electron` 패널 프로세스가 닫히면 폴링 반복을 끝낸다. Chrome `--app` 창은 기존 브라우저 프로세스에 합쳐져 곧바로 끝나는 경우가 있어 `IsWindow` 생존 여부와 폴링 유휴 시간으로 종료를 판단한다.
 
 **경기 저장·새 게임 판별 (`--save-match`, 2026-11-20 시뮬레이션으로 보강)**
 - 결과가 있으면(`GameEnd`) 그때 한 번 저장한다. 게임 API 가 `DISCONNECT_SAVE_SEC`(15초) 이상 **계속** 끊겼을 때만 경기가 끝난 것으로 보고 마지막 피처를 `win=null`로 저장한다(유효 게임 60초 이상일 때). 경기 중 시간 초과 한두 번으로 미리 저장해 실제 결과를 잃던 문제를 막는다.
 - 새 게임은 게임 시각이 `NEW_GAME_REWIND_SEC`(5초) 넘게 되돌아가거나, `(팀, 챔피언)` 10쌍(`game_key`)이 바뀌면 판별한다(Live Client API 에는 경기 ID 가 없다). 새 게임이면 저장 여부·코칭 간격을 처음으로 돌린다. 브리지가 새 게임을 0:30 이후에 처음 봐도(로딩 중 폴링 실패, 늦게 켬) 그 게임 결과를 저장한다.
 - 서버 계산이 실패하면 브리지는 직전 코칭을 그대로 두고 `coach_error`를 채운다. HUD 는 이때 배지를 `🟠 LIVE · 서버 재연결 중`으로 바꾸고 문구 앞에 "서버 연결이 끊겨 마지막 계산 값을 보여요"를 붙인다(옛 승률을 지금 값처럼 보이지 않게).
 
-**오버레이 화면 (`api/static/overlay.html`)**: 화면이 계산을 새로 하지 않고 `/strategy` 응답과 브리지 상태만 옮긴다.
+**오버레이 화면 (`api/static/overlay.html`)**: 화면이 계산을 새로 하지 않고 `/strategy` 응답과 브리지 상태만 옮긴다. OP.GG 인게임 오버레이처럼 **바깥 배경(`html, body`)은 완전히 투명(`transparent`)**하게 두고, 개별 다크 글래스 위젯 카드(`.hud-card`)만 게임 화면 위에 또렷하게 띄운다. 글자 가독성을 해치는 `body.style.opacity` 이중 감쇠를 쓰지 않고 카드 배경 알파(`--card-alpha`)와 OS 창 알파만 조절하며, 모든 본문·라벨 글자는 최소 11px~14px(핵심 승률 28px 이상) 굵은 고대비 타이포그래피로 표시한다. 토큰(`token`) 쿼리가 없을 때는 `/bridge/window` 제어 요청을 보내지 않아 단독 미리보기에서도 콘솔 오류(403)가 0건이어야 한다.
 
 | 칸 | 무엇을 보고 | 어떻게 보여 주나 |
 |---|---|---|
-| 상단 바 | 브리지 `connected`, `game_time_sec`, `hud_window` | 드래그 이동 핸들 + `🟢 게임 중 LIVE (MM:SS)` / `🟡 게임 중 시뮬레이션 (MM:SS)` 배지, `이펙트 ON/OFF`, 투명도(`100%`/`88%`/`72%`, 실제 Win32 창 알파 연동), 클릭 통과(`F8`)·숨김(`F9`) 안내, 접기(`−`) |
-| 실시간 판세 (`win_prob`) | `strategy.win_prob`, `phase_label`, `team_gold_diff`, `alive_summary` | 제목 `실시간 게임 중 승률`, 게임 페이즈(초반·중반·후반)·추정 팀 골드 차·생존 인원·핵심 요인 칩 표시 (`10분 페이스 환산`·`학습 범위 밖 경고` 미표시) |
-| 전 라인 현황 | `strategy.lanes` | `탑 · 정글 · 미드 · 원딜 · 서폿` 5개 라인별 챔피언과 우세·박빙·열세 색깔 배지 |
-| 실시간 맞춤 전략 | `strategy.strategies` | 현재 게임 시간·보유 골드·전 라인·오브젝트·생존 인원·상대 아이템을 종합한 우선순위 전략 카드 2~3장 |
-| 아이템·보유 골드 | `strategy.build_advice`, `strategy.recall_advice`, `owned_items` | 현재 보유 골드와 즉시 구매 가능 여부, 시작·상황별 아이템, 3단계 구매 순서(보유 `✓ 보유 완료`, 다음 미보유 카드 `지금 구매 추천` 금색 맥박 테두리) |
-| 스킬 키 | `skill_order.order`, `next_skill` | 키캡 줄과 이번에 찍을 키 카드(`[Q]`·`[R]` 등)에 청록 맥박 테두리 |
-| AI 감독 브리핑 | `POST /strategy/briefing` | 로컬 Ollama 또는 외부 LLM이 실시간 전장 컨텍스트로 생성한 유동 전략 2문장(`LLM · {model}`) 또는 동적 종합 전략 문장(`동적 전략`) |
+| 상단 컨트롤 알약 바 | 브리지 `connected`, `game_time_sec`, `hud_window` | 드래그 이동 핸들 + `🟢 게임 중 LIVE (MM:SS)` / `🟡 게임 중 시뮬레이션 (MM:SS)` 배지, `집중`, `이펙트 ON/OFF`, 투명도(`95%`/`82%`/`68%`, 카드 배경 및 Win32 창 알파 연동), 접기(`−`), 종료(`×`), 클릭 통과(`F8`)·숨김(`F9`) 안내 |
+| 실시간 판세 & 핵심 오더 위젯 | `strategy.win_prob`, `phase_label`, `team_gold_diff`, `alive`, `strategies`, `/strategy/briefing` | 제목 `실시간 게임 중 승률`, 승률(28px+)·전술 배지·팀 골드 차·생존 인원·핵심 요인 칩과 1순위 맞춤 전략 배너·AI 감독 브리핑(`LLM · {model}` / `동적 전략`)을 한 위젯에서 한눈에 읽히게 통합 표시 |
+| 빌드 · 스킬 추천 위젯 | `strategy.build_advice`, `strategy.recall_advice`, `owned_items`, `skill_order.order`, `next_skill` | 보유 골드·즉시 구매 목표 배너, 3단계 코어 구매 카드(`34×34px` 아이콘, 12px 굵은 이름, 보유 `✓ 보유 완료`, 다음 미보유 `지금 구매 추천` 금색 맥박 테두리), 시작·상황별 아이콘 줄, 스킬 레벨업 키캡(`[Q]`·`[E]` 청록 맥박 테두리) |
+| 전 라인 골드 비교 위젯 | `strategy.lanes`, `strategy.enemy_comp` | 5v5에서는 `탑 · 정글 · 미드 · 원딜 · 서폿` 5칸 초상화·골드 격차 표시. 1v1·1v5 봇전처럼 `매치업 미확인`/`미확인` 슬롯이 섞인 경우에는 확인된 실제 교전 라인만 선명한 매치업 행으로 보여 주고 빈 `미확인` 칸이 화면을 차지하지 않게 축약 |
 | 폴링 | `?bridge_url=`(기본 `http://127.0.0.1:8765/bridge/state`) | 2초마다. 실패하면 시뮬레이션으로 둔다 |
 | 데모 | `초반 우세 06:30`·`중반 박빙 14:20`·`후반 열세 23:10` | 세 시간대의 10인 실시간 전장 스냅샷을 `/strategy`·`/strategy/briefing`에 보내 유동 전략 변화를 바로 확인한다 |
 
@@ -302,8 +300,9 @@ Windows 10/11 전체 화면 최적화(FSO) 환경에서는 전체 화면(`Window
 | 엔드포인트 | 동작 | 보안 · 호환 규칙 |
 |---|---|---|
 | `GET /download/bridge.py` | `client/bridge.py` 원본을 `text/x-python; charset=utf-8`으로 반환 | 표준 라이브러리만 사용하므로 추가 패키지 설치가 필요 없다 |
-| `GET /download/overlay_popup.swift` | `client/overlay_popup.swift` 원본을 `text/plain; charset=utf-8`으로 반환 | macOS에서 `swiftc` Always-On-Top 패널 컴파일에 쓴다 |
-| `GET /download/launcher?os=windows\|mac` | 요청 `Host` 헤더(및 `X-Forwarded-Proto`)를 서버 URL로 자동 삽입한 `lol-pacemaker-overlay.bat`(Windows) 또는 `LoL-Pacemaker-macOS.zip`(Mac, `.app` 번들) 생성 다운로드 | `Host`는 영숫자·`.`·`:`·`-`·`[]`만 허용해 명령 주입을 막고, 잘못된 `os`는 422. 내려받은 스크립트는 `%TEMP%` 또는 `~/.cache`에 최신 `bridge.py`를 받아 `--insecure-local --overlay --launch-popup --save-match`를 자동 실행한다 (Python 미설치 시 안내) |
+| `GET /download/overlay_popup.swift` | `client/overlay_popup.swift` 원본을 `text/plain; charset=utf-8`으로 반환 | macOS에서 `swiftc` Always-On-Top 투명 패널 컴파일에 쓴다 |
+| `GET /download/overlay_electron.js` | `client/overlay_electron.js` 원본을 `application/javascript; charset=utf-8`으로 반환 | Electron 런타임이 있을 때 `transparent: true, frame: false` 투명 오버레이 창을 띄우는 진입 스크립트다 |
+| `GET /download/launcher?os=windows\|mac` | 요청 `Host` 헤더(및 `X-Forwarded-Proto`)를 서버 URL로 자동 삽입한 `lol-pacemaker-overlay.bat`(Windows) 또는 `LoL-Pacemaker-macOS.zip`(Mac, `.app` 번들) 생성 다운로드 | `Host`는 영숫자·`.`·`:`·`-`·`[]`만 허용해 명령 주입을 막고, 잘못된 `os`는 422. 내려받은 스크립트는 `%TEMP%` 또는 `~/.cache`에 최신 `bridge.py`(및 `overlay_electron.js`/`overlay_popup.swift`)를 받아 `--insecure-local --overlay --launch-popup --save-match`를 자동 실행한다 (Python 미설치 시 안내) |
 
 **Windows `.bat` 규칙 (2026-11-19, 실게임 시험 전 보강 · 2026-11-20 무터미널 실행)**
 - 화면에 찍는 문구는 영문 ASCII만 쓴다. `cmd`가 코드페이지와 파일 인코딩이 어긋나면 한글 줄을 명령으로 잘못 읽을 수 있어서다(브리지가 찍는 한글은 Python이 로그 파일에 직접 쓰므로 괜찮다).

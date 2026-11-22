@@ -772,3 +772,24 @@ def test_meta_items_returns_price_map_and_hidden_from_openapi(client, app_module
     assert body["prices"]["3020"] == 1100
     assert "/meta/items" not in app_module.app.openapi()["paths"]
 
+
+def test_opgg_scouter_hud_and_electron_download(client, app_module):
+    """OP.GG 스카우터 벤치마킹 HUD(투명 배경·10인 골드 줄다리기·S/A 티어 배지·토큰 가드) 및 Electron/Swift 투명 셸 검증."""
+    ov = client.get("/overlay").text
+    assert "background: transparent !important" in ov
+    assert "document.body.style.opacity" not in ov  # 글자 대비 이중 감쇠 금지
+    assert "--card-alpha" in ov
+    assert "if (!BRIDGE_TOKEN) return;" in ov       # 단독 열람 시 403 콘솔 오류 0건
+    for marker in ('id="blueGoldTxt"', 'id="redGoldTxt"', 'id="tugFill"', "scouter-row", "S·1순위", "A·2순위", "tier-badge"):
+        assert marker in ov, marker
+
+    el_res = client.get("/download/overlay_electron.js")
+    assert el_res.status_code == 200
+    assert "transparent: true" in el_res.text and "frame: false" in el_res.text and "setIgnoreMouseEvents" in el_res.text
+    assert "/download/overlay_electron.js" not in app_module.app.openapi()["paths"]
+
+    sw_res = client.get("/download/overlay_popup.swift")
+    assert sw_res.status_code == 200
+    assert ".borderless" in sw_res.text and "backgroundColor = .clear" in sw_res.text
+
+

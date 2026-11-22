@@ -49,6 +49,7 @@ _DOWNLOAD = os.path.join(os.path.dirname(__file__), "static", "download.html")
 _ROOT_DIR = os.path.dirname(os.path.dirname(__file__))
 _BRIDGE_PY = os.path.join(_ROOT_DIR, "client", "bridge.py")
 _POPUP_SWIFT = os.path.join(_ROOT_DIR, "client", "overlay_popup.swift")
+_POPUP_ELECTRON = os.path.join(_ROOT_DIR, "client", "overlay_electron.js")
 _HOST_RE = re.compile(r"^[A-Za-z0-9.\-:\[\]]+$")
 
 # 전적 DB (AGENTS.md 3-5절). PostgreSQL 이 아직 안 떴어도 앱은 뜬다. /matches 가 다음 요청에서 다시 연결한다
@@ -220,6 +221,12 @@ def download_popup_swift() -> FileResponse:
     return FileResponse(_POPUP_SWIFT, media_type="text/plain; charset=utf-8", filename="overlay_popup.swift")
 
 
+@app.get("/download/overlay_electron.js", include_in_schema=False)
+def download_popup_electron() -> FileResponse:
+    """Electron 투명 프레임리스 인게임 오버레이 진입 스크립트."""
+    return FileResponse(_POPUP_ELECTRON, media_type="application/javascript; charset=utf-8", filename="overlay_electron.js")
+
+
 def _origin_from_request(request: Request) -> str:
     proto = (request.headers.get("x-forwarded-proto") or request.url.scheme or "http").split(",")[0].strip().lower()
     if proto not in ("http", "https"):
@@ -273,6 +280,10 @@ def download_launcher(request: Request, os: Literal["windows", "mac"] = Query(..
             f"curl.exe -fsSL \"{origin}/download/bridge.py\" -o \"%APP_DIR%\\client\\bridge.py\"\r\n"
             "if errorlevel 1 (\r\n"
             f"  powershell -NoProfile -Command \"Invoke-WebRequest -Uri '{origin}/download/bridge.py' -OutFile '%APP_DIR%\\client\\bridge.py'\"\r\n"
+            ")\r\n"
+            f"curl.exe -fsSL \"{origin}/download/overlay_electron.js\" -o \"%APP_DIR%\\client\\overlay_electron.js\" >nul 2>nul\r\n"
+            "if not exist \"%APP_DIR%\\client\\overlay_electron.js\" (\r\n"
+            f"  powershell -NoProfile -Command \"Invoke-WebRequest -Uri '{origin}/download/overlay_electron.js' -OutFile '%APP_DIR%\\client\\overlay_electron.js'\" >nul 2>nul\r\n"
             ")\r\n"
             "if not exist \"%APP_DIR%\\client\\bridge.py\" (\r\n"
             "  echo [LoL Pacemaker] Failed to download bridge.py from server.\r\n"

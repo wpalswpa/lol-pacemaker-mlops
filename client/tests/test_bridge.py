@@ -2000,4 +2000,104 @@ def test_w6_overlay_titles_prefers_non_player_name_first():
     assert br.OVERLAY_TITLES[0] == "LoL 페이스메이커"
 
 
+def test_electron_popup_dpi_clip_and_late_window_recovery():
+    import client.bridge as br
+
+    # 1) Electron 런타임이 있으면 transparent 프레임리스 오버레이(electron)를 우선 선택하고, 없으면 chrome 으로 폴백
+    url = "http://127.0.0.1:8765/overlay"
+    how_el, cmd_el = popup_command(
+        url, "Windows",
+        which=lambda n: r"C:\Tools\electron.exe" if n == "electron" else None,
+        exists=lambda p: p.endswith(("overlay_electron.js", "electron.exe")),
+    )
+    assert how_el == "electron" and cmd_el[0].endswith("electron.exe") and cmd_el[1].endswith("overlay_electron.js")
+
+    # 2) 150% 고배율(144 DPI) 모니터에서는 clip_caption_px=32 가 48px 로 자동 보정되고, electron.exe 창은 자르지 않는다
+    rgn_calls = []
+
+    class DpiUser32(HudUser32):
+        def GetDpiForWindow(self, h):  # noqa: N802
+            return 144
+
+        def SetWindowRgn(self, h, rgn, redraw):  # noqa: N802
+            rgn_calls.append(("set_rgn", h, rgn))
+            return 1
+
+    class FakeGdi32:
+        def CreateRectRgn(self, l, t, r, b):  # noqa: N802
+            rgn_calls.append(("rect", (l, t, r, b)))
+            return 777
+
+    class FakeK32:
+        def __init__(self, exe):
+            self.exe = exe
+
+        def OpenProcess(self, a, i, pid):  # noqa: N802
+            return pid
+
+        def QueryFullProcessImageNameW(self, h, f, buf, sz):  # noqa: N802
+            buf.value = self.exe
+            return 1
+
+        def CloseHandle(self, h):  # noqa: N802
+            return 1
+
+    u32 = DpiUser32({2: (PID, "LoL 페이스메이커", CHROME_CLASS, True)}, lol_rect=(0, 0, 380, 560))
+    win_chrome = Win32Windows(u32, HudCT, gdi32=FakeGdi32(), kernel32=FakeK32(r"C:\Chrome\chrome.exe"))
+    win_chrome.apply_hud_popup(2, clip_caption_px=32)
+    assert ("rect", (0, 48, 380, 560)) in rgn_calls
+
+    rgn_calls.clear()
+    win_el = Win32Windows(u32, HudCT, gdi32=FakeGdi32(), kernel32=FakeK32(r"C:\Electron\electron.exe"))
+    win_el.apply_hud_popup(2, clip_caption_px=32)
+    assert rgn_calls == []  # Electron 은 자체 프레임리스·투명이라 상단 자르기 생략
+
+    # 3) 첫 25번 시도(6.25초) 안에 창이 안 떴어도 repin_sec > 0 이면 포기하지 않고 다음 주기에 고정한다
+    late_windows = {1: OTHER_CHROME}
+    u32_late, reports, slept = FakeUser32(late_windows), [], []
+
+    def late_sleep(sec):
+        slept.append(sec)
+        if sec == 3.0:
+            late_windows[9] = (PID, "LoL 페이스메이커", CHROME_CLASS, True)
+
+    pin_topmost(Win32Windows(u32_late, FakeCT), PID, PORT, reports.append,
+                sleep=late_sleep, repin_sec=3.0, tries=3, settle=0, max_repins=1)
+    assert reports[1]["status"] == "failed"
+    assert reports[-1]["status"] == "pinned" and pins(u32_late) == [9]
+
+    # 4) 다중 위젯 리전(rects): 보이는 .hud-card 영역들만 CombineRgn(RGN_OR=2)으로 합쳐 SetWindowRgn 적용
+    multi_calls = []
+
+    class MultiGdi32:
+        def CreateRectRgn(self, l, t, r, b):  # noqa: N802
+            multi_calls.append(("rect", (l, t, r, b)))
+            return 100
+
+        def CreateRoundRectRgn(self, l, t, r, b, rw, rh):  # noqa: N802
+            idx = len([c for c in multi_calls if c[0] == "round"]) + 1
+            multi_calls.append(("round", idx, (l, t, r, b, rw, rh)))
+            return idx
+
+        def CombineRgn(self, dest, src1, src2, mode):  # noqa: N802
+            multi_calls.append(("combine", dest, src1, src2, mode))
+            return 2
+
+        def DeleteObject(self, obj):  # noqa: N802
+            multi_calls.append(("delete", obj))
+            return 1
+
+    win_multi = Win32Windows(u32, HudCT, gdi32=MultiGdi32(), kernel32=FakeK32(r"C:\Chrome\chrome.exe"))
+    ctl_multi = WindowsHudController(win=win_multi, clip_caption_px=32)
+    ctl_multi.hwnds = [2]
+    ctl_multi.handle_command({"rects": [[4, 4, 372, 42], [4, 50, 372, 160]]})
+    # 144 DPI(1.5배) 기준 top_off = 32 * 1.5 = 48 (CreateRoundRectRgn 우하단 +1 보정 포함)
+    assert ("round", 1, (6, 54, 565, 118, 24, 24)) in multi_calls
+    assert ("round", 2, (6, 123, 565, 364, 24, 24)) in multi_calls
+    assert ("combine", 1, 1, 2, 2) in multi_calls
+    assert ("delete", 2) in multi_calls
+
+
+
+
 

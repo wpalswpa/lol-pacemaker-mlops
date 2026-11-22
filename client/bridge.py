@@ -1034,6 +1034,7 @@ def overlay_url(port: int, token: str | None = None) -> str:
 
 
 SWIFT_SRC = os.path.join(os.path.dirname(__file__), "overlay_popup.swift")
+ELECTRON_SRC = os.path.join(os.path.dirname(__file__), "overlay_electron.js")
 CHROME_MAC = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 CHROME_WIN_PATHS = (
     r"C:\Program Files\Google\Chrome\Application\chrome.exe",
@@ -1041,6 +1042,25 @@ CHROME_WIN_PATHS = (
     r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
     r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
 )
+
+
+def _find_electron(system: str, which: Callable[[str], str | None], exists: Callable[[str], bool]) -> str | None:
+    """Electron 실행 파일을 찾는다. 있으면 투명 프레임리스 오버레이(overlay_electron.js)를 우선 사용한다."""
+    real_exists = not exists("__nonexistent_lol_pace_sentinel__")
+    env_bin = os.environ.get("ELECTRON_PATH")
+    if env_bin and real_exists and exists(env_bin):
+        return env_bin
+    if system == "Windows" and real_exists:
+        root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        local_app = os.environ.get("LOCALAPPDATA", "")
+        for candidate in (
+            os.path.join(_cache_dir(), r"node_modules\electron\dist\electron.exe"),
+            os.path.join(root_dir, r"node_modules\electron\dist\electron.exe"),
+            os.path.join(local_app, r"lol-pace-overlay\node_modules\electron\dist\electron.exe") if local_app else "",
+        ):
+            if candidate and exists(candidate):
+                return candidate
+    return which("electron")
 
 
 def _find_app_browser(system: str, which: Callable[[str], str | None], exists: Callable[[str], bool]) -> str | None:
@@ -1057,13 +1077,16 @@ def _find_app_browser(system: str, which: Callable[[str], str | None], exists: C
 def popup_command(url: str, system: str | None = None, which: Callable[[str], str | None] = shutil.which,
                   exists: Callable[[str], bool] = os.path.exists, build: Callable[[], str | None] | None = None,
                   disable_gpu_compositing: bool = False) -> tuple[str, list[str] | None]:
-    """(방식, 명령). 방식은 "swift"(항상 위 패널), "chrome"(--app 창), "browser"(기본 브라우저, 명령 None)."""
+    """(방식, 명령). 방식은 "swift"(macOS 투명 패널), "electron"(투명 오버레이), "chrome"(--app 창), "browser"(기본 브라우저)."""
     system = system or platform.system()
     w, h = POPUP_SIZE
     if system == "Darwin" and which("swiftc"):
         binary = (build or build_swift_popup)()
         if binary:
             return "swift", [binary, url, str(w), str(h)]
+    electron = _find_electron(system, which, exists)
+    if electron and exists(ELECTRON_SRC):
+        return "electron", [electron, ELECTRON_SRC, url, str(w), str(h)]
     chrome = _find_app_browser(system, which, exists)
     if chrome:
         args = [chrome, f"--app={url}", f"--window-size={w},{h}", "--window-position=24,220",
@@ -1125,7 +1148,7 @@ VK_F8, VK_F9 = 0x77, 0x78
 HUD_IDLE_EXIT_SEC = 12.0
 OVERLAY_TITLES = ("LoL 페이스메이커", "페이커 오버레이")
 CHROME_CLASS = "Chrome_WidgetWin_1"
-ALLOWED_BROWSER_EXES = frozenset({"chrome.exe", "msedge.exe", "chromium.exe"})
+ALLOWED_BROWSER_EXES = frozenset({"chrome.exe", "msedge.exe", "chromium.exe", "electron.exe"})
 NON_APP_TITLE_SUFFIXES = (" - Google Chrome", " - Microsoft\u200b Edge", " - Microsoft Edge", " - Visual Studio Code", " - Antigravity")
 PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
 PIN_TRIES, PIN_INTERVAL = 25, 0.25
@@ -1236,8 +1259,8 @@ class Win32Windows:
         return True
 
     def apply_hud_popup(self, hwnd, *, alpha: int = 235, click_through: bool = False,
-                        clip_caption_px: int = 0) -> bool:
-        """C5: 첫 WS_EX_TOOLWINDOW 적용 시 SW_HIDE -> 스타일 변경 -> SW_SHOWNA 순서, 선택 SetWindowRgn."""
+                        clip_caption_px: int = 0, card_rects: list | None = None) -> bool:
+        """C5: 첫 WS_EX_TOOLWINDOW 적용 시 SW_HIDE -> 스타일 변경 -> SW_SHOWNA 순서, 선택 다중 카드 리전/상단 자르기."""
         get, put = self._long_fns()
         if get is None or put is None:
             return False
@@ -1262,14 +1285,60 @@ class Win32Windows:
         self.set_alpha(hwnd, alpha)
         flags = PIN_FLAGS | (SWP_FRAMECHANGED if changed else 0)
         ok = bool(self.u.SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, flags))
-        if clip_caption_px > 0:
-            self.clip_top(hwnd, clip_caption_px)
+        if self.process_name(hwnd) != "electron.exe":
+            if card_rects:
+                self.apply_card_regions(hwnd, card_rects, clip_caption_px)
+            elif clip_caption_px > 0:
+                self.clip_top(hwnd, clip_caption_px)
         if first_tool:
             self.set_visible(hwnd, True)
         return ok
 
+    def apply_card_regions(self, hwnd, rects: list, clip_caption_px: int = 0) -> bool:
+        """OP.GG 스타일 다중 위젯 리전: 보이는 .hud-card 영역들만 CombineRgn(RGN_OR)으로 합쳐 창 영역으로 남기고
+        카드 밖 빈 배경과 Chrome 제목 표시줄은 OS 수준에서 도려내어 인게임 화면과 공존하게 한다."""
+        set_rgn = getattr(self.u, "SetWindowRgn", None)
+        create_rect = getattr(self.g, "CreateRectRgn", None) if self.g is not None else None
+        combine_rgn = getattr(self.g, "CombineRgn", None) if self.g is not None else None
+        delete_obj = getattr(self.g, "DeleteObject", None) if self.g is not None else None
+        if set_rgn is None or create_rect is None or not rects:
+            return False
+        create_round = getattr(self.g, "CreateRoundRectRgn", None)
+        dpi_fn = getattr(self.u, "GetDpiForWindow", None)
+        try:
+            dpi = int(dpi_fn(hwnd)) if dpi_fn is not None else 96
+        except Exception:  # noqa: BLE001
+            dpi = 96
+        scale = (dpi / 96.0) if dpi > 96 else 1.0
+        top_off = int(round(max(0, clip_caption_px) * scale))
+        master = None
+        for item in rects:
+            if not isinstance(item, (list, tuple)) or len(item) < 4:
+                continue
+            x, y, w, h = float(item[0]), float(item[1]), float(item[2]), float(item[3])
+            if w <= 0 or h <= 0:
+                continue
+            l = int(round(x * scale))
+            t = top_off + int(round(y * scale))
+            r = int(round((x + w) * scale))
+            b = top_off + int(round((y + h) * scale))
+            rad = int(round(16 * scale))
+            part = (create_round(l, t, r + 1, b + 1, rad, rad)
+                    if create_round is not None else create_rect(l, t, r, b))
+            if not part:
+                continue
+            if master is None:
+                master = part
+            elif combine_rgn is not None:
+                combine_rgn(master, master, part, 2)  # RGN_OR = 2
+                if delete_obj is not None:
+                    delete_obj(part)
+        if not master:
+            return False
+        return bool(set_rgn(hwnd, master, True))
+
     def clip_top(self, hwnd, px: int) -> bool:
-        """선택 대체 경로(C5): 위쪽 제목 띠(px)를 SetWindowRgn 으로 잘라낸다."""
+        """선택 대체 경로(C5): 위쪽 제목 띠(px, GetDpiForWindow 배율 보정)를 SetWindowRgn 으로 잘라낸다."""
         set_rgn = getattr(self.u, "SetWindowRgn", None)
         create_rgn = getattr(self.g, "CreateRectRgn", None) if self.g is not None else None
         if set_rgn is None or create_rgn is None:
@@ -1278,9 +1347,15 @@ class Win32Windows:
         if rect is None:
             return False
         w, h = rect[2] - rect[0], rect[3] - rect[1]
-        if w <= 0 or h <= px:
+        dpi_fn = getattr(self.u, "GetDpiForWindow", None)
+        try:
+            dpi = int(dpi_fn(hwnd)) if dpi_fn is not None else 96
+        except Exception:  # noqa: BLE001
+            dpi = 96
+        scaled_px = max(1, int(round(px * (dpi / 96.0)))) if dpi > 96 else int(px)
+        if w <= 0 or h <= scaled_px:
             return False
-        rgn = create_rgn(0, int(px), int(w), int(h))
+        rgn = create_rgn(0, scaled_px, int(w), int(h))
         if not rgn:
             return False
         return bool(set_rgn(hwnd, rgn, True))
@@ -1435,6 +1510,7 @@ class WindowsHudController:
         self.frameless: bool = False
         self.dx: int = 0
         self.dy: int = 0
+        self.card_rects: list | None = None
         self.lol_detected: bool = False
         self.lol_window_mode: str | None = read_lol_window_mode(self._cfg_paths)
         self._last_lol_rect: tuple[int, int, int, int] | None = None
@@ -1485,11 +1561,11 @@ class WindowsHudController:
         with self.lock:
             self.win = win
             self.hwnds = list(hwnds)
-            alpha, ct, vis, clip_px = self.alpha, self.click_through, self.visible, self.clip_caption_px
+            alpha, ct, vis, clip_px, rects = self.alpha, self.click_through, self.visible, self.clip_caption_px, self.card_rects
         ok = False
         for h in hwnds:
             try:
-                if win.apply_hud_popup(h, alpha=alpha, click_through=ct, clip_caption_px=clip_px):
+                if win.apply_hud_popup(h, alpha=alpha, click_through=ct, clip_caption_px=clip_px, card_rects=rects):
                     ok = True
                 if not vis:
                     win.set_visible(h, False)
@@ -1563,6 +1639,8 @@ class WindowsHudController:
                 self.click_through = bool(cmd["click_through"])
             if "visible" in cmd:
                 self.visible = bool(cmd["visible"])
+            if "rects" in cmd and isinstance(cmd["rects"], list):
+                self.card_rects = cmd["rects"]
             if cmd.get("reset_pos"):
                 self.dx, self.dy = 0, 0
             moved = False
@@ -1574,12 +1652,12 @@ class WindowsHudController:
                     self.dy += step_dy
                 moved = True
             alpha, ct, vis, dx, dy = self.alpha, self.click_through, self.visible, self.dx, self.dy
-            lol_rect, work, clip_px = self._last_lol_rect, self._last_work_area, self.clip_caption_px
+            lol_rect, work, clip_px, rects = self._last_lol_rect, self._last_work_area, self.clip_caption_px, self.card_rects
 
         if win is not None and hwnds:
             for h in hwnds:
                 try:
-                    win.apply_hud_popup(h, alpha=alpha, click_through=ct, clip_caption_px=clip_px)
+                    win.apply_hud_popup(h, alpha=alpha, click_through=ct, clip_caption_px=clip_px, card_rects=rects)
                     win.set_visible(h, vis)
                     if moved or cmd.get("reset_pos"):
                         hw, hh = self._hud_size(win, h)
@@ -1697,10 +1775,12 @@ def pin_topmost(win: Win32Windows, pid: int, port: int, report: Callable[[dict],
         report({"status": "failed", "method": None, "windows": 0, "repins": 0,
                 "error": f"오버레이 창을 찾지 못했다(PID {pid}, 제목 {'·'.join(OVERLAY_TITLES)}, "
                          f"클래스 {CHROME_CLASS} + 127.0.0.1:{port}, {tries}번)"})
-        return
-    pinned = [h for h in hwnds if win.pin(h)]
-    report({"status": "pinned" if pinned else "failed", "method": how, "windows": len(pinned), "repins": 0,
-            "error": None if pinned else "SetWindowPos 가 실패했다"})
+        if repin_sec <= 0:
+            return
+    else:
+        pinned = [h for h in hwnds if win.pin(h)]
+        report({"status": "pinned" if pinned else "failed", "method": how, "windows": len(pinned), "repins": 0,
+                "error": None if pinned else "SetWindowPos 가 실패했다"})
     n = 0
     while (n < settle or repin_sec > 0) and (max_repins is None or n < max_repins):
         sleep(PIN_SETTLE_SEC if n < settle else repin_sec)
@@ -1794,9 +1874,21 @@ def _pin_windows_topmost_async(pid: int, port: int, report: Callable[[dict], Non
             if hasattr(user32, "SetWindowRgn"):
                 user32.SetWindowRgn.argtypes = [wintypes.HWND, wintypes.HRGN, wintypes.BOOL]
                 user32.SetWindowRgn.restype = ctypes.c_int
+            if hasattr(user32, "GetDpiForWindow"):
+                user32.GetDpiForWindow.argtypes = [wintypes.HWND]
+                user32.GetDpiForWindow.restype = wintypes.UINT
             if gdi32 is not None and hasattr(gdi32, "CreateRectRgn"):
                 gdi32.CreateRectRgn.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int]
                 gdi32.CreateRectRgn.restype = wintypes.HRGN
+            if gdi32 is not None and hasattr(gdi32, "CreateRoundRectRgn"):
+                gdi32.CreateRoundRectRgn.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int]
+                gdi32.CreateRoundRectRgn.restype = wintypes.HRGN
+            if gdi32 is not None and hasattr(gdi32, "CombineRgn"):
+                gdi32.CombineRgn.argtypes = [wintypes.HRGN, wintypes.HRGN, wintypes.HRGN, ctypes.c_int]
+                gdi32.CombineRgn.restype = ctypes.c_int
+            if gdi32 is not None and hasattr(gdi32, "DeleteObject"):
+                gdi32.DeleteObject.argtypes = [wintypes.HGDIOBJ]
+                gdi32.DeleteObject.restype = wintypes.BOOL
 
             win = Win32Windows(user32, ctypes, gdi32=gdi32, kernel32=kernel32)
             if hud_ctl is not None:
@@ -1820,6 +1912,8 @@ def _pin_windows_topmost_async(pid: int, port: int, report: Callable[[dict], Non
                     while True:
                         hud_ctl.poll_hotkeys_once()
                         tick += 1
+                        if tick % 15 == 0 and not hud_ctl.hwnds:
+                            hud_ctl.reattach()
                         hud_ctl.ensure_above_lol(force=(tick % 4 == 0))  # FSO 전체 화면 위 Z-순서 즉시·0.32초 주기 유지
                         if tick % 15 == 0:  # 약 1.2초마다 LoL 창 위치 추적
                             hud_ctl.sync_to_lol_window()
@@ -1840,7 +1934,7 @@ def launch_popup(port: int, report: Callable[[dict], None] | None = None, repin_
                  hud_ctl: WindowsHudController | None = None, token: str | None = None,
                  disable_gpu_compositing: bool = False) -> str:
     """항상 위 팝업을 띄우고 쓴 방식을 돌려준다. 고정 결과는 report(브리지 상태의 popup)로 남긴다.
-    procs 를 주면 띄운 (방식, 프로세스)를 넣는다(run_overlay 가 swift 팝업이 닫혔는지 본다)."""
+    procs 를 주면 띄운 (방식, 프로세스)를 넣는다(run_overlay 가 swift·electron 팝업이 닫혔는지 본다)."""
     system = system or platform.system()
     url = overlay_url(port, token)
     if disable_gpu_compositing:
@@ -1860,7 +1954,7 @@ def launch_popup(port: int, report: Callable[[dict], None] | None = None, repin_
         proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
         if procs is not None:
             procs.append((how, proc))
-        if how == "chrome" and system == "Windows":
+        if how in ("chrome", "electron") and system == "Windows":
             if hud_ctl is not None:
                 _pin_windows_topmost_async(proc.pid, port, note, repin_sec, system, hud_ctl=hud_ctl)
             else:
@@ -1993,8 +2087,8 @@ def run_overlay(bridge: OverlayBridge, port: int, server: str | None = None, pop
             if stop_event.is_set():
                 print("\nHUD 종료 요청으로 브리지를 끝냅니다.")
                 break
-            if any(how == "swift" and proc.poll() is not None for how, proc in owned):
-                # macOS 앱(.app)은 터미널이 없어 끌 방법이 없다: 팝업을 닫으면 브리지도 끝낸다
+            if any(how in ("swift", "electron") and proc.poll() is not None for how, proc in owned):
+                # macOS 앱(.app)이나 Electron 팝업은 닫히면 브리지도 끝낸다
                 print("\n팝업을 닫아 브리지를 끝냅니다.")
                 break
             if exit_on_close and hud_ping["seen"]:
@@ -2027,6 +2121,13 @@ def run_overlay(bridge: OverlayBridge, port: int, server: str | None = None, pop
     except KeyboardInterrupt:
         print()
     finally:
+        if stop_event.is_set():
+            for how, proc in owned:
+                if how in ("swift", "electron") and getattr(proc, "poll", lambda: 0)() is None:
+                    try:
+                        proc.terminate()
+                    except Exception:  # noqa: BLE001
+                        pass
         httpd.shutdown()
 
 

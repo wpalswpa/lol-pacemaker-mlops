@@ -6,227 +6,498 @@
 <title>LoL 페이스메이커</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='6' fill='%23d8b45a'/%3E%3C/svg%3E">
 <style>
-  /* OP.GG 영감 인게임 글래스 HUD (AGENTS.md 3-4절). 계산은 서버 /strategy 가 담당하고 화면은 결과만 옮긴다 */
+  /* OP.GG 인게임 스카우터 & AI 코치 플로팅 위젯 HUD (AGENTS.md 3-4절).
+     바깥 배경은 완전 투명(transparent)으로 두고 380x560 안에 4개 정밀 위젯 카드가 스크롤 없이 들어간다. */
   :root {
-    --bg: #080b12; --card: rgba(15, 20, 32, .86); --card2: rgba(22, 29, 46, .88);
-    --line: rgba(255, 255, 255, .09); --line2: rgba(255, 255, 255, .15);
-    --text: #f3f6fc; --sub: #9fb0c8; --dim: #667894;
-    --accent: #7c6eff; --gold: #f5c451; --cyan: #38e8ff; --green: #34d399; --yellow: #fbbf24; --red: #fb7185;
+    --card-alpha: 0.94;
+    --card: rgba(15, 18, 27, var(--card-alpha));
+    --card-inner: rgba(24, 29, 43, .78);
+    --line: rgba(255, 255, 255, .13);
+    --line2: rgba(255, 255, 255, .24);
+    --text: #f8fafc;
+    --sub: #cbd5e1;
+    --dim: #94a3b8;
+    --accent: #7c6eff;
+    --blue: #5383e8;
+    --red-team: #e84057;
+    --gold: #fbbf24;
+    --cyan: #38e8ff;
+    --green: #34d399;
+    --yellow: #facc15;
+    --red: #fb7185;
   }
   * { box-sizing: border-box; }
   ::-webkit-scrollbar { width: 3px; height: 3px; }
   ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, .16); border-radius: 99px; }
-  html, body { margin: 0; background: var(--bg); color: var(--text); user-select: none; }
-  body { font: 11px/1.32 -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", "Segoe UI", sans-serif;
-         max-width: 420px; min-height: 100vh; margin: 0 auto; padding: 5px 6px 6px;
-         display: flex; flex-direction: column; gap: 5px; overflow-x: hidden;
-         background: radial-gradient(circle at 12% 0%, rgba(124, 110, 255, .15), transparent 46%),
-                     radial-gradient(circle at 92% 10%, rgba(56, 232, 255, .08), transparent 42%), var(--bg);
-         border: 1px solid rgba(124, 110, 255, .28); border-radius: 12px; }
-  button { font: inherit; color: inherit; cursor: pointer; }
+  ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, .2); border-radius: 99px; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: transparent !important;
+    color: var(--text);
+    user-select: none;
+    -webkit-font-smoothing: antialiased;
+  }
+  body {
+    font: 11.5px/1.25 -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", "Segoe UI", sans-serif;
+    max-width: 380px;
+    margin: 0 auto;
+    padding: 2px 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    overflow-x: hidden;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, .85);
+  }
+  button { font: inherit; color: inherit; cursor: pointer; text-shadow: inherit; }
   button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 1px; }
   .num { font-variant-numeric: tabular-nums; }
 
-  /* 상단 바 */
+  /* 개별 플로팅 다크 글래스 위젯 */
+  .hud-card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, .62);
+    backdrop-filter: blur(10px);
+  }
+
+  /* ── 위젯 0: 상단 OP.GG 스타일 컨트롤 도크 ── */
+  .top-card { padding: 4px 6px; display: flex; flex-direction: column; gap: 2px; }
   .top { display: flex; align-items: center; gap: 3px; cursor: grab; }
   .top:active { cursor: grabbing; }
-  .grip { color: var(--dim); font-size: 10px; padding: 0 1px; letter-spacing: -1px; flex: none; }
-  .live { flex: 1; min-width: 0; display: flex; align-items: center; gap: 4px; padding: 4px 7px; border-radius: 8px;
-          background: var(--card); border: 1px solid var(--line); font-weight: 700; font-size: 10.5px;
-          white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left; }
-  .live.on { color: var(--green); border-color: rgba(52, 211, 153, .3); }
-  .live:not(.on) { color: var(--yellow); }
-  .fx { padding: 4px 5px; border-radius: 7px; border: 1px solid rgba(245, 196, 81, .5); background: rgba(245, 196, 81, .12);
-        color: var(--gold); font-weight: 700; white-space: nowrap; font-size: 9.5px; }
-  .fx[aria-pressed="false"] { border-color: var(--line); background: var(--card); color: var(--dim); }
-  .ctrl { padding: 4px 5px; border-radius: 7px; border: 1px solid var(--line); background: var(--card);
-          color: var(--sub); font-weight: 700; white-space: nowrap; font-size: 9.5px; }
-  .ctrl:hover { border-color: var(--line2); color: var(--text); }
-  .ctrl.active, .ctrl[aria-pressed="true"] { border-color: rgba(124, 110, 255, .7); background: rgba(124, 110, 255, .18); color: #dcd7ff; }
+  .brand-pill {
+    display: inline-grid; place-items: center; padding: 2px 6px; border-radius: 5px;
+    background: linear-gradient(135deg, #6366f1, #8b5cf6); color: #fff; border: 1px solid rgba(255, 255, 255, .25);
+    font-size: 10px; font-weight: 900; letter-spacing: -.3px; flex: none; text-shadow: none;
+  }
+  .brand-pill:hover { filter: brightness(1.12); }
 
-  .hk-bar { display: flex; justify-content: space-between; align-items: center; gap: 6px; padding: 0 3px; font-size: 9px; color: var(--dim); }
-  .hk-bar .warn-fs { color: var(--yellow); font-weight: 700; }
-  .mini-bar { background: var(--card); border: 1px solid var(--line); border-radius: 9px; padding: 6px 10px;
-              font-weight: 700; color: var(--text); display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  /* OP.GG 스타일 개별 위젯 ON/OFF 토글 서랍 */
+  .opgg-drawer {
+    display: flex; flex-direction: column; gap: 4px;
+    padding: 6px 8px; margin-top: 3px; border-radius: 8px;
+    background: rgba(12, 15, 24, .96); border: 1px solid var(--line2);
+  }
+  .sw-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 10px; }
+  .sw-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 6px;
+    font-size: 10.5px; font-weight: 800; color: var(--text); cursor: pointer;
+    background: transparent; border: 0; padding: 2px 0; text-align: left;
+  }
+  .sw-pill {
+    width: 24px; height: 13px; border-radius: 99px; background: rgba(255, 255, 255, .18);
+    position: relative; flex: none; transition: background .15s;
+  }
+  .sw-pill::after {
+    content: ""; position: absolute; top: 1.5px; left: 2px; width: 10px; height: 10px;
+    border-radius: 50%; background: #94a3b8; transition: transform .15s, background .15s;
+  }
+  .sw-row[aria-pressed="true"] .sw-pill { background: rgba(124, 110, 255, .45); }
+  .sw-row[aria-pressed="true"] .sw-pill::after { transform: translateX(10px); background: #8b7cff; }
+  body.hide-order #strats { display: none !important; }
+  body.hide-sub .brief-box { display: none !important; }
+  body.hide-gold .lanes-sec { display: none !important; }
+  body.hide-build .build-top, body.hide-build #buy { display: none !important; }
+  body.hide-skill .skill-strip { display: none !important; }
+  .grip { color: var(--sub); font-size: 11px; font-weight: 900; padding: 0 1px; letter-spacing: -1px; flex: none; }
+  .live {
+    flex: 1; min-width: 0; display: flex; align-items: center; gap: 4px; padding: 3px 7px; border-radius: 6px;
+    background: rgba(255, 255, 255, .05); border: 1px solid var(--line); font-weight: 800; font-size: 11px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left;
+  }
+  .live.on { color: var(--green); border-color: rgba(52, 211, 153, .45); background: rgba(52, 211, 153, .11); }
+  .live:not(.on) { color: var(--yellow); border-color: rgba(250, 204, 21, .35); }
+  .fx {
+    padding: 3px 5px; border-radius: 6px; border: 1px solid rgba(251, 191, 36, .55); background: rgba(251, 191, 36, .16);
+    color: var(--gold); font-weight: 800; white-space: nowrap; font-size: 10.5px;
+  }
+  .fx[aria-pressed="false"] { border-color: var(--line); background: rgba(255, 255, 255, .04); color: var(--dim); }
+  .ctrl {
+    padding: 3px 5px; border-radius: 6px; border: 1px solid var(--line); background: rgba(255, 255, 255, .05);
+    color: var(--sub); font-weight: 800; white-space: nowrap; font-size: 10.5px;
+  }
+  .ctrl:hover { border-color: var(--line2); color: var(--text); }
+  .ctrl.active, .ctrl[aria-pressed="true"] {
+    border-color: rgba(124, 110, 255, .85); background: rgba(124, 110, 255, .25); color: #efeaff;
+  }
+  .hk-bar {
+    display: flex; justify-content: space-between; align-items: center; gap: 6px;
+    padding: 0 2px; font-size: 10.5px; font-weight: 700; color: var(--dim);
+  }
+  .hk-bar .warn-fs { color: var(--yellow); font-weight: 800; }
+  .mini-bar {
+    padding: 5px 8px; font-size: 11.5px; font-weight: 800; color: var(--text);
+    display: flex; justify-content: space-between; align-items: center; gap: 8px;
+  }
   body.minimized .win, body.minimized .sec, body.minimized .demo, body.minimized .foot, body.minimized .hk-bar { display: none !important; }
   body.minimized { min-height: 0; }
-  body.focus-mode .lanes-sec, body.focus-mode .brief-sec, body.focus-mode .demo, body.focus-mode .foot,
+  body.focus-mode .lanes-sec, body.focus-mode .brief-box, body.focus-mode .demo, body.focus-mode .foot,
   body.focus-mode .mrow, body.focus-mode .strat.sub, body.focus-mode .tip { display: none !important; }
   body.focus-mode { min-height: 0; }
 
-  /* 판세 히어로 바 (한눈에 보는 승률 + 핵심 수치) */
-  .win { background: linear-gradient(135deg, rgba(20, 27, 45, .92), rgba(13, 18, 30, .88));
-         border: 1px solid var(--line); border-radius: 10px; padding: 7px 9px;
-         display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; align-items: center; }
-  .win .t { grid-column: 1 / -1; color: var(--sub); font-size: 9.5px; display: flex; justify-content: space-between; gap: 6px; }
-  .win .t b { color: var(--text); font-weight: 800; letter-spacing: -.2px; }
-  .prob { font-size: 28px; font-weight: 900; line-height: .95; letter-spacing: -1px; }
-  .tac { justify-self: start; padding: 2px 8px; border-radius: 999px; font-weight: 800; border: 1px solid; font-size: 10px; }
-  .tac.ahead { color: var(--green); border-color: rgba(52, 211, 153, .45); background: rgba(52, 211, 153, .12); }
-  .tac.even { color: var(--yellow); border-color: rgba(251, 191, 36, .45); background: rgba(251, 191, 36, .12); }
-  .tac.behind { color: var(--red); border-color: rgba(251, 113, 133, .45); background: rgba(251, 113, 133, .12); }
-  .chips { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 4px; }
-  .chip { font-size: 9.5px; font-weight: 700; padding: 2px 6px; border-radius: 6px;
-          background: rgba(255, 255, 255, .04); border: 1px solid var(--line); color: var(--sub); }
-  .chip.pos { color: var(--green); border-color: rgba(52, 211, 153, .3); background: rgba(52, 211, 153, .08); }
-  .chip.neg { color: var(--red); border-color: rgba(251, 113, 133, .3); background: rgba(251, 113, 133, .08); }
-  .stale-msg { grid-column: 1 / -1; color: var(--yellow); font-size: 9.5px; }
+  /* ── 위젯 1: AI 판세 스카우터 & 티어별 실시간 오더 ── */
+  .win {
+    padding: 5px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    background: linear-gradient(160deg, rgba(20, 25, 40, var(--card-alpha)), rgba(13, 17, 27, var(--card-alpha)));
+  }
+  .win-top { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+  .win-left { display: flex; align-items: center; gap: 7px; min-width: 0; }
+  .prob { font-size: 24px; font-weight: 900; line-height: 1; letter-spacing: -.8px; color: var(--text); }
+  .win-titles { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+  .win-titles b { font-size: 11px; font-weight: 800; color: var(--sub); }
+  .tac {
+    display: inline-block; padding: 1px 7px; border-radius: 999px; font-weight: 800; border: 1px solid;
+    font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .tac.ahead { color: var(--green); border-color: rgba(52, 211, 153, .5); background: rgba(52, 211, 153, .14); }
+  .tac.even { color: var(--yellow); border-color: rgba(250, 204, 21, .5); background: rgba(250, 204, 21, .14); }
+  .tac.behind { color: var(--red); border-color: rgba(251, 113, 133, .5); background: rgba(251, 113, 133, .14); }
+  .win-right { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; flex: none; }
+  .phase-tag { font-size: 10.5px; font-weight: 700; color: var(--sub); }
+  .chips { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 3px; }
+  .chip {
+    font-size: 10.5px; font-weight: 800; padding: 1px 6px; border-radius: 5px;
+    background: rgba(255, 255, 255, .07); border: 1px solid var(--line); color: var(--sub);
+  }
+  .chip.pos { color: var(--green); border-color: rgba(52, 211, 153, .4); background: rgba(52, 211, 153, .12); }
+  .chip.neg { color: var(--red); border-color: rgba(251, 113, 133, .4); background: rgba(251, 113, 133, .12); }
 
-  .sec { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 6px 8px; }
-  .sec h2 { margin: 0 0 5px; font-size: 9.5px; color: var(--sub); font-weight: 800; letter-spacing: .2px;
-            display: flex; justify-content: space-between; gap: 6px; align-items: center; }
-  .sec h2 small { color: var(--dim); font-weight: 600; font-size: 9px; }
+  /* 승률 게이지 바 */
+  .prob-track {
+    height: 4px; width: 100%; border-radius: 99px; background: rgba(232, 64, 87, .35);
+    overflow: hidden; position: relative;
+  }
+  .prob-fill {
+    height: 100%; width: 50%; border-radius: 99px;
+    background: linear-gradient(90deg, #3b82f6, #38e8ff);
+    transition: width .25s ease;
+  }
+  .stale-msg { color: var(--yellow); font-size: 11px; font-weight: 700; }
 
-  /* OP.GG 스타일 초상화 전 라인 골드 스트립 */
-  .lanes { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; }
-  .lane { background: rgba(255, 255, 255, .03); border: 1px solid var(--line); border-radius: 8px; padding: 4px 2px 3px;
-          text-align: center; display: flex; flex-direction: column; align-items: center; gap: 2px; }
-  .lane.ahead { border-color: rgba(52, 211, 153, .45); background: rgba(52, 211, 153, .06); }
-  .lane.even { border-color: rgba(255, 255, 255, .1); }
-  .lane.behind { border-color: rgba(251, 113, 133, .45); background: rgba(251, 113, 133, .06); }
-  .lane.unconfirmed { opacity: .62; }
-  .lane .ln { font-size: 8.5px; color: var(--dim); font-weight: 800; line-height: 1; }
-  .lane .ava { width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--line2); background: #161d2e;
-               overflow: hidden; display: grid; place-items: center; font-size: 8px; font-weight: 800; color: var(--sub); }
-  .lane .ava img { width: 100%; height: 100%; display: block; object-fit: cover; }
-  .lane .ch { font-size: 9px; font-weight: 700; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .lane .gd { font-size: 9px; font-weight: 800; line-height: 1; }
-  .lane.ahead .gd { color: var(--green); }
-  .lane.even .gd { color: var(--sub); }
-  .lane.behind .gd { color: var(--red); }
-
-  /* 한눈에 읽히는 전략 콜 (1순위 배너 + 2·3순위 1줄 칩) */
+  /* OP.GG 증강체/티어표 스타일 우선순위 전략 슬롯 */
   .strat-list { display: flex; flex-direction: column; gap: 4px; }
-  .strat { background: rgba(255, 255, 255, .035); border: 1px solid var(--line); border-left: 3px solid var(--accent);
-           border-radius: 8px; padding: 5px 8px; }
-  .strat.urgent { border-left-color: var(--red); background: rgba(251, 113, 133, .07); }
-  .strat.gold { border-left-color: var(--gold); background: rgba(245, 196, 81, .07); }
-  .strat.macro { border-left-color: var(--green); background: rgba(52, 211, 153, .07); }
-  .strat.sub { padding: 4px 7px; cursor: pointer; }
+  .strat {
+    background: var(--card-inner); border: 1px solid var(--line);
+    border-radius: 7px; padding: 4px 7px; cursor: pointer;
+  }
+  .strat.urgent { border-color: rgba(251, 113, 133, .4); background: rgba(251, 113, 133, .1); }
+  .strat.gold { border-color: rgba(251, 191, 36, .4); background: rgba(251, 191, 36, .09); }
+  .strat.macro { border-color: rgba(52, 211, 153, .4); background: rgba(52, 211, 153, .09); }
+  .strat-head { display: flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 800; color: var(--text); }
+  .tier-badge {
+    display: inline-grid; place-items: center; padding: 1px 5px; border-radius: 4px;
+    font-size: 10px; font-weight: 900; flex: none; text-shadow: none; letter-spacing: -.2px;
+  }
+  .tier-s { background: linear-gradient(135deg, #f59e0b, #fbbf24); color: #111827; }
+  .tier-a { background: linear-gradient(135deg, #6366f1, #8b5cf6); color: #ffffff; }
+  .strat.urgent .tier-s { background: linear-gradient(135deg, #e11d48, #fb7185); color: #ffffff; }
+  .strat-tag {
+    font-size: 10.5px; font-weight: 800; padding: 1px 5px; border-radius: 4px;
+    background: rgba(255, 255, 255, .09); color: var(--sub); flex: none;
+  }
+  .strat-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .strat-detail {
+    margin: 2px 0 0; font-size: 11px; color: var(--sub); line-height: 1.3;
+    display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden;
+  }
   .strat.sub .strat-detail { display: none; }
-  .strat.sub.open .strat-detail { display: block; }
-  .strat-head { display: flex; align-items: center; gap: 5px; font-size: 10.5px; font-weight: 800; color: var(--text); }
-  .strat.sub .strat-head { font-size: 10px; font-weight: 700; }
-  .strat-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .strat.main .strat-title { white-space: normal; }
-  .strat-tag { font-size: 8.5px; font-weight: 800; padding: 1px 5px; border-radius: 5px;
-               background: rgba(124, 110, 255, .2); color: #cfc9ff; flex: none; }
-  .strat.urgent .strat-tag { background: rgba(251, 113, 133, .2); color: var(--red); }
-  .strat.gold .strat-tag { background: rgba(245, 196, 81, .2); color: var(--gold); }
-  .strat.macro .strat-tag { background: rgba(52, 211, 153, .2); color: var(--green); }
-  .strat-detail { margin: 2px 0 0; font-size: 9.5px; color: var(--sub); line-height: 1.35; overflow-wrap: anywhere; }
+  .strat.open .strat-detail { display: block; -webkit-line-clamp: unset; }
 
-  /* OP.GG 스타일 컴팩트 빌드 [아이콘]▶[아이콘]▶[아이콘] + 스킬 인라인 */
-  .gold-bar { font-size: 10px; color: var(--gold); margin-bottom: 5px; font-weight: 800; overflow-wrap: anywhere; }
-  .icon { width: 22px; height: 22px; border-radius: 5px; border: 1px solid var(--line2); background: #161d2e;
-          display: grid; place-items: center; font-size: 8px; color: var(--sub); overflow: hidden; flex: none; }
-  .icon img { width: 100%; height: 100%; display: block; }
-  .mrow { display: flex; align-items: center; gap: 3px; flex-wrap: wrap; margin-bottom: 5px; }
-  .mrow .lab { color: var(--dim); font-size: 9px; font-weight: 700; margin: 0 2px 0 5px; }
+  /* OP.GG 'AI 에이전트 자막' 스타일 감독 브리핑 바 */
+  .brief-box {
+    display: flex; flex-direction: column; gap: 2px;
+    background: rgba(124, 110, 255, .11); border: 1px solid rgba(124, 110, 255, .3);
+    border-radius: 7px; padding: 3px 7px 4px;
+  }
+  .brief-badge {
+    display: flex; align-items: center; justify-content: space-between; gap: 4px;
+    font-size: 10px; font-weight: 900; color: #ddd6fe;
+  }
+  .brief-src {
+    font-size: 9.5px; font-weight: 800; padding: 0 4px; border-radius: 4px;
+    background: rgba(255, 255, 255, .1); color: var(--sub);
+  }
+  .brief-src.llm { background: rgba(52, 211, 153, .22); color: var(--green); }
+  .brief-text {
+    margin: 0; font-size: 10.5px; font-weight: 700; color: #f1f5f9; line-height: 1.26;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+
+  /* ── 공통 위젯 헤더 ── */
+  .sec { padding: 5px 8px; }
+  .sec-head {
+    margin: 0 0 3px; font-size: 11.5px; color: var(--text); font-weight: 900;
+    display: flex; justify-content: space-between; gap: 6px; align-items: center;
+  }
+  .sec-title { display: flex; align-items: center; gap: 5px; }
+  .sec-ico {
+    width: 15px; height: 15px; border-radius: 4px; display: inline-grid; place-items: center;
+    background: rgba(251, 191, 36, .18); color: var(--gold); font-size: 10px; font-weight: 900; text-shadow: none;
+  }
+  .sec-head small { color: var(--sub); font-weight: 700; font-size: 10.5px; }
+
+  /* ── 위젯 2: OP.GG '아이템 골드 비교' & 10인 라인 스카우터 ── */
+  .tug-hdr {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 11px; font-weight: 800; margin-bottom: 3px;
+  }
+  .tug-blue { color: #7aa2f7; }
+  .tug-red { color: #f7768e; }
+  .tug-mid { font-size: 11.5px; font-weight: 900; }
+  .tug-mid.blue-lead { color: #7aa2f7; }
+  .tug-mid.red-lead { color: #f7768e; }
+  .tug-mid.even-lead { color: var(--gold); }
+  .tug-bar {
+    height: 3.5px; width: 100%; border-radius: 99px; background: var(--red-team);
+    overflow: hidden; margin-bottom: 4px;
+  }
+  .tug-fill { height: 100%; width: 50%; background: var(--blue); transition: width .25s ease; }
+
+  .lanes { display: flex; flex-direction: column; gap: 2.5px; }
+  .scouter-row {
+    display: grid; grid-template-columns: 1fr 42px 1fr; align-items: center; gap: 4px;
+    height: 20px; padding: 0 4px; border-radius: 5px;
+    background: rgba(255, 255, 255, .035); border: 1px solid rgba(255, 255, 255, .06);
+  }
+  .scouter-row.me-row {
+    border-color: rgba(251, 191, 36, .45);
+    background: linear-gradient(90deg, rgba(251, 191, 36, .12), rgba(255, 255, 255, .04));
+  }
+  .sc-side {
+    display: flex; align-items: center; gap: 4px; min-width: 0; position: relative;
+    height: 16px; padding: 0 2px; border-radius: 4px; overflow: hidden;
+  }
+  .sc-side.right { justify-content: flex-end; }
+  .sc-bar {
+    position: absolute; top: 0; bottom: 0; opacity: .22; pointer-events: none; border-radius: 3px;
+  }
+  .sc-side.left .sc-bar { left: 0; background: var(--blue); }
+  .sc-side.right .sc-bar { right: 0; background: var(--red-team); }
+  .ava {
+    width: 18px; height: 18px; border-radius: 4px; border: 1px solid var(--line2); background: #161d2e;
+    overflow: hidden; display: grid; place-items: center; font-size: 9.5px; font-weight: 800; color: var(--sub);
+    flex: none; position: relative; z-index: 1;
+  }
+  .ava.me-ava { border-color: var(--gold); box-shadow: 0 0 4px rgba(251, 191, 36, .6); }
+  .ava img { width: 100%; height: 100%; display: block; object-fit: cover; }
+  .sc-name {
+    font-size: 11px; font-weight: 700; color: var(--text); white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis; position: relative; z-index: 1;
+  }
+  .sc-gold {
+    font-size: 11px; font-weight: 800; color: #e2e8f0; flex: none;
+    margin-left: auto; position: relative; z-index: 1;
+  }
+  .sc-side.right .sc-gold { margin-left: 0; margin-right: auto; }
+  .sc-empty { font-size: 10.5px; color: rgba(255, 255, 255, .22); font-weight: 700; padding: 0 4px; }
+  .sc-dead {
+    font-size: 9.5px; font-weight: 900; padding: 0 3px; border-radius: 3px;
+    background: rgba(232, 64, 87, .35); color: #fecdd3; flex: none; position: relative; z-index: 1;
+  }
+  .sc-mid {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    line-height: 1; flex: none;
+  }
+  .sc-pos { font-size: 9.5px; font-weight: 800; color: var(--dim); }
+  .sc-diff { font-size: 10px; font-weight: 900; }
+  .sc-diff.ahead { color: var(--green); }
+  .sc-diff.behind { color: var(--red); }
+  .sc-diff.even { color: var(--sub); }
+
+  /* ── 위젯 3: OP.GG 추천 아이템 빌드 슬롯 & 스킬 마스터 도크 ── */
+  .build-top {
+    display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 5px;
+  }
+  .gold-bar {
+    flex: 1; min-width: 0; font-size: 11px; color: var(--gold); font-weight: 800;
+    background: rgba(251, 191, 36, .11); border: 1px solid rgba(251, 191, 36, .32);
+    border-radius: 6px; padding: 3px 7px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .mrow { display: flex; align-items: center; gap: 3px; flex: none; }
+  .mrow .lab { color: var(--sub); font-size: 10.5px; font-weight: 800; margin: 0 1px 0 4px; }
   .mrow .lab:first-child { margin-left: 0; }
-  .mrow .icon { position: relative; overflow: visible; }
-  .mrow .icon img { border-radius: 4px; }
-  .mrow .icon.owned { opacity: .4; }
-  .mrow .icon .ck { position: absolute; right: -4px; bottom: -4px; width: 12px; height: 12px; border-radius: 50%; background: var(--green);
-                    color: #06140d; font-size: 8px; font-weight: 900; display: grid; place-items: center; }
+  .icon {
+    width: 24px; height: 24px; border-radius: 5px; border: 1px solid var(--line2); background: #161d2e;
+    display: grid; place-items: center; font-size: 10px; font-weight: 800; color: var(--sub);
+    overflow: hidden; flex: none; position: relative;
+  }
+  .icon img { width: 100%; height: 100%; display: block; border-radius: 4px; }
+  .mrow .icon { overflow: visible; }
+  .mrow .icon.owned { opacity: .45; }
+  .mrow .icon .ck {
+    position: absolute; right: -3px; bottom: -3px; width: 11px; height: 11px; border-radius: 50%; background: var(--green);
+    color: #04130c; font-size: 8.5px; font-weight: 900; display: grid; place-items: center; text-shadow: none;
+  }
+  .mrow .icon .tier-tag {
+    position: absolute; top: -4px; left: -3px; padding: 0 3px; border-radius: 3px;
+    background: #8b5cf6; color: #fff; font-size: 8.5px; font-weight: 900; line-height: 1.2; text-shadow: none;
+  }
 
-  .buy { display: flex; align-items: center; gap: 4px; margin-top: 4px; }
-  .buy .arr { color: var(--dim); font-weight: 900; font-size: 9px; flex: none; }
-  .card { position: relative; flex: 1; min-width: 0; background: rgba(255, 255, 255, .035); border: 1.5px solid var(--line);
-          border-radius: 9px; padding: 7px 3px 4px; text-align: center; }
-  .card .icon { width: 28px; height: 28px; margin: 0 auto 2px; border-radius: 6px; }
-  .card .nm { font-size: 9.5px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .card .gd { color: var(--gold); font-size: 9px; font-weight: 700; }
-  .card .badge { position: absolute; top: -7px; left: 50%; transform: translateX(-50%); white-space: nowrap; font-size: 8px; font-weight: 900;
-                 padding: 1px 5px; border-radius: 999px; }
-  .card.owned .badge { background: #143628; color: var(--green); }
-  .card.now-buy .badge { background: var(--gold); color: #191202; }
-  .card.owned { opacity: .42; }
+  /* 3코어 추천 아이템 가로 슬롯 체인 ([아이콘+이름] ▶ [아이콘+이름] ▶ [아이콘+이름]) */
+  .buy { display: flex; align-items: center; gap: 3px; }
+  .buy .arr { color: var(--sub); font-weight: 900; font-size: 9.5px; flex: none; }
+  .card {
+    position: relative; flex: 1; min-width: 0;
+    display: flex; align-items: center; gap: 4px;
+    background: var(--card-inner); border: 1.5px solid var(--line);
+    border-radius: 7px; padding: 4px 4px 3px; text-align: left;
+  }
+  .card .icon { width: 25px; height: 25px; border-radius: 5px; flex: none; }
+  .card-info { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 1px; }
+  .card .nm { font-size: 10.5px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); letter-spacing: -.2px; }
+  .card .gd { color: var(--gold); font-size: 10px; font-weight: 800; line-height: 1; }
+  .card .badge {
+    position: absolute; top: -7px; right: 4px; white-space: nowrap;
+    font-size: 9.5px; font-weight: 900; padding: 0 5px; border-radius: 999px; text-shadow: none;
+  }
+  .card.owned .badge { background: #143628; color: var(--green); border: 1px solid rgba(52, 211, 153, .45); }
+  .card.now-buy .badge { background: var(--gold); color: #171102; }
+  .card.owned { opacity: .48; }
 
-  .now-buy { border-color: var(--gold); box-shadow: 0 0 8px rgba(245, 196, 81, .45);
-             animation: pulseGold 1.3s ease-in-out infinite; }
-  .now-skill { border-color: var(--cyan) !important; box-shadow: 0 0 8px rgba(56, 232, 255, .5);
-               animation: pulseCyan 1.3s ease-in-out infinite; }
-  @keyframes pulseGold { 50% { box-shadow: 0 0 2px var(--gold), 0 0 4px rgba(245, 196, 81, .2); } }
+  .now-buy {
+    border-color: var(--gold); box-shadow: 0 0 8px rgba(251, 191, 36, .45);
+    animation: pulseGold 1.3s ease-in-out infinite;
+  }
+  .now-skill {
+    border-color: var(--cyan) !important; box-shadow: 0 0 8px rgba(56, 232, 255, .55);
+    animation: pulseCyan 1.3s ease-in-out infinite;
+  }
+  @keyframes pulseGold { 50% { box-shadow: 0 0 2px var(--gold), 0 0 4px rgba(251, 191, 36, .2); } }
   @keyframes pulseCyan { 50% { box-shadow: 0 0 2px var(--cyan), 0 0 4px rgba(56, 232, 255, .2); } }
   body.fx-off .now-buy { animation: none; box-shadow: none; border-color: var(--line); }
   body.fx-off .now-skill { animation: none; box-shadow: none; border-color: var(--line) !important; }
   @media (prefers-reduced-motion: reduce) { .now-buy, .now-skill { animation: none; } }
 
-  .skill-strip { margin-top: 6px; padding-top: 5px; border-top: 1px solid var(--line); }
-  .skills-inline { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
-  .key { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 6px; font: 900 11px/1 ui-monospace, Menlo, Consolas, monospace;
-         color: #061218; background: linear-gradient(#b5f5ff, var(--cyan)); border: 1.5px solid #d9fbff; }
-  .key.off { color: var(--sub); background: rgba(255, 255, 255, .06); border-color: var(--line2); }
-  .order-keys { display: flex; align-items: center; gap: 3px; color: var(--dim); font-size: 9px; flex: none; }
-  .tip { color: var(--sub); font-size: 9.5px; margin: 3px 0 0; overflow-wrap: anywhere; }
+  /* 스킬 추천 바 */
+  .skill-strip {
+    margin-top: 5px; padding-top: 4px; border-top: 1px solid var(--line);
+    display: flex; align-items: center; justify-content: space-between; gap: 6px;
+  }
+  .skill-left { display: flex; align-items: center; gap: 5px; min-width: 0; flex: 1; }
+  .skill-title { font-size: 11px; font-weight: 900; color: var(--text); flex: none; }
+  .skill-lv { color: var(--sub); font-size: 10.5px; font-weight: 800; flex: none; }
+  .skill-when { color: var(--cyan); font-size: 11px; font-weight: 900; flex: none; }
+  .tip {
+    color: var(--sub); font-size: 10.5px; font-weight: 600; margin: 0;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
+  }
+  .key {
+    display: inline-grid; place-items: center; width: 21px; height: 21px; border-radius: 5px;
+    font: 900 11.5px/1 ui-monospace, Menlo, Consolas, monospace;
+    color: #04131a; background: linear-gradient(#c4f7ff, var(--cyan)); border: 1.5px solid #e0fcff; text-shadow: none;
+  }
+  .key.off { color: var(--sub); background: rgba(255, 255, 255, .07); border-color: var(--line2); text-shadow: none; }
+  .order-keys { display: flex; align-items: center; gap: 3px; color: var(--sub); font-size: 10px; font-weight: 800; flex: none; }
 
-  .brief-sec { border-left: 3px solid var(--accent); }
-  .brief-text { margin: 0; font-size: 10px; line-height: 1.42; color: #e8eef9; overflow-wrap: anywhere; }
-  .brief-src { font-size: 9px; font-weight: 800; padding: 1px 5px; border-radius: 5px; background: rgba(255, 255, 255, .06); color: var(--sub); }
-  .brief-src.llm { background: rgba(52, 211, 153, .16); color: var(--green); }
-
-  .demo { margin-top: auto; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
-  .demo button { padding: 4px 2px; border-radius: 7px; border: 1px solid var(--line); background: var(--card); font-size: 10px; font-weight: 700; white-space: nowrap; }
-  .demo button[aria-pressed="true"] { border-color: var(--accent); background: rgba(124, 110, 255, .18); color: #e1ddff; }
-  .foot { color: var(--dim); font-size: 9px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* 하단 데모 전환 바 */
+  .demo { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
+  .demo button {
+    padding: 4px 3px; border-radius: 7px; border: 1px solid var(--line); background: var(--card);
+    font-size: 11px; font-weight: 800; white-space: nowrap; box-shadow: 0 4px 10px rgba(0, 0, 0, .45);
+  }
+  .demo button[aria-pressed="true"] { border-color: var(--accent); background: rgba(124, 110, 255, .28); color: #efeaff; }
+  .foot { color: var(--dim); font-size: 10px; font-weight: 700; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   [hidden] { display: none !important; }
 </style>
 </head>
 <body>
-  <div class="top" id="dragBar" title="상단 바를 드래그해 HUD 위치를 옮길 수 있습니다">
-    <span class="grip" aria-hidden="true">⋮⋮</span>
-    <button type="button" class="live" id="live" title="브리지에 연결되어 있으면 눌러서 LIVE 로 돌아갑니다">
-      <span id="liveText">🟡 게임 중 시뮬레이션 (00:00)</span>
-    </button>
-    <button type="button" class="ctrl" id="focusBtn" aria-pressed="false" title="집중 모드: 핵심 1순위 전략·빌드·스킬만 간략히 표시">집중</button>
-    <button type="button" class="fx" id="fx" aria-pressed="true">이펙트 ON</button>
-    <button type="button" class="ctrl" id="opac" title="창 투명도 조절">92%</button>
-    <button type="button" class="ctrl" id="minBtn" aria-expanded="true" title="창 최소화(접기/펼치기)">−</button>
-    <button type="button" class="ctrl" id="closeBtn" title="오버레이 및 백그라운드 브리지 종료">×</button>
-  </div>
-  <div class="hk-bar">
-    <span id="hkHint">F8 클릭통과 · F9 숨김</span>
-    <span id="fsWarn" class="warn-fs" hidden>전체 화면(FSO) · 가려지면 테두리 없음 권장</span>
-  </div>
-  <div class="mini-bar" id="miniBar" hidden><span id="miniSummary">대기 중</span><span style="color:var(--dim);font-size:10px">최소화됨</span></div>
-
-  <section class="win" aria-live="polite" aria-label="실시간 게임 중 승률">
-    <div class="t"><b>실시간 게임 중 승률</b><span id="phaseNote">실시간 종합 판세</span></div>
-    <div class="prob num" id="prob">--%</div>
-    <span class="tac even" id="tac">분석 중</span>
-    <div class="chips" id="factors"></div>
-    <div class="stale-msg" id="staleMsg" hidden></div>
-  </section>
-
-  <section class="sec" aria-label="실시간 맞춤 전략">
-    <h2>실시간 맞춤 전략 <small id="carryNote"></small></h2>
-    <div class="strat-list" id="strats"></div>
-  </section>
-
-  <section class="sec lanes-sec" aria-label="전 라인 상황">
-    <h2>전 라인 골드 비교 <small id="compNote"></small></h2>
-    <div class="lanes" id="lanes"></div>
-  </section>
-
-  <section class="sec" aria-label="아이템 및 스킬">
-    <h2>빌드 · 스킬 <small id="champ">카드를 누르면 보유 표시</small></h2>
-    <div class="gold-bar" id="recallBar">보유 골드 확인 중</div>
-    <div class="mrow"><span class="lab">시작</span><span class="mrow" id="starter"></span><span class="lab">상황별</span><span class="mrow" id="situ"></span></div>
-    <div class="buy" id="buy"></div>
-    <div class="skill-strip">
-      <div class="skills-inline">
-        <div style="font-size:10px;color:var(--sub);font-weight:700;">스킬 레벨업 <small id="lv" style="color:var(--dim);font-weight:600"></small> <small id="nextWhen" style="color:var(--cyan);font-weight:800"></small></div>
-        <div class="order-keys" id="keys"></div>
+  <!-- 위젯 0: 상단 OP.GG 스타일 컨트롤 도크 -->
+  <div class="hud-card top-card">
+    <div class="top" id="dragBar" title="상단 바를 드래그해 HUD 위치를 옮길 수 있습니다">
+      <button type="button" class="brand-pill" id="drawerBtn" aria-expanded="false" title="OP.GG 스타일 개별 위젯 표시 설정 열기/닫기">AI ▾</button>
+      <span class="grip" aria-hidden="true">⋮⋮</span>
+      <button type="button" class="live" id="live" title="브리지에 연결되어 있으면 눌러서 LIVE 로 돌아갑니다">
+        <span id="liveText">🟡 게임 중 시뮬레이션 (00:00)</span>
+      </button>
+      <button type="button" class="ctrl" id="focusBtn" aria-pressed="false" title="집중 모드: 핵심 전략·빌드·스킬만 간략히 표시">집중</button>
+      <button type="button" class="fx" id="fx" aria-pressed="true">이펙트 ON</button>
+      <button type="button" class="ctrl" id="opac" title="배경 투명도 조절">94%</button>
+      <button type="button" class="ctrl" id="minBtn" aria-expanded="true" title="창 최소화(접기/펼치기)">−</button>
+      <button type="button" class="ctrl" id="closeBtn" title="오버레이 및 백그라운드 브리지 종료">×</button>
+    </div>
+    <div class="opgg-drawer" id="widgetDrawer" hidden aria-label="위젯 표시 설정">
+      <div class="sw-grid">
+        <button type="button" class="sw-row" data-toggle-cls="hide-order" aria-pressed="true"><span>AI 에이전트 오더</span><span class="sw-pill"></span></button>
+        <button type="button" class="sw-row" data-toggle-cls="hide-sub" aria-pressed="true"><span>AI 에이전트 자막</span><span class="sw-pill"></span></button>
+        <button type="button" class="sw-row" data-toggle-cls="hide-gold" aria-pressed="true"><span>아이템 골드 비교</span><span class="sw-pill"></span></button>
+        <button type="button" class="sw-row" data-toggle-cls="hide-build" aria-pressed="true"><span>추천 아이템 빌드</span><span class="sw-pill"></span></button>
+        <button type="button" class="sw-row" data-toggle-cls="hide-skill" aria-pressed="true"><span>스킬 추천</span><span class="sw-pill"></span></button>
       </div>
-      <p class="tip" id="focus"></p>
+    </div>
+    <div class="hk-bar">
+      <span id="hkHint">F8 클릭통과 · F9 숨김</span>
+      <span id="fsWarn" class="warn-fs" hidden>전체 화면 · 가려지면 테두리 없음 권장</span>
+      <span id="carryNote"></span>
+    </div>
+    <div class="mini-bar" id="miniBar" hidden><span id="miniSummary">대기 중</span><span style="color:var(--sub);font-size:10.5px">최소화됨</span></div>
+  </div>
+
+  <!-- 위젯 1: 실시간 AI 판세 스카우터 & 티어별 맞춤 오더 -->
+  <section class="hud-card win" aria-live="polite" aria-label="실시간 게임 중 승률">
+    <div class="win-top">
+      <div class="win-left">
+        <div class="prob num" id="prob">--%</div>
+        <div class="win-titles">
+          <b>실시간 게임 중 승률</b>
+          <span class="tac even" id="tac">분석 중</span>
+        </div>
+      </div>
+      <div class="win-right">
+        <span class="phase-tag num" id="phaseNote">실시간 종합 판세</span>
+        <div class="chips" id="factors"></div>
+      </div>
+    </div>
+    <div class="prob-track" aria-hidden="true"><div class="prob-fill" id="probBar"></div></div>
+    <div class="stale-msg" id="staleMsg" hidden></div>
+    <div class="strat-list" id="strats" aria-label="실시간 맞춤 전략"></div>
+    <div class="brief-box" aria-label="AI 감독 브리핑">
+      <span class="brief-badge">AI 감독 브리핑 <span class="brief-src" id="briefSrc">대기 중</span></span>
+      <p class="brief-text" id="briefText">실시간 전장 데이터를 분석해 전략 브리핑을 생성합니다</p>
     </div>
   </section>
 
-  <section class="sec brief-sec" aria-label="AI 감독 브리핑" aria-live="polite">
-    <h2>AI 감독 브리핑 <span class="brief-src" id="briefSrc">대기 중</span></h2>
-    <p class="brief-text" id="briefText">실시간 전장 데이터를 분석해 전략 브리핑을 생성합니다</p>
+  <!-- 위젯 2: OP.GG 스타일 아이템 골드 비교 & 10인 라인 스카우터 -->
+  <section class="hud-card sec lanes-sec" aria-label="전 라인 상황">
+    <div class="sec-head">
+      <span class="sec-title"><span class="sec-ico">G</span><span>아이템 골드 비교</span></span>
+      <small id="compNote"></small>
+    </div>
+    <div class="tug-hdr num">
+      <span class="tug-blue" id="blueGoldTxt">아군 0G</span>
+      <span class="tug-mid even-lead" id="diffGoldTxt">0G</span>
+      <span class="tug-red" id="redGoldTxt">상대 0G</span>
+    </div>
+    <div class="tug-bar" aria-hidden="true"><div class="tug-fill" id="tugFill"></div></div>
+    <div class="lanes" id="lanes"></div>
+  </section>
+
+  <!-- 위젯 3: OP.GG 스타일 추천 아이템 빌드 슬롯 & 스킬 추천 -->
+  <section class="hud-card sec" aria-label="아이템 및 스킬">
+    <div class="sec-head">
+      <span class="sec-title"><span class="sec-ico">★</span><span>추천 아이템 빌드 · 스킬 추천</span></span>
+      <small id="champ">카드를 누르면 보유 표시</small>
+    </div>
+    <div class="build-top">
+      <div class="gold-bar" id="recallBar">보유 골드 확인 중</div>
+      <div class="mrow">
+        <span class="lab">시작</span><span class="mrow" id="starter"></span>
+        <span class="lab">상황</span><span class="mrow" id="situ"></span>
+      </div>
+    </div>
+    <div class="buy" id="buy"></div>
+    <div class="skill-strip">
+      <div class="skill-left">
+        <span class="skill-title">스킬</span>
+        <span class="skill-lv" id="lv"></span>
+        <span class="skill-when" id="nextWhen"></span>
+        <p class="tip" id="focus"></p>
+      </div>
+      <div class="order-keys" id="keys"></div>
+    </div>
   </section>
 
   <div class="demo" id="demoBar" role="group" aria-label="데모 시나리오">
@@ -234,7 +505,7 @@
     <button type="button" data-demo="even" aria-pressed="false">중반 박빙 14:20</button>
     <button type="button" data-demo="behind" aria-pressed="false">후반 열세 23:10</button>
   </div>
-  <div class="foot" id="foot">실시간 전장 전략 엔진</div>
+  <div class="foot" id="foot" hidden>실시간 전장 전략 엔진</div>
 
 <script>
 "use strict";
@@ -359,14 +630,15 @@ document.addEventListener("error", (e) => {
   if (img instanceof HTMLImageElement && img.dataset.fb != null) { const p = img.parentElement; p.textContent = img.dataset.fb; }
 }, true);
 
-function miniRow(target, items, owned) {
-  target.replaceChildren(...items.map((it) => {
+function miniRow(target, items, owned, withTier) {
+  target.replaceChildren(...items.slice(0, 3).map((it, idx) => {
     const own = owned.has(it.item_id);
     const m = icon(it);
     if (own) m.classList.add("owned");
     m.title = `${it.name} ${it.gold}G · ${it.why}${own ? " · ✓ 보유 완료" : ""}`;
     m.setAttribute("aria-label", m.title);
     if (own) m.append(el("span", "ck", "✓"));
+    else if (withTier && idx === 0) m.append(el("span", "tier-tag", "S"));
     return m;
   }));
 }
@@ -378,6 +650,116 @@ function stratTone(cat) {
   return "";
 }
 
+function makeAvatar(p, isMe) {
+  const ava = el("div", "ava" + (isMe ? " me-ava" : ""));
+  const cid = p && p.champion_id;
+  const name = (p && p.champion) || "-";
+  if (ddVersion && cid && /^[A-Za-z0-9_]+$/.test(cid)) {
+    const img = document.createElement("img");
+    img.src = `https://ddragon.leagueoflegends.com/cdn/${ddVersion}/img/champion/${cid}.png`;
+    img.alt = name;
+    img.onerror = () => { img.remove(); ava.textContent = name.slice(0, 2); };
+    ava.append(img);
+  } else {
+    ava.textContent = name.slice(0, 2);
+  }
+  return ava;
+}
+
+const POS_SHORT = { TOP: "TOP", JUNGLE: "JGL", MIDDLE: "MID", BOTTOM: "ADC", UTILITY: "SUP" };
+
+function renderLanes(s) {
+  const allLanes = s.lanes || [];
+  const boxEl = $("lanes");
+  let allySum = 0, enemySum = 0, maxGold = 500;
+  for (const ln of allLanes) {
+    const ag = (ln.ally && ln.ally.item_gold) || 0;
+    const eg = (ln.enemy && ln.enemy.item_gold) || 0;
+    allySum += ag;
+    enemySum += eg;
+    if (ag > maxGold) maxGold = ag;
+    if (eg > maxGold) maxGold = eg;
+  }
+
+  $("blueGoldTxt").textContent = `블루팀 ${allySum.toLocaleString()}G`;
+  $("redGoldTxt").textContent = `레드팀 ${enemySum.toLocaleString()}G`;
+  const rawDiff = allySum - enemySum;
+  const diffEl = $("diffGoldTxt");
+  if (rawDiff > 50) {
+    diffEl.textContent = `◀ +${rawDiff.toLocaleString()}G`;
+    diffEl.className = "tug-mid blue-lead";
+  } else if (rawDiff < -50) {
+    diffEl.textContent = `+${Math.abs(rawDiff).toLocaleString()}G ▶`;
+    diffEl.className = "tug-mid red-lead";
+  } else {
+    diffEl.textContent = "박빙 0G";
+    diffEl.className = "tug-mid even-lead";
+  }
+  const totalG = allySum + enemySum;
+  const bluePct = totalG > 0 ? Math.max(12, Math.min(88, Math.round((allySum / totalG) * 100))) : 50;
+  $("tugFill").style.width = `${bluePct}%`;
+
+  const rows = allLanes.map((ln) => {
+    const a = ln.ally || {};
+    const e = ln.enemy || {};
+    const aValid = a.champion && a.champion !== "미확인";
+    const eValid = e.champion && e.champion !== "미확인";
+    const row = el("div", "scouter-row" + (ln.is_me ? " me-row" : ""));
+    row.title = `${ln.lane_ko}: ${a.champion || "-"}(${a.kda || "-"}, CS ${a.cs || 0}) vs ${e.champion || "-"}(${e.kda || "-"}, CS ${e.cs || 0})`;
+
+    // 좌측 (블루/아군)
+    const left = el("div", "sc-side left");
+    if (aValid) {
+      const aGold = a.item_gold || 0;
+      const bar = el("div", "sc-bar");
+      bar.style.width = `${Math.min(100, Math.round((aGold / maxGold) * 100))}%`;
+      left.append(bar, makeAvatar(a, ln.is_me), el("span", "sc-name", a.champion));
+      if (a.is_dead && a.respawn_timer > 0) left.append(el("span", "sc-dead num", `${Math.round(a.respawn_timer)}s`));
+      left.append(el("span", "sc-gold num", `${aGold.toLocaleString()}G`));
+    } else {
+      left.append(el("span", "sc-empty", "—"));
+    }
+
+    // 중앙 (라인·골드 격차)
+    const mid = el("div", "sc-mid");
+    const posTag = POS_SHORT[ln.position] || (ln.lane_ko === "매치업 미확인" ? "VS" : ln.lane_ko);
+    mid.append(el("span", "sc-pos", posTag));
+    if (aValid && eValid) {
+      const gd = (a.item_gold || 0) - (e.item_gold || 0);
+      const dTxt = gd === 0 ? "0" : `${gd > 0 ? "+" : ""}${Math.abs(gd) >= 1000 ? (Math.round(gd / 100) / 10) + "k" : gd}`;
+      mid.append(el("span", `sc-diff num ${ln.status}`, dTxt));
+    }
+
+    // 우측 (레드/상대)
+    const right = el("div", "sc-side right");
+    if (eValid) {
+      const eGold = e.item_gold || 0;
+      const bar = el("div", "sc-bar");
+      bar.style.width = `${Math.min(100, Math.round((eGold / maxGold) * 100))}%`;
+      right.append(bar, el("span", "sc-gold num", `${eGold.toLocaleString()}G`));
+      if (e.is_dead && e.respawn_timer > 0) right.append(el("span", "sc-dead num", `${Math.round(e.respawn_timer)}s`));
+      right.append(el("span", "sc-name", e.champion), makeAvatar(e, false));
+    } else {
+      right.append(el("span", "sc-empty", "—"));
+    }
+
+    row.append(left, mid, right);
+    return row;
+  });
+  boxEl.replaceChildren(...rows);
+}
+
+function compactRecallMessage(msg) {
+  if (!msg) return "카드를 누르면 보유 표시";
+  const m1 = msg.match(/보유\s*([0-9,]+G).*?\[([^\]]+)\].*?([0-9,]+G)$/);
+  if (m1) return `${m1[1]} 보유 · ${m1[2]} -${m1[3]}`;
+  const m2 = msg.match(/([0-9,]+G)\s*보유.*?\[([^\]]+)\]\s*즉시 구매/);
+  if (m2) return `${m2[1]} 보유 · ${m2[2]} 즉시 구매!`;
+  return msg
+    .replace(" · 다음 목표 ", " → ")
+    .replace(/\(남은 비용 [0-9,]+G\)/g, "");
+}
+
 function render() {
   if (!view || !view.strategy) return;
   const s = view.strategy, b = s.build_advice;
@@ -386,7 +768,9 @@ function render() {
   const stale = live && view.stale;
   $("liveText").textContent = `${live ? (stale ? "🟠 LIVE · 서버 재연결 중" : "🟢 게임 중 LIVE") : "🟡 게임 중 시뮬레이션"} (${mmss(view.t)})`;
 
-  $("prob").textContent = `${Math.round(s.win_prob * 100)}%`;
+  const wp = Math.round(s.win_prob * 100);
+  $("prob").textContent = `${wp}%`;
+  $("probBar").style.width = `${Math.max(8, Math.min(92, wp))}%`;
   $("tac").className = `tac ${s.state}`;
   $("tac").textContent = s.tactical_badge || s.state_ko;
   $("phaseNote").textContent = `${s.phase_label} · ${mmss(view.t)} · 생존 ${s.alive.ally}v${s.alive.enemy}`;
@@ -394,65 +778,41 @@ function render() {
   const chips = [];
   const gDiff = s.team_gold_diff || 0;
   chips.push(el("span", "chip num " + (gDiff > 300 ? "pos" : gDiff < -300 ? "neg" : ""), `골드 ${gDiff >= 0 ? "+" : ""}${gDiff.toLocaleString()}G`));
-  for (const f of (s.key_factors || []).slice(0, 3)) {
+  for (const f of (s.key_factors || []).slice(0, 2)) {
     if (!f.startsWith("팀 골드")) chips.push(el("span", "chip num", f));
   }
-  $("factors").replaceChildren(...chips.slice(0, 4));
+  $("factors").replaceChildren(...chips.slice(0, 2));
 
   $("staleMsg").hidden = !stale;
   $("staleMsg").textContent = stale ? "서버 연결이 끊겨 마지막 계산 값을 보여요" : "";
 
-  // 전 라인 골드 비교 (OP.GG 스타일 챔피언 초상화 + 골드 격차)
+  // OP.GG 스타일 아이템 골드 비교 & 10인 라인 스카우터
   $("compNote").textContent = (s.enemy_comp && s.enemy_comp.profile_label) ? `상대: ${s.enemy_comp.profile_label}` : "";
-  const laneNodes = (s.lanes || []).map((ln) => {
-    const unconf = ln.lane_ko === "매치업 미확인" || (ln.ally && ln.ally.champion === "미확인");
-    const box = el("div", `lane ${ln.status}` + (unconf ? " unconfirmed" : ""));
-    const g = ln.gold_diff || 0;
-    box.title = `${ln.lane_ko}: ${ln.ally.champion}(${ln.ally.kda}, CS ${ln.ally.cs}) vs ${ln.enemy.champion}(${ln.enemy.kda}, CS ${ln.enemy.cs})`;
-    const ava = el("div", "ava");
-    const cid = ln.ally && ln.ally.champion_id;
-    if (ddVersion && cid && /^[A-Za-z0-9_]+$/.test(cid)) {
-      const img = document.createElement("img");
-      img.src = `https://ddragon.leagueoflegends.com/cdn/${ddVersion}/img/champion/${cid}.png`;
-      img.alt = ln.ally.champion || "";
-      img.onerror = () => { img.remove(); ava.textContent = (ln.ally.champion || "-").slice(0, 2); };
-      ava.append(img);
-    } else {
-      ava.textContent = (ln.ally.champion || "-").slice(0, 2);
-    }
-    box.append(
-      el("div", "ln", ln.lane_ko === "매치업 미확인" ? "라인" : ln.lane_ko),
-      ava,
-      el("div", "ch", ln.ally.champion || "-"),
-      el("div", "gd num", `${g >= 0 ? "+" : ""}${Math.round(g / 100) / 10}k`),
-    );
-    return box;
-  });
-  $("lanes").replaceChildren(...laneNodes);
+  renderLanes(s);
 
-  // 실시간 맞춤 전략 (1순위 핵심 배너 + 2·3순위 1줄 컴팩트 칩, 클릭 시 상세 펼침)
+  // OP.GG 티어표 스타일 실시간 맞춤 전략 (S·1순위 + A·2순위 슬롯)
   $("carryNote").textContent = s.ally_carry ? `캐리: ${s.ally_carry}` : "";
-  const stratNodes = (s.strategies || []).slice(0, 3).map((st, idx) => {
+  const stratNodes = (s.strategies || []).slice(0, 2).map((st, idx) => {
     const cls = "strat " + stratTone(st.category) + (idx === 0 ? " main" : " sub");
     const card = el("div", cls);
     const head = el("div", "strat-head");
-    head.append(el("span", "strat-tag", st.category), el("span", "strat-title", st.title));
+    const tier = el("span", "tier-badge " + (idx === 0 ? "tier-s" : "tier-a"), idx === 0 ? "S·1순위" : "A·2순위");
+    head.append(tier, el("span", "strat-tag", st.category), el("span", "strat-title", st.title));
     card.append(head, el("p", "strat-detail", st.detail));
-    if (idx > 0) {
-      card.title = "클릭해 상세 설명 보기";
-      card.addEventListener("click", () => card.classList.toggle("open"));
-    }
+    card.title = `${st.title}\n${st.detail}`;
+    card.addEventListener("click", () => card.classList.toggle("open"));
     return card;
   });
   $("strats").replaceChildren(...stratNodes);
   $("demoBar").hidden = live;
 
-  // 아이템 & 보유 골드 연동
+  // 추천 아이템 빌드 슬롯 & 보유 골드 연동
   const rec = s.recall_advice || {};
-  $("recallBar").textContent = rec.message || "카드를 누르면 보유 표시";
+  $("recallBar").textContent = compactRecallMessage(rec.message);
+  $("recallBar").title = rec.message || "";
   $("champ").textContent = [b.my_champion, b.enemy_top_threat && `vs ${b.enemy_top_threat}`].filter(Boolean).join(" ") || "카드를 누르면 보유 표시";
-  miniRow($("starter"), b.starter_items || [], view.owned);
-  miniRow($("situ"), b.situational_items || [], view.owned);
+  miniRow($("starter"), b.starter_items || [], view.owned, false);
+  miniRow($("situ"), b.situational_items || [], view.owned, true);
 
   const items = b.recommended_items || [];
   const nextBuy = items.find((it) => !view.owned.has(it.item_id));
@@ -463,11 +823,13 @@ function render() {
     card.setAttribute("aria-pressed", String(own));
     card.title = `${it.name} ${it.gold}G · ${it.why}`;
     if (own || now) card.append(el("span", "badge", own ? "✓ 보유 완료" : "지금 구매 추천"));
-    card.append(icon(it), el("div", "nm", it.name), el("div", "gd num", `${it.gold}G`));
+    const info = el("div", "card-info");
+    info.append(el("div", "nm", it.name), el("div", "gd num", `${it.gold}G`));
+    card.append(icon(it), info);
     return idx ? [el("span", "arr", "▶"), card] : [card];
   }));
 
-  // 스킬 레벨업
+  // 스킬 추천 바
   const order = b.skill_order.order;
   $("lv").textContent = view.level ? `Lv ${view.level}` : "";
   $("nextWhen").textContent = view.next ? `[${view.next}] ${view.when === "next_level" ? "다음" : "지금"}` : "";
@@ -478,6 +840,7 @@ function render() {
     return i ? [el("span", null, "▶"), cap] : [cap];
   }));
   $("focus").textContent = b.tactical_tip || b.skill_order.focus;
+  $("focus").title = b.tactical_tip || b.skill_order.focus || "";
 
   // Windows HUD 상태 표시
   const hw = view.hudWindow;
@@ -494,6 +857,7 @@ function render() {
   $("foot").textContent = `모델 ${s.model_version || "-"} · 실시간 종합 전략(전 라인·골드·아이템·오브젝트)`;
   requestBriefing(s, view.ctx);
   document.querySelectorAll("[data-demo]").forEach((btn) => btn.setAttribute("aria-pressed", String(view.mode === "demo" && btn.dataset.demo === view.demo)));
+  syncCardRegions();
 }
 
 // ── AI 감독 전략 브리핑 (H5·M7·M8: category 키 + 최소 20초 간격 + 모드 변경 시 폐기 + '동적 전략'/'브리핑 없음') ──
@@ -519,6 +883,7 @@ async function requestBriefing(s, ctx) {
     if (!view || view.mode !== reqMode || (reqMode === "demo" && view.demo !== reqDemo)) return;
     const llm = r.source === "llm";
     $("briefText").textContent = r.briefing;
+    $("briefText").title = r.briefing || "";
     $("briefSrc").textContent = llm ? `LLM · ${r.llm_model}` : "동적 전략";
     $("briefSrc").className = llm ? "brief-src llm" : "brief-src";
   } catch (_) {
@@ -552,14 +917,36 @@ let fxSaved = null;
 try { fxSaved = localStorage.getItem("lolpace.overlay.fx"); } catch (_) {}
 setFx(fxSaved !== "off");
 
-// ── Win32 인게임 팝업 제어 (M6: X-Bridge-Token + JSON 헤더) ──
+// ── Win32·macOS Swift·Electron 인게임 팝업 제어 (M6: X-Bridge-Token 이 있을 때만 HTTP 전송해 단독 열람 시 403 방지) ──
 function controlHeaders() {
   const h = { "Content-Type": "application/json" };
   if (BRIDGE_TOKEN) h["X-Bridge-Token"] = BRIDGE_TOKEN;
   return h;
 }
 function sendWindowCmd(cmd) {
+  try {
+    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.macHud) {
+      window.webkit.messageHandlers.macHud.postMessage(cmd);
+    }
+  } catch (_) {}
+  if (/Electron/i.test(navigator.userAgent)) {
+    console.debug("__HUD_CMD__:" + JSON.stringify(cmd));
+  }
+  if (!BRIDGE_TOKEN) return;
   fetch(WINDOW_URL, { method: "POST", headers: controlHeaders(), body: JSON.stringify(cmd) }).catch(() => {});
+}
+
+// Electron 투명 오버레이에서 카드 밖 빈 영역은 클릭을 게임으로 통과시킨다
+if (/Electron/i.test(navigator.userAgent)) {
+  let passThrough = false;
+  window.addEventListener("mousemove", (e) => {
+    const onWidget = !!e.target.closest(".hud-card, .demo, button");
+    const wantPass = !onWidget;
+    if (wantPass !== passThrough) {
+      passThrough = wantPass;
+      console.debug(passThrough ? "__HUD_PASSTHROUGH__:1" : "__HUD_PASSTHROUGH__:0");
+    }
+  });
 }
 
 let dragStart = null;
@@ -669,17 +1056,17 @@ $("live").addEventListener("click", () => {
   if (bridgeAlive && lastLive) applyLive(lastLive);
 });
 
-// ── 투명도 (M7: 초기 로드 시 저장된 투명도를 OS 창에 동기화) & 최소화 & 종료 ──
-const OPAC_STEPS = [0.92, 0.78, 0.62];
+// ── 투명도 (글자 대비는 100%로 유지하고 카드 배경 알파와 OS 창 알파만 연동) & 최소화 & 종료 ──
+const OPAC_STEPS = [0.94, 0.82, 0.68];
 let opacIdx = 0;
 try {
-  const savedOp = Number(localStorage.getItem("lol_hud_opac") || "0.92");
+  const savedOp = Number(localStorage.getItem("lol_hud_opac") || "0.94");
   const idx = OPAC_STEPS.indexOf(savedOp);
   if (idx >= 0) opacIdx = idx;
 } catch (_) {}
 function applyOpac(pushNative) {
-  const val = OPAC_STEPS[opacIdx] || 0.92;
-  document.body.style.opacity = String(Math.max(0.82, val));
+  const val = OPAC_STEPS[opacIdx] || 0.94;
+  document.documentElement.style.setProperty("--card-alpha", String(val));
   $("opac").textContent = `${Math.round(val * 100)}%`;
   if (pushNative) sendWindowCmd({ opacity: val });
 }
@@ -690,13 +1077,47 @@ $("opac").addEventListener("click", () => {
   try { localStorage.setItem("lol_hud_opac", String(OPAC_STEPS[opacIdx])); } catch (_) {}
 });
 
+let lastRectsSig = "";
+function syncCardRegions() {
+  const rects = [];
+  for (const card of document.querySelectorAll(".hud-card, .demo button")) {
+    if (card.hidden || card.offsetParent === null) continue;
+    const r = card.getBoundingClientRect();
+    if (r.width > 0 && r.height > 0) {
+      rects.push([Math.max(0, Math.floor(r.left)), Math.max(0, Math.floor(r.top)), Math.ceil(r.width), Math.ceil(r.height)]);
+    }
+  }
+  const sig = JSON.stringify(rects);
+  if (rects.length && sig !== lastRectsSig) {
+    lastRectsSig = sig;
+    sendWindowCmd({ rects });
+  }
+}
+
 function setFocusMode(on) {
   document.body.classList.toggle("focus-mode", on);
   $("focusBtn").setAttribute("aria-pressed", String(on));
   try { localStorage.setItem("lol_hud_focus", on ? "1" : "0"); } catch (_) {}
+  syncCardRegions();
 }
 try { setFocusMode(localStorage.getItem("lol_hud_focus") === "1"); } catch (_) {}
 $("focusBtn").addEventListener("click", () => setFocusMode(!document.body.classList.contains("focus-mode")));
+
+// ── OP.GG 스타일 개별 위젯 토글 서랍 ──
+$("drawerBtn").addEventListener("click", () => {
+  const d = $("widgetDrawer");
+  d.hidden = !d.hidden;
+  $("drawerBtn").setAttribute("aria-expanded", String(!d.hidden));
+  syncCardRegions();
+});
+document.querySelectorAll("[data-toggle-cls]").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const cls = btn.dataset.toggleCls;
+    const hiddenNow = document.body.classList.toggle(cls);
+    btn.setAttribute("aria-pressed", String(!hiddenNow));
+    syncCardRegions();
+  });
+});
 
 function setMinimized(on) {
   document.body.classList.toggle("minimized", on);
@@ -708,12 +1129,18 @@ function setMinimized(on) {
     const sk = $("nextWhen").textContent || "-";
     $("miniSummary").textContent = `판세 ${p} · ${sk}`;
   }
+  syncCardRegions();
 }
 $("minBtn").addEventListener("click", () => setMinimized(!document.body.classList.contains("minimized")));
 $("closeBtn").addEventListener("click", () => {
-  fetch(SHUTDOWN_URL, { method: "POST", headers: controlHeaders(), body: "{}" }).catch(() => {}).finally(() => {
+  sendWindowCmd({ close: true });
+  if (BRIDGE_TOKEN) {
+    fetch(SHUTDOWN_URL, { method: "POST", headers: controlHeaders(), body: "{}" }).catch(() => {}).finally(() => {
+      try { window.close(); } catch (_) {}
+    });
+  } else {
     try { window.close(); } catch (_) {}
-  });
+  }
 });
 
 (async () => {

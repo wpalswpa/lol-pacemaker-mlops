@@ -1,21 +1,21 @@
 # LoL 페이스메이커 (페이커)
 
-> **연습모드·리플레이·봇전에서 점수판(Tab) 공개 정보만으로 10인 전 라인·보유 골드·아이템·오브젝트·생존 타이머를 종합해 실시간 맞춤 전략·빌드·스킬을 프레임 없는 인게임 팝업 HUD로 안내하는 AI LoL 코치 & MLOps 파이프라인 (`v1.20`)**
+> **연습모드·리플레이·봇전에서 점수판(Tab) 공개 정보만으로 10인 전 라인·보유 골드·아이템·오브젝트·생존 타이머를 종합해 실시간 맞춤 전략·빌드·스킬을 프레임 없는 인게임 팝업 HUD로 안내하는 AI LoL 코치 & MLOps 파이프라인 (`v1.22`)**
 
 ---
 
 ## 1. 바로 접속 및 원클릭 실행
 
-| 용도 | 경로 | 설명 |
+| 용도 | 주소 | 설명 |
 |---|---|---|
-| **데스크톱 원클릭 다운로드** | **`https://<내 도메인>/download`** (로컬: `http://127.0.0.1:8083/download`) | Windows(`.bat`) · macOS(`.zip`) 내려받아 더블클릭 실행 |
-| **웹 시뮬레이터 · 전적 DB** | **`https://<내 도메인>/`** | 설치 없이 브라우저에서 코칭 체험 및 PostgreSQL 전적 저장 |
-| **인게임 HUD 미리보기** | **`https://<내 도메인>/overlay`** | 프레임 없는 반투명 HUD · 전 라인·실시간 전략·아이템·스킬·AI 브리핑 |
-| **5분 발표 웹 슬라이드** | **`https://<내 도메인>/slides`** | 7장 웹 프레젠테이션 (`→`·스페이스로 이동) |
-| **서버·모델 상태 확인** | **`https://<내 도메인>/health`** | 코드 판(`app_version`) · 모델 판(`model_version`) 조회 |
+| **데스크톱 원클릭 다운로드** | **`https://jjm.eta.pyhub.kr/download`** (로컬: `http://127.0.0.1:8083/download`) | Windows(`.bat`) · macOS(`.zip`) 내려받아 더블클릭 실행 |
+| **웹 시뮬레이터 · 전적 DB** | **`https://jjm.eta.pyhub.kr/`** | 설치 없이 브라우저에서 코칭 체험 및 PostgreSQL 전적 저장 |
+| **인게임 HUD 미리보기** | **`https://jjm.eta.pyhub.kr/overlay`** | 프레임 없는 반투명 HUD · 전 라인·실시간 전략·아이템·스킬·AI 브리핑 |
+| **5분 발표 웹 슬라이드** | **`https://jjm.eta.pyhub.kr/slides`** | 7장 웹 프레젠테이션 (`→`·스페이스로 이동) |
+| **서버·모델 상태 확인** | **`https://jjm.eta.pyhub.kr/health`** | 코드 판(`app_version`) · 모델 판(`model_version`) 조회 |
 
 ### PC 인게임 오버레이 10초 실행 (터미널 창 없음)
-1. 배포 서버 또는 로컬 서버의 **`/download`** 페이지에서 OS에 맞는 파일 다운로드
+1. **`https://jjm.eta.pyhub.kr/download`** (또는 로컬 `http://127.0.0.1:8083/download`)에서 OS에 맞는 파일 다운로드
 2. 더블클릭 실행 (Windows는 `pythonw` 무터미널 백그라운드 실행, 끌 때는 HUD 우측 상단 `×` 버튼)
 3. Windows 10/11 전체 화면 최적화(FSO) 환경에서는 전체 화면에서도 표시를 시도하며, 가려지면 롤 설정을 **`테두리 없음(Borderless)`**으로 전환 (`F8` 클릭 통과 · `F9` 숨김)
 4. 로컬 Ollama(`qwen3:4b-instruct-2507-q4_K_M`)와 함께 쓰려면 저장소의 [`scripts/run_local_ollama.bat`](scripts/run_local_ollama.bat) 실행
@@ -51,7 +51,7 @@
 
 | 항목 | 실측 수치 | 근거 |
 |---|---|---|
-| **자동 테스트** | **410 passed** (`uv sync --all-groups` 시 skipped 0) | `uv run pytest api client tests -q -rs` |
+| **자동 테스트** | **432 passed** (`uv sync --all-groups` 시 skipped 0) | `uv run pytest api client tests deploy -q -rs` |
 | **성능 게이트 (`m1` → `m2`)** | `m1`(500경기) Brier 0.1891 → `m2`(5,000경기) **0.1824** (규칙 대비 +4.84%) | [docs/model_comparison.md](docs/model_comparison.md) |
 | **ONNX 일치 (Parity)** | 원본 sklearn vs ONNX 23건 최대 오차 `1.19e-07` (허용 `0.0001`) | `training/check_parity.py` |
 | **서빙 부하 (로컬 / 실서버)** | 로컬 ONNX `/predict` p95 **0.73ms**, 실서버 160건 동시 10건 **성공률 100%** | [docs/benchmark_summary.json](docs/benchmark_summary.json), [docs/benchmark_cloud_summary.json](docs/benchmark_cloud_summary.json) |
@@ -72,7 +72,7 @@ MODEL_IMPL=onnx uv run uvicorn api.app:app --port 8083
 ### 저장소 구조 & 읽는 순서
 
 - **`api/`**: FastAPI 서버 (`app.py`, `contract.py`, `db.py`, `build.py`, `service.py`, `strategy.py`, `llm_coach.py`, `static/{index,overlay,download,slides}.html`)
-- **`client/`**: 로컬 게임 브리지·Win32 팝업 제어 (`bridge.py`), macOS 플로팅 패널 (`overlay_popup.swift`), OpenAPI 에이전트 데모 (`agent_demo.py`)
+- **`client/`**: 로컬 게임 브리지·Win32 팝업 제어 (`bridge.py`), Electron 투명 오버레이 셸 (`overlay_electron.js`), macOS 투명 플로팅 패널 (`overlay_popup.swift`), OpenAPI 에이전트 데모 (`agent_demo.py`)
 - **`scripts/`**: 로컬 Ollama 원클릭 실행기 (`run_local_ollama.bat`), 부하 실측 (`benchmark_serving.py`)
 - **`training/`**: 데이터 로더, 규칙/sklearn/PyTorch 학습, 성능 게이트, ONNX 변환 및 Parity 검증
 - **`deploy/lightsail/`**: `compose.yml` (`api` + `postgres:16-alpine` + `caddy`), `server.sh`, `Caddyfile`
