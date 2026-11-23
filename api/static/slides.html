@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>LoL 페이스메이커 (페이커) 발표</title>
+<title>LoL 페이스메이커 발표</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='6' fill='%23d8b45a'/%3E%3C/svg%3E">
 <style>
   /* 5분 발표 슬라이드 (AGENTS.md 4절 GET /slides). 외부 글꼴·CDN·그림 없이 한 파일로 완결한다.
@@ -156,7 +156,7 @@
 <body>
 <header class="sitenav">
   <div class="sitenav-in">
-    <a class="brand" href="/"><span class="brand-badge">FAKER</span><span>Desktop</span></a>
+    <a class="brand" href="/"><span class="brand-badge">LoL</span><span>페이스메이커</span></a>
     <nav class="nav-links" aria-label="주 메뉴">
       <a href="/">서비스 소개</a>
       <a href="/#live">실시간 인게임</a>
@@ -172,7 +172,7 @@
   <section class="slide" aria-label="표지" data-title="표지">
     <div class="wrap">
       <div class="kicker">미니프로젝트 5 · MLOps</div>
-      <h1>LoL 페이스메이커 <span class="nick">(페이커)</span></h1>
+      <h1>LoL 페이스메이커</h1>
       <p class="lead">게임 내내 공개 점수판만 읽어 판세·전략·빌드를 띄우는 인게임 AI 코치와, 패치마다 모델만 바꿔 끼우는 MLOps</p>
       <div class="glow3" aria-label="화면 테두리 세 가지 색">
         <span class="g">우세 · 적극 교전 가능</span><span class="y">접전 · 파밍 집중</span><span class="r">열세 · 1대1 싸움 금지</span>
@@ -420,7 +420,7 @@ function show(i) {
   document.getElementById("bar").style.width = `${((cur + 1) / slides.length) * 100}%`;
   document.getElementById("count").textContent = `${cur + 1} / ${slides.length}`;
   document.getElementById("stitle").textContent = slides[cur].dataset.title;
-  document.title = `${cur + 1}. ${slides[cur].dataset.title} · LoL 페이스메이커 (페이커)`;
+  document.title = `${cur + 1}. ${slides[cur].dataset.title} · LoL 페이스메이커`;
   if (location.hash !== `#${cur + 1}`) history.replaceState(null, "", `#${cur + 1}`);
   slides[cur].scrollTop = 0;
   // 다른 장으로 가면 시연 영상을 멈춘다 (자동 재생은 하지 않는다)

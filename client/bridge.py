@@ -1,4 +1,4 @@
-"""로컬 게임 API → LoL 페이스메이커(페이커) API 브리지 (AGENTS.md 3-1·3-2절).
+"""로컬 게임 API → LoL 페이스메이커 API 브리지 (AGENTS.md 3-1·3-2절).
 
 쓰는 곳: 관전·리플레이·연습 모드. 랭크 게임 중에는 쓰지 않는다.
 읽는 것: Riot 공식 로컬 API https://127.0.0.1:2999/liveclientdata/allgamedata 의 점수판과 이벤트만.

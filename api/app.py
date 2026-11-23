@@ -1,4 +1,4 @@
-"""LoL 페이스메이커(페이커) 10분 코칭 API. 계약은 AGENTS.md 3·4절.
+"""LoL 페이스메이커 10분 코칭 API. 계약은 AGENTS.md 3·4절.
 
 MODEL_IMPL 로 구현체를 고르고(rule·sklearn·dl·onnx), MODEL_DIR 의 모델 판을 시작할 때 한 번 읽는다.
 모델 파일이 없거나 깨졌으면 여기서 예외가 나 프로세스가 뜨지 않는다 → /health 실패 → server.sh 가 이전 판으로.
