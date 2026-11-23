@@ -147,7 +147,6 @@
   .win-top { display: flex; align-items: center; justify-content: space-between; gap: 6px; flex-wrap: wrap; }
   .win-headline { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
   .prob { font-size: 22px; font-weight: 900; line-height: 1; letter-spacing: -.6px; color: var(--text); }
-  .sep-dot { color: var(--dim); font-weight: 900; }
   .tac {
     display: inline-block; padding: 2px 7px; border-radius: 999px; font-weight: 800; border: 1px solid;
     font-size: 11px;
@@ -207,7 +206,8 @@
     margin: 3px 0 0; font-size: 10.5px; color: var(--sub); line-height: 1.35;
     white-space: normal; word-break: keep-all; overflow-wrap: anywhere;
   }
-  .strat.sub:not(.open) .strat-detail { display: none; }
+  /* 설명 문단은 눌렀을 때만 펼친다(제목만으로 읽히게, 펼친 HUD 가 Chrome 창 높이 안에 들어가게) */
+  .strat:not(.open) .strat-detail { display: none; }
 
   /* AI 감독 브리핑 (source === "llm" 일 때만 표시) */
   .brief-box {
@@ -259,10 +259,10 @@
   }
   .tug-fill { height: 100%; width: 50%; background: var(--blue); transition: width .25s ease; }
 
-  .lanes { display: flex; flex-direction: column; gap: 3px; }
+  .lanes { display: flex; flex-direction: column; gap: 2px; }
   .scouter-row {
     display: grid; grid-template-columns: 30px minmax(0, 1fr) minmax(0, 1fr) 46px;
-    align-items: center; gap: 4px; padding: 2px 5px; border-radius: 5px;
+    align-items: center; gap: 4px; padding: 1px 5px; border-radius: 5px;
     background: rgba(255, 255, 255, .04); border: 1px solid rgba(255, 255, 255, .07);
   }
   .scouter-row.unpaired {
@@ -436,7 +436,6 @@
     <div class="win-top">
       <div class="win-headline">
         <span class="prob num" id="prob">--%</span>
-        <span class="sep-dot" aria-hidden="true">·</span>
         <span class="tac even" id="tac">분석 중</span>
       </div>
       <button type="button" class="exp-btn" id="expandBtn" aria-expanded="false">상세 ▾</button>
