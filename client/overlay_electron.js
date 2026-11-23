@@ -74,6 +74,13 @@ function createOverlayWindow() {
           const pos = win.getPosition();
           win.setPosition(pos[0] + Math.round(cmd.dx || 0), pos[1] + Math.round(cmd.dy || 0));
         }
+        if (typeof cmd.height === "number") {
+          const targetH = Math.max(120, Math.min(920, Math.round(cmd.height)));
+          const b = win.getBounds();
+          if (Math.abs(b.height - targetH) >= 2) {
+            win.setBounds({ x: b.x, y: b.y, width: b.width, height: targetH });
+          }
+        }
       } catch (_) {}
     }
   });

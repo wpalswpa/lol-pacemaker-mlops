@@ -1086,7 +1086,8 @@ def popup_command(url: str, system: str | None = None, which: Callable[[str], st
             return "swift", [binary, url, str(w), str(h)]
     electron = _find_electron(system, which, exists)
     if electron and exists(ELECTRON_SRC):
-        return "electron", [electron, ELECTRON_SRC, url, str(w), str(h)]
+        # Electron 45+ 는 스크립트 뒤 bare URL 인자에서 exit -1 로 종료하므로 "--" 구분자를 넣는다
+        return "electron", [electron, ELECTRON_SRC, "--", url, str(w), str(h)]
     chrome = _find_app_browser(system, which, exists)
     if chrome:
         args = [chrome, f"--app={url}", f"--window-size={w},{h}", "--window-position=24,220",
@@ -1260,10 +1261,22 @@ class Win32Windows:
 
     def apply_hud_popup(self, hwnd, *, alpha: int = 235, click_through: bool = False,
                         clip_caption_px: int = 0, card_rects: list | None = None) -> bool:
-        """C5: 첫 WS_EX_TOOLWINDOW 적용 시 SW_HIDE -> 스타일 변경 -> SW_SHOWNA 순서, 선택 다중 카드 리전/상단 자르기."""
+        """C5: 첫 WS_EX_TOOLWINDOW 적용 시 SW_HIDE -> 스타일 변경 -> SW_SHOWNA 순서, 선택 다중 카드 리전/상단 자르기.
+        Electron(transparent: true) 창은 DirectComposition 을 쓰므로 WS_EX_LAYERED·SetLayeredWindowAttributes·GWL_STYLE·SetWindowRgn 을 건드리지 않는다."""
         get, put = self._long_fns()
         if get is None or put is None:
             return False
+        is_electron = self.process_name(hwnd) == "electron.exe"
+        if is_electron:
+            cur_ex = int(get(hwnd, GWL_EXSTYLE))
+            want_ex = cur_ex | WS_EX_TOPMOST | WS_EX_NOACTIVATE
+            if click_through:
+                want_ex |= WS_EX_TRANSPARENT
+            else:
+                want_ex &= ~WS_EX_TRANSPARENT
+            if want_ex != cur_ex:
+                put(hwnd, GWL_EXSTYLE, want_ex)
+            return bool(self.u.SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, PIN_FLAGS))
         cur_style = int(get(hwnd, GWL_STYLE))
         new_style = (cur_style & ~FRAME_STYLE_MASK) | WS_POPUP
         cur_ex = int(get(hwnd, GWL_EXSTYLE))
@@ -1285,11 +1298,10 @@ class Win32Windows:
         self.set_alpha(hwnd, alpha)
         flags = PIN_FLAGS | (SWP_FRAMECHANGED if changed else 0)
         ok = bool(self.u.SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, flags))
-        if self.process_name(hwnd) != "electron.exe":
-            if card_rects:
-                self.apply_card_regions(hwnd, card_rects, clip_caption_px)
-            elif clip_caption_px > 0:
-                self.clip_top(hwnd, clip_caption_px)
+        if card_rects:
+            self.apply_card_regions(hwnd, card_rects, clip_caption_px)
+        elif clip_caption_px > 0:
+            self.clip_top(hwnd, clip_caption_px)
         if first_tool:
             self.set_visible(hwnd, True)
         return ok
@@ -1951,7 +1963,11 @@ def launch_popup(port: int, report: Callable[[dict], None] | None = None, repin_
             print(f"\n항상 위 고정 {update['status']}: {update['error']}", file=sys.stderr)
 
     if cmd:
-        proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        popen_kw: dict = {"stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL, "start_new_session": True}
+        if how == "electron":
+            # IDE·터미널이 물려준 ELECTRON_RUN_AS_NODE=1 이 있으면 require('electron') 이 실패한다
+            popen_kw["env"] = {k: v for k, v in os.environ.items() if k.upper() != "ELECTRON_RUN_AS_NODE"}
+        proc = subprocess.Popen(cmd, **popen_kw)
         if procs is not None:
             procs.append((how, proc))
         if how in ("chrome", "electron") and system == "Windows":

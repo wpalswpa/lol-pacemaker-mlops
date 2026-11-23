@@ -2011,6 +2011,7 @@ def test_electron_popup_dpi_clip_and_late_window_recovery():
         exists=lambda p: p.endswith(("overlay_electron.js", "electron.exe")),
     )
     assert how_el == "electron" and cmd_el[0].endswith("electron.exe") and cmd_el[1].endswith("overlay_electron.js")
+    assert cmd_el[2] == "--" and cmd_el[3] == url  # Electron 45+ bare URL 종료 방지 구분자
 
     # 2) 150% 고배율(144 DPI) 모니터에서는 clip_caption_px=32 가 48px 로 자동 보정되고, electron.exe 창은 자르지 않는다
     rgn_calls = []
@@ -2048,9 +2049,12 @@ def test_electron_popup_dpi_clip_and_late_window_recovery():
     assert ("rect", (0, 48, 380, 560)) in rgn_calls
 
     rgn_calls.clear()
-    win_el = Win32Windows(u32, HudCT, gdi32=FakeGdi32(), kernel32=FakeK32(r"C:\Electron\electron.exe"))
-    win_el.apply_hud_popup(2, clip_caption_px=32)
+    u32_el = DpiUser32({2: (PID, "LoL 페이스메이커", CHROME_CLASS, True)}, lol_rect=(0, 0, 380, 560))
+    win_el = Win32Windows(u32_el, HudCT, gdi32=FakeGdi32(), kernel32=FakeK32(r"C:\Electron\electron.exe"))
+    assert win_el.apply_hud_popup(2, alpha=230, clip_caption_px=32) is True
     assert rgn_calls == []  # Electron 은 자체 프레임리스·투명이라 상단 자르기 생략
+    assert 2 not in u32_el.alphas  # DirectComposition 투명 창에 SetLayeredWindowAttributes 를 부르면 화면이 투명화돼 사라진다
+    assert (u32_el.gwl[2][GWL_EXSTYLE] & WS_EX_LAYERED) == 0
 
     # 3) 첫 25번 시도(6.25초) 안에 창이 안 떴어도 repin_sec > 0 이면 포기하지 않고 다음 주기에 고정한다
     late_windows = {1: OTHER_CHROME}

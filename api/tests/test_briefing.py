@@ -196,3 +196,4 @@ def test_h5_h8_m6_m7_m8_overlay_html_contracts(client):
     assert '"브리핑 없음"' in t and '"동적 전략"' in t     # M8: AGENTS 문서와 실패/출처 문구 일치
     assert "<title>LoL 페이스메이커</title>" in t         # W6: 실존 선수명 대신 서비스 제목 사용
     assert "lol_window_mode_warning" in t                # W5: 동적 경고 플래그 연동
+    assert "openStratCats" in t and "lastBriefSource" in t  # 전략 카드 펼침 유지 + 비LLM 브리핑 실시간 숫자 동기화

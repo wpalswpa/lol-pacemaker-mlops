@@ -63,13 +63,13 @@
   }
 
   /* ── 위젯 0: 상단 OP.GG 스타일 컨트롤 도크 ── */
-  .top-card { padding: 4px 6px; display: flex; flex-direction: column; gap: 2px; }
-  .top { display: flex; align-items: center; gap: 3px; cursor: grab; }
+  .top-card { padding: 4px 5px; display: flex; flex-direction: column; gap: 2px; }
+  .top { display: flex; align-items: center; gap: 2px; cursor: grab; }
   .top:active { cursor: grabbing; }
   .brand-pill {
-    display: inline-grid; place-items: center; padding: 2px 6px; border-radius: 5px;
+    display: inline-grid; place-items: center; padding: 2px 5px; border-radius: 5px;
     background: linear-gradient(135deg, #6366f1, #8b5cf6); color: #fff; border: 1px solid rgba(255, 255, 255, .25);
-    font-size: 10px; font-weight: 900; letter-spacing: -.3px; flex: none; text-shadow: none;
+    font-size: 9.5px; font-weight: 900; letter-spacing: -.3px; flex: none; text-shadow: none;
   }
   .brand-pill:hover { filter: brightness(1.12); }
 
@@ -102,20 +102,20 @@
   body.hide-skill .skill-strip { display: none !important; }
   .grip { color: var(--sub); font-size: 11px; font-weight: 900; padding: 0 1px; letter-spacing: -1px; flex: none; }
   .live {
-    flex: 1; min-width: 0; display: flex; align-items: center; gap: 4px; padding: 3px 7px; border-radius: 6px;
-    background: rgba(255, 255, 255, .05); border: 1px solid var(--line); font-weight: 800; font-size: 11px;
+    flex: 1; min-width: 0; display: flex; align-items: center; gap: 3px; padding: 3px 5px; border-radius: 6px;
+    background: rgba(255, 255, 255, .05); border: 1px solid var(--line); font-weight: 800; font-size: 10px; letter-spacing: -.2px;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left;
   }
   .live.on { color: var(--green); border-color: rgba(52, 211, 153, .45); background: rgba(52, 211, 153, .11); }
   .live:not(.on) { color: var(--yellow); border-color: rgba(250, 204, 21, .35); }
   .fx {
-    padding: 3px 5px; border-radius: 6px; border: 1px solid rgba(251, 191, 36, .55); background: rgba(251, 191, 36, .16);
-    color: var(--gold); font-weight: 800; white-space: nowrap; font-size: 10.5px;
+    padding: 3px 4px; border-radius: 6px; border: 1px solid rgba(251, 191, 36, .55); background: rgba(251, 191, 36, .16);
+    color: var(--gold); font-weight: 800; white-space: nowrap; font-size: 9.5px;
   }
   .fx[aria-pressed="false"] { border-color: var(--line); background: rgba(255, 255, 255, .04); color: var(--dim); }
   .ctrl {
-    padding: 3px 5px; border-radius: 6px; border: 1px solid var(--line); background: rgba(255, 255, 255, .05);
-    color: var(--sub); font-weight: 800; white-space: nowrap; font-size: 10.5px;
+    padding: 3px 4px; border-radius: 6px; border: 1px solid var(--line); background: rgba(255, 255, 255, .05);
+    color: var(--sub); font-weight: 800; white-space: nowrap; font-size: 9.5px;
   }
   .ctrl:hover { border-color: var(--line2); color: var(--text); }
   .ctrl.active, .ctrl[aria-pressed="true"] {
@@ -790,17 +790,22 @@ function render() {
   $("compNote").textContent = (s.enemy_comp && s.enemy_comp.profile_label) ? `상대: ${s.enemy_comp.profile_label}` : "";
   renderLanes(s);
 
-  // OP.GG 티어표 스타일 실시간 맞춤 전략 (S·1순위 + A·2순위 슬롯)
+  // OP.GG 티어표 스타일 실시간 맞춤 전략 (S·1순위 + A·2순위 슬롯; 펼침 상태는 2초 폴링 뒤에도 유지)
   $("carryNote").textContent = s.ally_carry ? `캐리: ${s.ally_carry}` : "";
   const stratNodes = (s.strategies || []).slice(0, 2).map((st, idx) => {
-    const cls = "strat " + stratTone(st.category) + (idx === 0 ? " main" : " sub");
+    const cls = "strat " + stratTone(st.category) + (idx === 0 ? " main" : " sub") + (openStratCats.has(st.category) ? " open" : "");
     const card = el("div", cls);
     const head = el("div", "strat-head");
     const tier = el("span", "tier-badge " + (idx === 0 ? "tier-s" : "tier-a"), idx === 0 ? "S·1순위" : "A·2순위");
     head.append(tier, el("span", "strat-tag", st.category), el("span", "strat-title", st.title));
     card.append(head, el("p", "strat-detail", st.detail));
     card.title = `${st.title}\n${st.detail}`;
-    card.addEventListener("click", () => card.classList.toggle("open"));
+    card.addEventListener("click", () => {
+      const isOpen = card.classList.toggle("open");
+      if (isOpen) openStratCats.add(st.category);
+      else openStratCats.delete(st.category);
+      syncCardRegions();
+    });
     return card;
   });
   $("strats").replaceChildren(...stratNodes);
@@ -855,13 +860,20 @@ function render() {
   }
 
   $("foot").textContent = `모델 ${s.model_version || "-"} · 실시간 종합 전략(전 라인·골드·아이템·오브젝트)`;
+  if (lastBriefSource !== "llm" && s.summary_briefing) {
+    $("briefText").textContent = s.summary_briefing;
+    $("briefText").title = s.summary_briefing;
+    $("briefSrc").textContent = "동적 전략";
+    $("briefSrc").className = "brief-src";
+  }
   requestBriefing(s, view.ctx);
   document.querySelectorAll("[data-demo]").forEach((btn) => btn.setAttribute("aria-pressed", String(view.mode === "demo" && btn.dataset.demo === view.demo)));
   syncCardRegions();
 }
 
 // ── AI 감독 전략 브리핑 (H5·M7·M8: category 키 + 최소 20초 간격 + 모드 변경 시 폐기 + '동적 전략'/'브리핑 없음') ──
-let briefKey = null, briefBusy = false, lastBriefAt = 0;
+const openStratCats = new Set();
+let briefKey = null, briefBusy = false, lastBriefAt = 0, lastBriefSource = "dynamic_rule";
 function briefingKey(s) {
   const b = s.build_advice;
   const laneSig = (s.lanes || []).map((l) => `${l.position}:${l.status}`);
@@ -882,12 +894,14 @@ async function requestBriefing(s, ctx) {
     const r = await res.json();
     if (!view || view.mode !== reqMode || (reqMode === "demo" && view.demo !== reqDemo)) return;
     const llm = r.source === "llm";
+    lastBriefSource = llm ? "llm" : "dynamic_rule";
     $("briefText").textContent = r.briefing;
     $("briefText").title = r.briefing || "";
     $("briefSrc").textContent = llm ? `LLM · ${r.llm_model}` : "동적 전략";
     $("briefSrc").className = llm ? "brief-src llm" : "brief-src";
   } catch (_) {
     if (!view || view.mode !== reqMode || (reqMode === "demo" && view.demo !== reqDemo)) return;
+    lastBriefSource = "dynamic_rule";
     $("briefText").textContent = "브리핑 없음";
     $("briefSrc").textContent = "동적 전략";
     briefKey = null;
@@ -1087,10 +1101,11 @@ function syncCardRegions() {
       rects.push([Math.max(0, Math.floor(r.left)), Math.max(0, Math.floor(r.top)), Math.ceil(r.width), Math.ceil(r.height)]);
     }
   }
-  const sig = JSON.stringify(rects);
+  const height = Math.max(120, Math.ceil(document.body.scrollHeight) + 12);
+  const sig = JSON.stringify([rects, height]);
   if (rects.length && sig !== lastRectsSig) {
     lastRectsSig = sig;
-    sendWindowCmd({ rects });
+    sendWindowCmd({ rects, height });
   }
 }
 
