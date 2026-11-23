@@ -196,13 +196,201 @@ def _free_port() -> int:
         return s.getsockname()[1]
 
 
+def _find_chrome_binary() -> str | None:
+    for name in ("google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "chrome", "msedge"):
+        found = shutil.which(name)
+        if found:
+            return found
+    for path in (
+        r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+        r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+        r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    ):
+        if Path(path).exists():
+            return path
+    return None
+
+
+def _run_hud_check_via_cdp(api_port: int, bridge_port: int, check_js: str) -> dict:
+    """Playwright 미설치 환경(예: ubuntu-latest CI)에서 표준 라이브러리만으로 헤드리스 Chrome CDP 검사를 수행한다."""
+    import base64
+    import os
+    import struct
+    import tempfile
+    import urllib.request
+    from urllib.parse import urlparse
+
+    chrome = _find_chrome_binary()
+    assert chrome is not None, "Neither Playwright nor headless Chrome/Chromium binary is available"
+    cdp_port = _free_port()
+    user_dir = tempfile.mkdtemp(prefix="lol_cdp_")
+    proc = subprocess.Popen(
+        [
+            chrome,
+            "--headless=new",
+            "--no-sandbox",
+            "--disable-gpu",
+            "--disable-dev-shm-usage",
+            "--window-size=380,560",
+            f"--remote-debugging-port={cdp_port}",
+            f"--user-data-dir={user_dir}",
+            "about:blank",
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    try:
+        ws_url = None
+        for _ in range(60):
+            try:
+                with urllib.request.urlopen(f"http://127.0.0.1:{cdp_port}/json/list", timeout=1) as r:
+                    targets = json.loads(r.read().decode("utf-8"))
+                page_target = next((t for t in targets if t.get("type") == "page" and t.get("webSocketDebuggerUrl")), None)
+                if page_target:
+                    ws_url = page_target["webSocketDebuggerUrl"]
+                    break
+            except Exception:
+                time.sleep(0.15)
+        assert ws_url is not None, "Headless Chrome DevTools endpoint did not start"
+
+        parsed = urlparse(ws_url)
+        sock = socket.create_connection((parsed.hostname or "127.0.0.1", parsed.port or cdp_port), timeout=15)
+        try:
+            key = base64.b64encode(os.urandom(16)).decode("ascii")
+            req = (
+                f"GET {parsed.path} HTTP/1.1\r\n"
+                f"Host: {parsed.hostname}:{parsed.port}\r\n"
+                "Upgrade: websocket\r\n"
+                "Connection: Upgrade\r\n"
+                f"Sec-WebSocket-Key: {key}\r\n"
+                "Sec-WebSocket-Version: 13\r\n\r\n"
+            )
+            sock.sendall(req.encode("ascii"))
+            buf = b""
+            while b"\r\n\r\n" not in buf:
+                buf += sock.recv(4096)
+            extra = buf.split(b"\r\n\r\n", 1)[1]
+
+            def recv_exact(n: int) -> bytes:
+                nonlocal extra
+                while len(extra) < n:
+                    chunk = sock.recv(65536)
+                    if not chunk:
+                        raise EOFError("WebSocket closed")
+                    extra += chunk
+                out_b, extra = extra[:n], extra[n:]
+                return out_b
+
+            def ws_send(obj: dict) -> None:
+                payload = json.dumps(obj).encode("utf-8")
+                mask = os.urandom(4)
+                header = bytearray([0x81])
+                length = len(payload)
+                if length < 126:
+                    header.append(0x80 | length)
+                elif length < 65536:
+                    header.append(0x80 | 126)
+                    header.extend(struct.pack("!H", length))
+                else:
+                    header.append(0x80 | 127)
+                    header.extend(struct.pack("!Q", length))
+                header.extend(mask)
+                masked = bytes(b ^ mask[i % 4] for i, b in enumerate(payload))
+                sock.sendall(bytes(header) + masked)
+
+            def ws_recv() -> dict:
+                while True:
+                    b0, b1 = recv_exact(2)
+                    opcode = b0 & 0x0F
+                    length = b1 & 0x7F
+                    if length == 126:
+                        length = struct.unpack("!H", recv_exact(2))[0]
+                    elif length == 127:
+                        length = struct.unpack("!Q", recv_exact(8))[0]
+                    if b1 & 0x80:
+                        m = recv_exact(4)
+                        data = bytes(b ^ m[i % 4] for i, b in enumerate(recv_exact(length)))
+                    else:
+                        data = recv_exact(length)
+                    if opcode == 0x01:
+                        return json.loads(data.decode("utf-8"))
+
+            msg_id = [0]
+
+            def cdp(method: str, params: dict | None = None) -> dict:
+                msg_id[0] += 1
+                cid = msg_id[0]
+                ws_send({"id": cid, "method": method, "params": params or {}})
+                while True:
+                    msg = ws_recv()
+                    if msg.get("id") == cid:
+                        return msg.get("result") or {}
+
+            def eval_js(expr: str):
+                res = cdp("Runtime.evaluate", {"expression": expr, "returnByValue": True, "awaitPromise": True})
+                return (res.get("result") or {}).get("value")
+
+            def wait_ready() -> None:
+                for _ in range(80):
+                    p = eval_js("document.getElementById('prob') && document.getElementById('prob').textContent")
+                    if p and p != "--%":
+                        return
+                    time.sleep(0.1)
+                raise AssertionError("HUD did not finish rendering")
+
+            cdp("Page.enable")
+            cdp("Runtime.enable")
+            cdp("Emulation.setDeviceMetricsOverride", {"width": 380, "height": 560, "deviceScaleFactor": 1, "mobile": False})
+
+            out: dict = {}
+            url_live = f"http://127.0.0.1:{api_port}/overlay?bridge_url=http://127.0.0.1:{bridge_port}/bridge/state"
+            cdp("Page.navigate", {"url": url_live})
+            wait_ready()
+            time.sleep(0.3)
+            out["live_collapsed"] = eval_js(f"({check_js})()")
+
+            eval_js("document.getElementById('expandBtn').click()")
+            time.sleep(0.2)
+            out["live_expanded"] = eval_js(f"({check_js})()")
+
+            cdp("Page.reload")
+            wait_ready()
+            time.sleep(0.2)
+            out["live_reloaded_expanded"] = bool(eval_js("document.body.classList.contains('expanded')"))
+
+            eval_js("localStorage.removeItem('lol_hud_expanded')")
+            cdp("Page.navigate", {"url": f"http://127.0.0.1:{api_port}/overlay?bridge_url=http://127.0.0.1:9/bridge/state"})
+            wait_ready()
+            time.sleep(0.3)
+            for demo in ("ahead", "even", "behind"):
+                eval_js(f"document.querySelector(\"[data-demo='{demo}']\").click()")
+                time.sleep(0.35)
+                if eval_js("document.body.classList.contains('expanded')"):
+                    eval_js("document.getElementById('expandBtn').click()")
+                    time.sleep(0.15)
+                out[f"demo_{demo}_collapsed"] = eval_js(f"({check_js})()")
+                eval_js("document.getElementById('expandBtn').click()")
+                time.sleep(0.15)
+                out[f"demo_{demo}_expanded"] = eval_js(f"({check_js})()")
+            return out
+        finally:
+            sock.close()
+    finally:
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except Exception:
+            proc.kill()
+        shutil.rmtree(user_dir, ignore_errors=True)
+
+
 def test_playwright_hud_no_truncation_and_consistency_380x560(app_module):
     """380×560에서 데모 3개 + 1대5 고정 자료(접힘/펼침)의 모든 .hud-card 요소가 scrollWidth <= clientWidth."""
     import uvicorn
     from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
     pw_py = _find_playwright_python()
-    assert pw_py is not None, "Playwright Python interpreter is required for HUD layout verification"
 
     # 1) 실제 FastAPI 서버 임시 기동
     api_port = _free_port()
@@ -260,14 +448,7 @@ def test_playwright_hud_no_truncation_and_consistency_380x560(app_module):
         except Exception:
             time.sleep(0.1)
 
-    check_script = r"""
-import json, sys
-from playwright.sync_api import sync_playwright
-
-api_port = int(sys.argv[1])
-bridge_port = int(sys.argv[2])
-
-CHECK_JS = '''() => {
+    check_js = """() => {
   const bad = [];
   for (const card of document.querySelectorAll('.hud-card')) {
     if (card.hidden || card.offsetParent === null) continue;
@@ -296,18 +477,25 @@ CHECK_JS = '''() => {
     deathChipHidden: document.getElementById('deathChip') ? document.getElementById('deathChip').hidden : true,
     deathChipText: document.getElementById('deathChip') ? document.getElementById('deathChip').textContent : '',
   };
-}'''
+}"""
 
-out = {}
+    check_script = f"""
+import json, sys
+from playwright.sync_api import sync_playwright
+
+api_port = int(sys.argv[1])
+bridge_port = int(sys.argv[2])
+CHECK_JS = {check_js!r}
+
+out = {{}}
 with sync_playwright() as p:
     try:
         browser = p.chromium.launch(headless=True)
     except Exception:
         browser = p.chromium.launch(headless=True, channel="chrome")
-    page = browser.new_page(viewport={"width": 380, "height": 560})
+    page = browser.new_page(viewport={{"width": 380, "height": 560}})
 
-    # 1) 1대5 라이브 자료 (기본 접힘 -> 펼침 -> 리로드 기억 확인)
-    url_live = f"http://127.0.0.1:{api_port}/overlay?bridge_url=http://127.0.0.1:{bridge_port}/bridge/state"
+    url_live = f"http://127.0.0.1:{{api_port}}/overlay?bridge_url=http://127.0.0.1:{{bridge_port}}/bridge/state"
     page.goto(url_live, wait_until="networkidle")
     page.wait_for_function("document.getElementById('prob').textContent !== '--%'", timeout=8000)
     page.wait_for_timeout(300)
@@ -317,37 +505,38 @@ with sync_playwright() as p:
     page.wait_for_timeout(200)
     out["live_expanded"] = page.evaluate(CHECK_JS)
 
-    # localStorage 펼침 기억 확인
     page.reload(wait_until="networkidle")
     page.wait_for_function("document.getElementById('prob').textContent !== '--%'", timeout=8000)
     out["live_reloaded_expanded"] = page.evaluate("document.body.classList.contains('expanded')")
 
-    # 2) 데모 3개 (접힘/펼침)
     page.evaluate("localStorage.removeItem('lol_hud_expanded')")
-    page.goto(f"http://127.0.0.1:{api_port}/overlay?bridge_url=http://127.0.0.1:9/bridge/state", wait_until="networkidle")
+    page.goto(f"http://127.0.0.1:{{api_port}}/overlay?bridge_url=http://127.0.0.1:9/bridge/state", wait_until="networkidle")
     page.wait_for_function("document.getElementById('prob').textContent !== '--%'", timeout=8000)
     for demo in ("ahead", "even", "behind"):
-        page.click(f"[data-demo='{demo}']")
+        page.click(f"[data-demo='{{demo}}']")
         page.wait_for_timeout(350)
         if page.evaluate("document.body.classList.contains('expanded')"):
             page.click("#expandBtn")
             page.wait_for_timeout(150)
-        out[f"demo_{demo}_collapsed"] = page.evaluate(CHECK_JS)
+        out[f"demo_{{demo}}_collapsed"] = page.evaluate(CHECK_JS)
         page.click("#expandBtn")
         page.wait_for_timeout(150)
-        out[f"demo_{demo}_expanded"] = page.evaluate(CHECK_JS)
+        out[f"demo_{{demo}}_expanded"] = page.evaluate(CHECK_JS)
 
     browser.close()
 
 print(json.dumps(out, ensure_ascii=False))
 """
     try:
-        proc = subprocess.run(
-            [pw_py, "-c", check_script, str(api_port), str(bridge_port)],
-            capture_output=True, text=True, encoding="utf-8", timeout=60,
-        )
-        assert proc.returncode == 0, f"Playwright failed:\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}"
-        data = json.loads(proc.stdout)
+        if pw_py is not None:
+            proc = subprocess.run(
+                [pw_py, "-c", check_script, str(api_port), str(bridge_port)],
+                capture_output=True, text=True, encoding="utf-8", timeout=60,
+            )
+            assert proc.returncode == 0, f"Playwright failed:\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}"
+            data = json.loads(proc.stdout)
+        else:
+            data = _run_hud_check_via_cdp(api_port, bridge_port, check_js)
     finally:
         server.should_exit = True
         bridge_httpd.shutdown()
