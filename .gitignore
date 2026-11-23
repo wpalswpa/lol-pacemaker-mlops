@@ -10,3 +10,6 @@ artifacts/
 # 발표용 기획서·대본은 로컬 전용이다 (저장소에 다시 넣지 않는다)
 계획서.md
 발표대본.md
+
+# 다른 회사 화면 캡처(참고용)는 공개 저장소에 올리지 않는다. 이 컴퓨터에만 둔다
+docs/images/opgg_ingame_reference.jpg
