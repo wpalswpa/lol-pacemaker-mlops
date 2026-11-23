@@ -157,7 +157,26 @@
   .feat-card .num-tag { font-size: 11px; font-weight: 800; color: #c8aa6e; letter-spacing: .06em; margin-bottom: 6px; }
   .feat-card h3 { font-size: 15px; color: #f4f6fb; margin: 0 0 6px; }
   .feat-card p { font-size: 13px; color: var(--sub); margin: 0; line-height: 1.5; }
-  @media (max-width: 720px) { .feat-grid { grid-template-columns: 1fr; } }
+  .riot-search { display: flex; gap: 10px; margin-top: 10px; }
+  .riot-search input { flex: 1; padding: 11px 14px; border-radius: 10px; border: 1px solid #2b3548; background: #0d131d; color: #f4f6fb; font-size: 14px; }
+  .riot-search input:focus { outline: none; border-color: #c89b3c; }
+  .riot-summary { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin: 14px 0 10px; padding: 12px 14px; border-radius: 10px; background: rgba(255,255,255,.03); border: 1px solid var(--line); }
+  .riot-summary .rid { font-size: 16px; font-weight: 800; color: #f0e6d2; }
+  .riot-summary .wr { font-size: 13px; color: #c8aa6e; font-weight: 700; }
+  .riot-list { display: flex; flex-direction: column; gap: 8px; }
+  .riot-row { display: grid; grid-template-columns: 54px 44px 1.2fr 1fr 1fr auto; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: #0f1623; }
+  .riot-row.win { border-left: 4px solid #34d399; background: rgba(52,211,153,.06); }
+  .riot-row.loss { border-left: 4px solid #f87171; background: rgba(248,113,113,.06); }
+  .riot-row .wl-tag { font-size: 12px; font-weight: 800; text-align: center; }
+  .riot-row.win .wl-tag { color: #34d399; }
+  .riot-row.loss .wl-tag { color: #f87171; }
+  .riot-row img.champ-ico { width: 40px; height: 40px; border-radius: 8px; border: 1px solid #2b3548; background: #0b0f17; }
+  .riot-row .meta-main { font-size: 14px; font-weight: 700; color: #f4f6fb; }
+  .riot-row .meta-sub { font-size: 12px; color: var(--sub); }
+  .riot-row .kda { font-size: 14px; font-weight: 700; color: #f0e6d2; }
+  .riot-items { display: flex; gap: 3px; }
+  .riot-items img { width: 24px; height: 24px; border-radius: 5px; border: 1px solid #2b3548; }
+  @media (max-width: 720px) { .feat-grid { grid-template-columns: 1fr; } .riot-row { grid-template-columns: 44px 36px 1fr 1fr; } .riot-items { display: none; } }
   .quick { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
   .quick button { padding: 3px 10px; font-size: 12px; }
   .sim-top { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
@@ -245,7 +264,6 @@
       <a href="#intro" data-tab="intro" class="active">서비스 소개</a>
       <a href="#live" data-tab="live">실시간 인게임</a>
       <a href="#history" data-tab="history">전적 보기</a>
-      <a href="/download">다운로드</a>
     </nav>
     <a class="nav-cta" href="/download">다운로드</a>
   </div>
@@ -386,6 +404,17 @@
   </div>
 
   <div id="panel-history" class="tab-panel" hidden>
+  <section class="card" aria-label="소환사 전적 검색">
+    <h2>소환사 전적 검색 <span class="src">Riot API</span></h2>
+    <p class="note">Riot ID(예: <code>Hide on bush#KR1</code>, 태그 생략 시 <code>#KR1</code> 자동 적용)로 최근 경기 전적을 조회합니다.</p>
+    <form class="riot-search" id="riotSearchForm">
+      <input type="text" id="riotIdInput" placeholder="소환사명#KR1 (예: Hide on bush#KR1)" maxlength="60" autocomplete="off">
+      <button type="submit" class="btn-primary" id="riotSearchBtn">전적 검색</button>
+    </form>
+    <p class="note" id="riotSearchMsg" role="status"></p>
+    <div id="riotResult"></div>
+  </section>
+
   <section class="card" id="history" aria-labelledby="histTitle">
     <div class="hist-head">
       <h2 id="histTitle">최근 코칭 전적 기록 (DB)</h2>
@@ -432,6 +461,90 @@
   }
   window.addEventListener("hashchange", () => showTab(location.hash));
   showTab(location.hash);
+
+  // Riot 소환사 전적 검색
+  const form = document.getElementById("riotSearchForm");
+  const input = document.getElementById("riotIdInput");
+  const msg = document.getElementById("riotSearchMsg");
+  const out = document.getElementById("riotResult");
+  const btn = document.getElementById("riotSearchBtn");
+  if (form) {
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const q = (input.value || "").trim();
+      if (!q) { msg.textContent = "소환사 이름을 입력해 주세요 (예: Hide on bush#KR1)."; return; }
+      btn.disabled = true;
+      msg.textContent = "Riot 서버에서 최근 전적을 조회하는 중...";
+      out.innerHTML = "";
+      try {
+        const res = await fetch("/matches/riot?count=5&riot_id=" + encodeURIComponent(q));
+        const data = await res.json();
+        if (!res.ok) {
+          msg.textContent = data.detail || "전적 조회에 실패했습니다.";
+          return;
+        }
+        const ver = (typeof META !== "undefined" && META.version) ? META.version : "16.23.1";
+        msg.textContent = "";
+        const sum = document.createElement("div");
+        sum.className = "riot-summary";
+        const rid = document.createElement("span");
+        rid.className = "rid";
+        rid.textContent = data.riot_id;
+        const wr = document.createElement("span");
+        wr.className = "wr";
+        wr.textContent = `최근 ${data.total}경기 · ${data.wins}승 ${data.losses}패 (승률 ${data.win_rate}%)`;
+        sum.append(rid, wr);
+        out.appendChild(sum);
+
+        const list = document.createElement("div");
+        list.className = "riot-list";
+        if (!data.matches || data.matches.length === 0) {
+          msg.textContent = "최근 경기 기록이 없습니다.";
+        } else {
+          for (const m of data.matches) {
+            const row = document.createElement("div");
+            row.className = "riot-row " + (m.win ? "win" : "loss");
+            const wl = document.createElement("div");
+            wl.className = "wl-tag";
+            wl.textContent = m.win ? "승리" : "패배";
+            const img = document.createElement("img");
+            img.className = "champ-ico";
+            img.src = `https://ddragon.leagueoflegends.com/cdn/${ver}/img/champion/${encodeURIComponent(m.champion)}.png`;
+            img.alt = m.champion;
+            const info = document.createElement("div");
+            const mm = Math.floor((m.duration_sec || 0) / 60);
+            const ss = String((m.duration_sec || 0) % 60).padStart(2, "0");
+            info.innerHTML = `<div class="meta-main"></div><div class="meta-sub"></div>`;
+            info.querySelector(".meta-main").textContent = m.champion;
+            info.querySelector(".meta-sub").textContent = `${m.queue} · ${mm}:${ss}`;
+            const kda = document.createElement("div");
+            kda.innerHTML = `<div class="kda"></div><div class="meta-sub"></div>`;
+            kda.querySelector(".kda").textContent = `${m.kills} / ${m.deaths} / ${m.assists}`;
+            kda.querySelector(".meta-sub").textContent = `KDA ${m.kda}`;
+            const cs = document.createElement("div");
+            cs.innerHTML = `<div class="meta-main"></div><div class="meta-sub"></div>`;
+            cs.querySelector(".meta-main").textContent = `CS ${m.cs}`;
+            cs.querySelector(".meta-sub").textContent = `분당 ${m.cs_per_min}`;
+            const items = document.createElement("div");
+            items.className = "riot-items";
+            for (const id of (m.items || [])) {
+              const ii = document.createElement("img");
+              ii.src = `https://ddragon.leagueoflegends.com/cdn/${ver}/img/item/${id}.png`;
+              ii.alt = String(id);
+              items.appendChild(ii);
+            }
+            row.append(wl, img, info, kda, cs, items);
+            list.appendChild(row);
+          }
+          out.appendChild(list);
+        }
+      } catch (err) {
+        msg.textContent = "서버와 통신하지 못했습니다.";
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  }
 })();
 </script>
 <script>

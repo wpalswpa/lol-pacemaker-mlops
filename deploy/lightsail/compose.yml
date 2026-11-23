@@ -13,6 +13,8 @@ services:
       MODEL_DIR: ${MODEL_DIR:-artifacts}
       # 전적 DB (AGENTS.md 3-5절). db 가 늦게 뜨거나 끊겨도 api 는 뜨고 /health 는 영향받지 않는다(/matches 만 503)
       DATABASE_URL: postgresql://lol:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD 가 .env 에 없다 (server.sh 가 만든다)}@db:5432/lol
+      # Riot 유저 전적 검색 (선택). 서버 .env 에 RIOT_API_KEY 가 있을 때만 활성
+      RIOT_API_KEY: ${RIOT_API_KEY:-}
     depends_on: [db]
     volumes:
       - ./models:/models:ro

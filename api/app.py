@@ -439,3 +439,17 @@ def export_matches(format: Literal["json", "csv"] = "json"):  # noqa: A002  쿼�
         return Response(buf.getvalue(), media_type="text/csv; charset=utf-8",
                         headers={"Content-Disposition": 'attachment; filename="matches_export.csv"'})
     return {"count": len(rows), "columns": db.EXPORT_COLUMNS, "rows": rows}
+
+
+@app.get("/matches/riot", include_in_schema=False)
+def search_riot_matches(
+    riot_id: Annotated[str, Query(min_length=1, max_length=60)],
+    count: Annotated[int, Query(ge=1, le=10)] = 5,
+):
+    """Riot Account-V1 + Match-V5 기반 유저 최근 전적 조회 (RIOT_API_KEY 필요)."""
+    from api.riot_api import RiotAPIError, fetch_summoner_matches
+
+    try:
+        return fetch_summoner_matches(riot_id=riot_id, count=count)
+    except RiotAPIError as e:
+        return JSONResponse(status_code=e.status_code, content={"detail": e.detail})

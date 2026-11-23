@@ -1,6 +1,6 @@
 # LoL 페이스메이커 (페이커)
 
-> **연습모드·리플레이·봇전에서 점수판(Tab) 공개 정보만으로 10인 전 라인·보유 골드·아이템·오브젝트·생존 타이머를 종합해 실시간 맞춤 전략·빌드·스킬을 프레임 없는 인게임 팝업 HUD로 안내하는 AI LoL 코치 & MLOps 파이프라인 (`v1.28`)**
+> **연습모드·리플레이·봇전에서 점수판(Tab) 공개 정보만으로 10인 전 라인·보유 골드·아이템·오브젝트·생존 타이머를 종합해 실시간 맞춤 전략·빌드·스킬을 프레임 없는 인게임 팝업 HUD로 안내하는 AI LoL 코치 & MLOps 파이프라인 (`v1.29`)**
 
 ---
 
@@ -52,7 +52,7 @@
 
 | 항목 | 실측 수치 | 근거 |
 |---|---|---|
-| **자동 테스트** | **449 passed** (`uv sync --all-groups` 시 skipped 0, Windows 에서는 `.env` 0600 권한 검사 1건이 파일 시스템 차이로 실패) | `uv run pytest api client tests deploy -q -rs` |
+| **자동 테스트** | **453 passed** (`uv sync --all-groups` 시 skipped 0, Windows 에서는 `.env` 0600 권한 검사 1건이 파일 시스템 차이로 실패) | `uv run pytest api client tests deploy -q -rs` |
 | **성능 게이트 (`m1` → `m2`)** | `m1`(500경기) Brier 0.1891 → `m2`(5,000경기) **0.1824** (규칙 대비 +4.84%) | [docs/model_comparison.md](docs/model_comparison.md) |
 | **ONNX 일치 (Parity)** | 원본 sklearn vs ONNX 23건 최대 오차 `1.19e-07` (허용 `0.0001`) | `training/check_parity.py` |
 | **서빙 부하 (로컬 / 실서버)** | 로컬 ONNX `/predict` p95 **0.73ms**, 실서버 160건 동시 10건 **성공률 100%** | [docs/benchmark_summary.json](docs/benchmark_summary.json), [docs/benchmark_cloud_summary.json](docs/benchmark_cloud_summary.json) |
