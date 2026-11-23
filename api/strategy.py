@@ -46,25 +46,15 @@ PHASE_KO = {
 }
 STATE_KO = {"ahead": "우세", "even": "박빙", "behind": "열세"}
 
-# 추천 코어/신발의 하위 조합 아이템 (보유 하위템 가격 차감 계산용, game_data.json 기준)
+# 아이템 재료(하위템) 표: game_data.json 의 from (training/ddragon.py 가 Data Dragon 에서 만든다)
 ITEM_COMPONENTS: dict[int, tuple[int, ...]] = {
-    3047: (1029,),           # 판금 장화 <- 천 갑옷
-    3111: (1033,),           # 헤르메스의 발걸음 <- 마법무효화의 망토
-    3089: (1058, 1058),      # 라바돈의 죽음모자 <- 쓸데없이 큰 지팡이 ×2
-    3031: (1038, 1037),      # 무한의 대검 <- B.F. 대검 + 곡괭이
-    3157: (1058, 1029),      # 존야의 모래시계 <- 쓸데없이 큰 지팡이 + 천 갑옷
-    3102: (1058, 1033),      # 밴시의 장막 <- 쓸데없이 큰 지팡이 + 마법무효화의 망토
-    3026: (1038, 1029),      # 수호 천사 <- B.F. 대검 + 천 갑옷
-    3156: (1037, 1033),      # 맬모셔스의 아귀 <- 곡괭이 + 마법무효화의 망토
-    3053: (1037, 1028),      # 스테락의 도전 <- 곡괭이 + 루비 수정
-    3071: (1037, 1028),      # 칠흑의 양날 도끼 <- 곡괭이 + 루비 수정
-    3068: (1029, 1028),      # 태양불꽃 방패 <- 천 갑옷 + 루비 수정
-    3142: (1037,),           # 요우무의 유령검 <- 곡괭이
-    3814: (1037, 1028),      # 밤의 끝자락 <- 곡괭이 + 루비 수정
-    4401: (1033, 1028),      # 대자연의 힘 <- 마법무효화의 망토 + 루비 수정
-    3050: (1029, 1028),      # 지크의 융합 <- 천 갑옷 + 루비 수정
-    3190: (1029, 1033, 1028),  # 강철의 솔라리 펜던트
+    int(k): tuple(v.get("from") or ()) for k, v in GAME["items"].items() if v.get("from")
 }
+
+
+def _item_gold(item_id: int) -> int:
+    return int((GAME["items"].get(str(item_id)) or {}).get("gold", 0))
+
 
 OFFENSIVE_CATEGORIES = frozenset({"오브젝트 기회", "수적 우위", "영혼 확정", "용 타이밍", "스노우볼", "템포 가속"})
 
@@ -362,9 +352,18 @@ def _analyze_enemy_comp(enemies: list[LivePlayer]) -> dict:
     }
 
 
-def _select_adaptive_threat(comp: dict, state: str, game_time_sec: float) -> tuple[str | None, list[int], str | None]:
-    """상대 단일 위협이 아니라 팀 전체 조합 + 아이템을 종합해 빌드 대응 유형 결정."""
+def _select_adaptive_threat(comp: dict, state: str, game_time_sec: float,
+                            lane_opponent: str | None = None) -> tuple[str | None, list[int], str | None]:
+    """상대 단일 위협이 아니라 팀 전체 조합 + 아이템을 종합해 빌드 대응 유형 결정.
+
+    기준 상대는 라인 상대(서폿은 상대 원딜)로 고정하고, 다른 상대의 위협도가 라인 상대의
+    1.5배 + 1,000 을 넘을 때만 그 상대로 바꾼다(비슷한 위협끼리 2초마다 기준이 뒤바뀌지 않게).
+    """
     top = comp["top_threat"]
+    if lane_opponent and top:
+        opp = next((r for r in comp["all_threats"] if r["player"].champion == lane_opponent), None)
+        if opp is not None and top["danger"] < opp["danger"] * 1.5 + 1000.0:
+            top = opp
     top_champ = (top["info"]["id"] or top["info"]["name"]) if top else None
     all_enemy_items: list[int] = []
     for row in comp["all_threats"]:
@@ -384,18 +383,42 @@ def _select_adaptive_threat(comp: dict, state: str, game_time_sec: float) -> tup
     return top_champ, (top["player"].items[:12] if top else []), None
 
 
-def _owned_component_credit(item_id: int, owned_items: list[int]) -> int:
-    """이미 보유한 하위템 가격 합을 차감해 실제 남은 조합 비용을 구한다(M1)."""
-    comps = ITEM_COMPONENTS.get(item_id)
-    if not comps:
-        return 0
-    pool = list(owned_items)
+def _credit_from(item_id: int, pool: list[int]) -> int:
     credit = 0
-    for cid in comps:
+    for cid in ITEM_COMPONENTS.get(item_id, ()):
         if cid in pool:
             pool.remove(cid)
-            credit += int((GAME["items"].get(str(cid)) or {}).get("gold", 0))
+            credit += _item_gold(cid)
+        else:
+            credit += _credit_from(cid, pool)
     return credit
+
+
+def _owned_component_credit(item_id: int, owned_items: list[int]) -> int:
+    """이미 보유한 하위템(재료의 재료까지) 가격 합을 차감해 실제 남은 조합 비용을 구한다(M1)."""
+    return _credit_from(item_id, list(owned_items))
+
+
+def _affordable_component(item_id: int, owned_items: list[int], gold: int) -> dict | None:
+    """다음 코어를 다 못 살 때, 그 재료 가운데 지금 골드로 살 수 있고 실제로 내는 값(보유 재료를 뺀 값)이 가장 큰 것."""
+    pool = list(owned_items)
+    best = None
+
+    def walk(iid: int) -> None:
+        nonlocal best
+        for cid in ITEM_COMPONENTS.get(iid, ()):
+            if cid in pool:
+                pool.remove(cid)
+                continue
+            cost = _item_gold(cid) - _credit_from(cid, list(pool))
+            if cost <= gold and (best is None or cost > best[2]):
+                best = (cid, _item_gold(cid), cost)
+            walk(cid)
+
+    walk(item_id)
+    if best is None:
+        return None
+    return {"item_id": best[0], "name": GAME["items"][str(best[0])]["name"], "gold": best[2]}
 
 
 def _recall_advice(me: LivePlayer, recommended_items: list[dict], starter_items: list[dict], game_time_sec: float) -> dict:
@@ -447,9 +470,15 @@ def _recall_advice(me: LivePlayer, recommended_items: list[dict], starter_items:
     credit = _owned_component_credit(int(next_item["item_id"]), me.items)
     effective_cost = max(0, base_cost - credit)
     diff = max(0, effective_cost - gold)
+    buy_now = None
+    if diff > 0:
+        buy_now = _affordable_component(int(next_item["item_id"]), me.items, gold)
     if diff == 0:
         msg = f"지금 {gold:,}G 보유 · 웨이브 밀고 귀환하면 [{next_item['name']}] 즉시 구매 가능"
         short = "즉시 구매 가능"
+    elif buy_now and buy_now["gold"] >= 700:
+        msg = f"보유 {gold:,}G · 귀환해 [{buy_now['name']}] 먼저 구매 → [{next_item['name']}]까지 {diff:,}G"
+        short = "하위템 구매 가능"
     elif diff <= 350:
         msg = f"[{next_item['name']}]까지 {diff:,}G 남음 · 미니언 1~2웨이브 정리 후 귀환 추천"
         short = f"부족 {diff:,}G"
@@ -459,12 +488,16 @@ def _recall_advice(me: LivePlayer, recommended_items: list[dict], starter_items:
     else:
         msg = f"보유 {gold:,}G · 다음 목표 [{next_item['name']}](남은 비용 {effective_cost:,}G)까지 {diff:,}G"
         short = f"부족 {diff:,}G"
+    if not (buy_now and buy_now["gold"] >= 700):
+        buy_now = None
     return {
         "current_gold": gold,
-        "can_buy_now": diff == 0,
+        "can_buy_now": diff == 0 or buy_now is not None,
         "gold_needed": diff,
         "next_item": next_item["name"],
+        "next_item_id": int(next_item["item_id"]),
         "next_item_gold": effective_cost,
+        "buy_now": buy_now,
         "short": short,
         "message": msg,
     }
@@ -633,14 +666,19 @@ def analyze_live_strategy(req: LiveStrategyRequest, reference_10m_prob: float | 
         ally_carry = teammate_wins[0] if (lanes_reliable and teammate_wins and not solo_or_asymmetric) else None
 
     # 5. 동적 빌드 가이드 & 보유 골드 귀환 판정 (코어 완성 뒤에도 후속 코어 이어서 추천)
-    threat_target, threat_items, comp_override = _select_adaptive_threat(comp, state, t)
+    my_pos = _norm_pos(req.me.position)
+    opp_pos = "BOTTOM" if my_pos == "UTILITY" else my_pos
+    lane_opp = None
+    if my_pos and not practice_mode:
+        lane_opp = next((e.champion for e in enemies if _norm_pos(e.position) == opp_pos), None)
+    threat_target, threat_items, comp_override = _select_adaptive_threat(comp, state, t, lane_opp)
     my_champ_arg = _safe_resolve_my(req.me.champion)
     threat_arg = _safe_resolve_threat(threat_target)
-    build = build_advise(win_prob, my_champ_arg, threat_arg, enemy_items=threat_items, owned_items=req.me.items)
+    build = build_advise(win_prob, my_champ_arg, threat_arg, enemy_items=threat_items, owned_items=req.me.items, position=my_pos or None)
     if comp_override == "HEAL" and build["threat_type"] != "HEAL":
-        build = build_advise(win_prob, my_champ_arg, "HEAL", enemy_items=threat_items, owned_items=req.me.items)
+        build = build_advise(win_prob, my_champ_arg, "HEAL", enemy_items=threat_items, owned_items=req.me.items, position=my_pos or None)
     elif comp_override == "TANK" and build["threat_type"] != "TANK":
-        build = build_advise(win_prob, my_champ_arg, "TANK", enemy_items=threat_items, owned_items=req.me.items)
+        build = build_advise(win_prob, my_champ_arg, "TANK", enemy_items=threat_items, owned_items=req.me.items, position=my_pos or None)
 
     recall = _recall_advice(req.me, build["recommended_items"], build.get("starter_items") or [], t)
 
@@ -774,6 +812,9 @@ def analyze_live_strategy(req: LiveStrategyRequest, reference_10m_prob: float | 
                 else "초반 시작 아이템을 챙기고 아군 정글 리시 또는 라인 선점 위치를 잡으세요."
             )
             add_strategy(88, "귀환 타이밍", recall["message"], start_detail, "게임 시작")
+        elif recall["can_buy_now"] and recall.get("buy_now"):
+            bn = recall["buy_now"]
+            add_strategy(84, "귀환 타이밍", f"{recall['current_gold']:,}G 보유 → [{bn['name']}] 먼저 구매", f"[{recall['next_item']}]을 향한 하위템 [{bn['name']}]을 지금 살 수 있습니다. 웨이브를 밀고 귀환해 스펙을 올리세요.", f"보유 골드 {recall['current_gold']:,}G >= {bn['gold']:,}G")
         elif recall["can_buy_now"] and recall["next_item"]:
             add_strategy(88, "귀환 타이밍", f"{recall['current_gold']:,}G 보유 → [{recall['next_item']}] 즉시 구매 각", f"지금 귀환하면 [{recall['next_item']}]을 바로 뽑을 수 있습니다. 대포 웨이브를 밀어 넣고 귀환해 아이템 파워 스파이크를 먼저 잡으세요.", f"보유 골드 {recall['current_gold']:,}G >= {recall['next_item_gold']:,}G")
         elif recall["current_gold"] >= 1600:

@@ -190,10 +190,11 @@ class BuildAdvice(BaseModel):
     threat_type: str
     posture: str
     tactical_tip: str | None = None
-    recommended_items: list[BuildItem] = Field(description="1 신발, 2 하위템, 3 코어")
-    starter_items: list[ExtraItem] = Field(description="게임 시작 때 살 아이템 (규칙표 starter)")
+    recommended_items: list[BuildItem] = Field(description="다음 구매 3칸. 우세·접전: 코어 → 신발 → 다음 코어(또는 대응), 열세: 신발 → 하위템 → 코어")
+    starter_items: list[ExtraItem] = Field(description="게임 시작 때 살 아이템 (챔피언 빌드표, 포지션 시작템 또는 규칙표 starter)")
     situational_items: list[ExtraItem] = Field(description="상황이 바뀌면 바꿔 살 아이템, 최대 3개")
     skill_order: SkillOrder
+    build_position: str | None = Field(default=None, description="챔피언 빌드표를 쓴 포지션(TOP·JUNGLE·MIDDLE·BOTTOM·UTILITY). 표에 없으면 null")
     basis: str = Field(description="근거 출처. 사람이 정한 규칙표이며 모델 계산이 아니다")
 
 

@@ -1,7 +1,7 @@
 """Data Dragon(Riot 공개 정적 자료)에서 api/game_data.json 을 만든다. 패치마다 사람이 돌린다.
 
 - 챔피언: 영문 ID → 한국어 이름, tags, info(attack·magic)
-- 아이템: 규칙표(api/build_rules.json)가 쓰는 ID 만 → 한국어 이름, 가격. 그 판에 없거나 소환사의 협곡 아이템이 아니면 실패
+- 아이템: 규칙표(api/build_rules.json)가 쓰는 ID 와 그 하위템(재료) → 한국어 이름, 가격, 재료(from). 규칙표 ID 가 그 판에 없거나 소환사의 협곡 아이템이 아니면 실패
 키가 필요 없다. 네트워크가 있을 때만 돈다(서빙·테스트는 만들어 둔 game_data.json 만 읽는다).
   uv run python -m training.ddragon            최신 판
   uv run python -m training.ddragon 16.23.1    판 지정
@@ -26,6 +26,7 @@ def rule_item_ids(rules: dict) -> set[int]:
     keys = (
         "boots", "anti_heal", "anti_heal_core", "anti_tank", "anti_tank_core",
         "defensive_component", "damage_component", "core", "followup_cores", "elixir", "starter",
+        "champion_builds", "position_starter",
     )
     ids: set[int] = set()
 
@@ -58,9 +59,20 @@ def main(argv: list[str]) -> int:
         if not d or not d.get("maps", {}).get("11"):
             bad.append(i)
             continue
-        out_items[str(i)] = {"name": d["name"], "gold": d["gold"]["total"]}
+        out_items[str(i)] = {"name": d["name"], "gold": d["gold"]["total"], "from": [int(x) for x in d.get("from", [])]}
+    # 규칙표 아이템의 하위템(재료)도 이름·가격·재료를 넣는다: 귀환 조언이 "지금 살 하위템"을 고르고 보유 하위템을 빼는 데 쓴다
+    stack = [c for v in out_items.values() for c in v["from"]]
+    while stack:
+        c = str(stack.pop())
+        if c in out_items or c not in items:
+            continue
+        d = items[c]
+        out_items[c] = {"name": d["name"], "gold": d["gold"]["total"], "from": [int(x) for x in d.get("from", [])]}
+        stack.extend(out_items[c]["from"])
+    out_items = dict(sorted(out_items.items(), key=lambda kv: int(kv[0])))
     missing_skill = [c for c in rules["skill_orders"] if c not in champs]
     missing_heal = [c for c in rules["heal_champions"] if c not in champs]
+    missing_skill += [c for c in rules.get("champion_builds", {}) if c not in champs]
     if bad or missing_skill or missing_heal:
         print(f"Data Dragon {version} 에 없는 것: 아이템 {bad}, 스킬표 챔피언 {missing_skill}, 치유 챔피언 {missing_heal}",
               file=sys.stderr)
@@ -76,7 +88,7 @@ def main(argv: list[str]) -> int:
     }
     with open(OUT, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=1)
-    print(f"{OUT}: Data Dragon {version}, 챔피언 {len(data['champions'])}개, 규칙표 아이템 {len(out_items)}개 모두 확인")
+    print(f"{OUT}: Data Dragon {version}, 챔피언 {len(data['champions'])}개, 규칙표·하위템 아이템 {len(out_items)}개 모두 확인")
     return 0
 
 

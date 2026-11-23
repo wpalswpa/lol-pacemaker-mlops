@@ -206,6 +206,17 @@
     margin: 3px 0 0; font-size: 10.5px; color: var(--sub); line-height: 1.35;
     white-space: normal; word-break: keep-all; overflow-wrap: anywhere;
   }
+  /* 접힘 화면의 "지금 할 일" 한 줄: 1순위 전략 제목만, 넘치면 말줄임 (펼치지 않아도 할 일이 보이게) */
+  .now-line {
+    display: flex; align-items: center; gap: 5px; margin-top: 4px; padding: 3px 6px;
+    border-radius: 6px; background: var(--card-inner); border: 1px solid var(--line);
+    font-size: 11px; font-weight: 800; color: var(--text); min-width: 0;
+  }
+  .now-line.urgent { border-color: rgba(251, 113, 133, .45); background: rgba(251, 113, 133, .12); }
+  .now-line.gold { border-color: rgba(251, 191, 36, .45); background: rgba(251, 191, 36, .1); }
+  .now-line.macro { border-color: rgba(52, 211, 153, .45); background: rgba(52, 211, 153, .1); }
+  .now-line .now-lab { flex: none; font-size: 10px; color: var(--gold); }
+  .now-line .now-txt { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* 설명 문단은 눌렀을 때만 펼친다(제목만으로 읽히게, 펼친 HUD 가 Chrome 창 높이 안에 들어가게) */
   .strat:not(.open) .strat-detail { display: none; }
 
@@ -303,7 +314,8 @@
     display: flex; align-items: center; gap: 6px; min-width: 0; flex: 1;
   }
   .compact-buy-meta { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
-  .compact-buy-main { font-size: 11px; font-weight: 800; color: var(--gold); word-break: keep-all; }
+  .compact-buy-main, .compact-buy-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .compact-buy-main { font-size: 11px; font-weight: 800; color: var(--gold); }
   .compact-buy-sub { font-size: 10px; font-weight: 700; color: var(--sub); }
   .compact-skill {
     display: flex; align-items: center; gap: 5px; flex: none;
@@ -445,6 +457,7 @@
       <span class="chip num death" id="deathChip" hidden></span>
     </div>
     <div class="prob-track" aria-hidden="true"><div class="prob-fill" id="probBar"></div></div>
+    <div class="now-line compact-only" id="nowLine" hidden><span class="now-lab">지금</span><span class="now-txt" id="nowTxt"></span></div>
     <div class="stale-msg" id="staleMsg" hidden></div>
     <div class="strat-list exp-only" id="strats" aria-label="실시간 맞춤 전략"></div>
     <div class="brief-box exp-only" id="briefBox" hidden aria-label="AI 감독 브리핑">
@@ -847,6 +860,14 @@ function render() {
     return card;
   });
   $("strats").replaceChildren(...stratNodes);
+  const top1 = (s.strategies || [])[0];
+  $("nowLine").hidden = !top1;
+  if (top1) {
+    $("nowLine").className = "now-line compact-only " + stratTone(top1.category);
+    $("nowTxt").textContent = top1.title;
+    $("nowLine").title = `${top1.title}
+${top1.detail}`;
+  }
   $("demoBar").hidden = live;
 
   // 빌드·스킬 추천 (P1-5 short 필드, P1-7 배지 카드 바깥 위쪽)
@@ -863,10 +884,25 @@ function render() {
   const nextBuy = items.find((it) => !isItemOwned(it, view.owned));
 
   // 접힘 모드 컴팩트 다음 구매·스킬 바
+  // 지금 살 것: 다음 아이템을 다 살 수 있으면 그 아이템, 못 사면 그 재료(buy_now), 둘 다 아니면 목표와 부족 골드
   const targetItem = nextBuy || items[items.length - 1];
-  $("compactItemIcon").replaceChildren(...(targetItem ? [icon(targetItem)] : []));
-  $("compactBuyMain").textContent = recShort;
-  $("compactBuySub").textContent = targetItem ? `${targetItem.gold.toLocaleString()}G${curGold ? " · 보유 " + curGold : ""}` : (curGold ? `보유 ${curGold}` : "");
+  const bn = rec.buy_now;
+  const buyIcon = bn ? { item_id: bn.item_id, name: bn.name } : targetItem;
+  $("compactItemIcon").replaceChildren(...(buyIcon ? [icon(buyIcon)] : []));
+  let buyMain = recShort, buySub = curGold ? `보유 ${curGold}` : "";
+  if (rec.next_item && bn) {
+    buyMain = `${bn.name} 구매`;
+    buySub = `→ ${rec.next_item} · ${(rec.gold_needed || 0).toLocaleString()}G 남음`;
+  } else if (rec.next_item && rec.can_buy_now) {
+    buyMain = `${rec.next_item} 구매`;
+    buySub = curGold ? `지금 구매 가능 · 보유 ${curGold}` : "지금 구매 가능";
+  } else if (rec.next_item) {
+    buyMain = `다음 ${rec.next_item}`;
+    buySub = `${(rec.gold_needed || 0).toLocaleString()}G 부족${curGold ? " · 보유 " + curGold : ""}`;
+  }
+  $("compactBuyMain").textContent = buyMain;
+  $("compactBuySub").textContent = buySub;
+  $("compactBuyMain").parentElement.title = rec.message || "";
   const skillShort = view.next ? `${view.when === "next_level" ? "다음" : "지금"} ${view.next}` : "스킬 대기";
   $("compactSkillTxt").textContent = skillShort;
   $("compactSkillKey").replaceChildren(...(view.next ? [el("span", "key now-skill", view.next)] : []));
@@ -1176,12 +1212,12 @@ function setExpanded(on) {
   document.body.classList.toggle("expanded", on);
   $("expandBtn").setAttribute("aria-expanded", String(on));
   $("expandBtn").textContent = on ? "접기 ▴" : "상세 ▾";
-  try { localStorage.setItem("lol_hud_expanded", on ? "1" : "0"); } catch (_) {}
+  try { localStorage.setItem("lol_hud_expanded_v2", on ? "1" : "0"); } catch (_) {}
   if (on) fitItemCards();
   syncCardRegions();
 }
 let expSaved = false;
-try { expSaved = localStorage.getItem("lol_hud_expanded") === "1"; } catch (_) {}
+try { expSaved = localStorage.getItem("lol_hud_expanded_v2") === "1"; } catch (_) {}
 setExpanded(expSaved);
 $("expandBtn").addEventListener("click", () => setExpanded(!document.body.classList.contains("expanded")));
 

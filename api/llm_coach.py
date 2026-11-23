@@ -361,6 +361,7 @@ def build_strategy_prompt_payload(strategy_result: dict) -> dict:
             for s in (strategy_result.get("strategies") or [])[:3]
         ],
         "recommended_items": [it["name"] for it in b.get("recommended_items") or []],
+        "situational_items": [it["name"] for it in b.get("situational_items") or []],
         "my_champion": b.get("my_champion"),
     }
 

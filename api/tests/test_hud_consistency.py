@@ -359,7 +359,7 @@ def _run_hud_check_via_cdp(api_port: int, bridge_port: int, check_js: str) -> di
             time.sleep(0.2)
             out["live_reloaded_expanded"] = bool(eval_js("document.body.classList.contains('expanded')"))
 
-            eval_js("localStorage.removeItem('lol_hud_expanded')")
+            eval_js("localStorage.removeItem('lol_hud_expanded_v2')")
             cdp("Page.navigate", {"url": f"http://127.0.0.1:{api_port}/overlay?bridge_url=http://127.0.0.1:9/bridge/state"})
             wait_ready()
             time.sleep(0.3)
@@ -509,7 +509,7 @@ with sync_playwright() as p:
     page.wait_for_function("document.getElementById('prob').textContent !== '--%'", timeout=8000)
     out["live_reloaded_expanded"] = page.evaluate("document.body.classList.contains('expanded')")
 
-    page.evaluate("localStorage.removeItem('lol_hud_expanded')")
+    page.evaluate("localStorage.removeItem('lol_hud_expanded_v2')")
     page.goto(f"http://127.0.0.1:{{api_port}}/overlay?bridge_url=http://127.0.0.1:9/bridge/state", wait_until="networkidle")
     page.wait_for_function("document.getElementById('prob').textContent !== '--%'", timeout=8000)
     for demo in ("ahead", "even", "behind"):

@@ -112,7 +112,7 @@
 | 테두리 이펙트 | `build_advice.state` | 뷰포트 가장자리와 결과 카드 테두리를 초록(`ahead`, 문구 `우세 · 적극 교전 가능`)·노랑(`even`, `접전 · 파밍 집중`)·빨강(`behind`, `열세 · 1대1 싸움 금지`)으로 빛나게 한다. 상단의 **[테두리 이펙트 ON/OFF]** 버튼으로 바로 끄고 켠다(`aria-pressed`, 브라우저에 기억, 저장이 안 되는 환경에서도 동작). 동작 줄이기 설정(`prefers-reduced-motion`)이면 깜빡임 없이 색만 |
 | 분포 막대 | `tier_percentile.overall_top_pct`, `coaching[0].overall_top_pct_after` | 현재 위치 ●, 첫 목표를 채웠을 때 위치 ★ |
 | 챔피언 초상화 | 선택한 내 챔피언·상대 위협 | `https://ddragon.leagueoflegends.com/cdn/{version}/img/champion/{id}.png`. `version`·`id`는 `GET /meta/champions`. 역할군·유형으로 고르면 글자 배지 |
-| 아이템 카드 | `build_advice.recommended_items` | `[1단계 신발] → [2단계 하위템] → [3단계 코어]` 카드 3장. 각 카드에 `.../cdn/{version}/img/item/{item_id}.png` 아이콘, `name`, `{gold}G`, `why` |
+| 아이템 카드 | `build_advice.recommended_items` | `[1단계 {slot}] → [2단계 {slot}] → [3단계 {slot}]` 카드 3장(칸 이름은 응답의 `slot`, 4절 구매 계획 순서). 각 카드에 `.../cdn/{version}/img/item/{item_id}.png` 아이콘, `name`, `{gold}G`, `why` |
 | 스킬 키 | `skill_order.order` | `"Q > E > W"`를 키캡 `[Q] ▶ [E] ▶ [W]`로 차례로 점등. `null`이면 키캡 없이 `focus` 문장과 `원칙만` |
 | 3단계 행동 카드 | `build_advice.state` + `coaching[0]` | 상태별 고정 문구 3장. 2번째 카드에 첫 목표(`{name} +{add}`)를 넣는다. 아래 표 |
 | 오류 | 422 응답의 `detail[].loc` | 챔피언 칸이면 `내 챔피언(또는 상대 위협) 이름을 찾지 못했어요`, 그 밖이면 일반 입력 오류. 챔피언 칸 오류는 결과 카드와 그 입력 칸 바로 아래 두 곳에 띄운다(모바일에서 위 카드가 화면 밖이어도 읽히게). 이전 결과는 흐리게 |
@@ -254,7 +254,7 @@ Windows 10/11 전체 화면 최적화(FSO) 환경에서는 전체 화면(`Window
 | 칸 | 무엇을 보고 | 어떻게 보여 주나 |
 |---|---|---|
 | 상단 컨트롤 알약 바 | 브리지 `connected`, `game_time_sec`, `hud_window` | 드래그 이동 핸들 + `🟢 게임 중 LIVE (MM:SS)` / `🟡 게임 중 시뮬레이션 (MM:SS)` 배지, `≡` 메뉴(위젯 표시 설정·`집중`·`이펙트 ON/OFF`·투명도 `95%`/`82%`/`68%`), 접기(`−`), 종료(`×`)만 간결히 배치 |
-| 기본 접힘 화면 (약 380×180) | `strategy.win_prob`, `tactical_badge_short`, `gold_basis`, `team_gold_diff`, `dead`, `recall_advice`, `build_advice`, `next_skill` | 승률 줄(`52% · 초반 박빙` 한 번만, `gold_basis`에 맞춘 `골드`/`1인당` 칩, 사망자가 있을 때만 `아군 사망 n · 상대 사망 m` 칩, `상세 ▾` 펼침 토글) + 다음 구매·스킬 줄만 표시. 펼침 상태는 `localStorage`에 기억(실패해도 동작) |
+| 기본 접힘 화면 (약 380×190) | `strategy.win_prob`, `tactical_badge_short`, `gold_basis`, `team_gold_diff`, `dead`, `recall_advice`, `build_advice`, `next_skill` | 승률 줄(`52% · 초반 박빙` 한 번만, `gold_basis`에 맞춘 `골드`/`1인당` 칩, 사망자가 있을 때만 `아군 사망 n · 상대 사망 m` 칩, `상세 ▾` 펼침 토글) + **`지금` 한 줄**(`strategies[0].title`, 넘치면 말줄임, 카테고리 색) + 다음 구매·스킬 줄. 구매 줄은 `recall_advice`만 옮긴다: `buy_now`가 있으면 `{buy_now.name} 구매` / `→ {next_item} · {gold_needed}G 남음`, 다음 아이템을 살 수 있으면 `{next_item} 구매` / `지금 구매 가능`, 아니면 `다음 {next_item}` / `{gold_needed}G 부족`. 아이콘은 `buy_now` 또는 다음 아이템. 펼치지 않아도 승률·할 일·살 것·스킬이 다 보이게 하고 시야를 덜 가린다. 펼침 상태는 `localStorage`(`lol_hud_expanded_v2`, 이 판부터 기본 접힘)에 기억(실패해도 동작) |
 | 펼침: 실시간 맞춤 전략 & 브리핑 | `strategy.strategies`, `/strategy/briefing` | 순번 배지 `①`·`②` 전략 카드 2장(조합 요약은 전략 카드에만 표시), `AI 감독 브리핑` 칸은 `source === "llm"`이고 1순위 카드와 겹치지 않을 때만 표시(`source !== "llm"`이면 숨김) |
 | 펼침: 빌드 · 스킬 추천 위젯 | `strategy.build_advice`, `strategy.recall_advice`, `owned_items`, `skill_order.order`, `next_skill` | 짧은 구매 문구(`recall_advice.short`), 3단계 코어 구매 슬롯(배지는 카드 바깥 위쪽에 두어 테두리·이름을 가리지 않고, 이름이 넘치면 아이콘과 가격만 표시; 1코어 완성 이후에도 후속 코어·영약 추천으로 자동 전환), 시작·상황별 아이콘 줄, 스킬 레벨업 키캡 |
 | 펼침: 아이템 골드 비교 위젯 | `strategy.gold_basis`, `strategy.team_gold`, `strategy.team_gold_diff`, `strategy.lanes` | 머리글에 기준(`팀 합계` 또는 `1인당 평균`, 조합 중복 문구 없음), 앞선 팀 이름이 든 차이 표기(`블루 +...G` / `레드 +...G`). 아군이 없는 줄(`unpaired`)은 상대만 한 줄로 축약하고, 매치업 차이는 오른쪽 열에 색(초록/빨강)으로 표시(라인 라벨에 차이를 섞지 않음) |
@@ -391,24 +391,26 @@ Windows 10/11 전체 화면 최적화(FSO) 환경에서는 전체 화면(`Window
 | `my_champion` / `my_class` / `my_damage` | 해석한 내 챔피언 한국어 이름(역할군으로 받았으면 `null`), 계열(`marksman`·`fighter`·`assassin`·`mage`·`tank`·`support`), 주 피해(`AD`·`AP`) |
 | `enemy_top_threat` / `threat_type` | 해석한 상대 위협 챔피언 이름(유형으로 받았으면 `null`)과 위협 유형(`AD`·`AP`·`HEAL`·`TANK`) |
 | `posture` | 상태별 빌드 방향 한 줄(규칙표의 문장) |
-| `recommended_items` | 정확히 3개, `step` 1·2·3 순서. 1 = 신발, 2 = 하위템(대응 또는 피해), 3 = 코어. 각 `{step, slot, item_id, name, gold, why}` |
-| `starter_items` | 게임 시작 때 살 아이템. 규칙표 `starter[내 계열]` 순서. 각 `{item_id, name, gold, why}` |
+| `recommended_items` | 정확히 3개, `step` 1·2·3 순서. 아래 "구매 계획"에서 지금 보여 줄 3칸. 각 `{step, slot, item_id, name, gold, why}`. `slot`은 `코어`·`신발`·`하위템`·`대응`·`다음 코어`·`영약` 중 하나 |
+| `starter_items` | 게임 시작 때 살 아이템. 챔피언 빌드표 `starter` → 포지션 시작템(`position_starter`) → 규칙표 `starter[내 계열]` 순으로 처음 있는 것. 각 `{item_id, name, gold, why}` |
 | `situational_items` | 상황이 바뀌면 바꿔 살 아이템, 최대 3개. 각 `{item_id, name, gold, why}`. 아래 적용 순서 8 |
-| `skill_order` | `{order, focus, source}`. `order`는 규칙표에 그 챔피언이 있으면 `"Q > W > E"` 형식, 없으면 `null`. `focus`는 상태별 마스터 원칙 문장. `source`는 `"규칙표"` 또는 `"원칙만"` |
+| `skill_order` | `{order, focus, source}`. `order`는 규칙표에 그 챔피언이 있으면 `"Q > W > E"` 형식, 없으면 `null`. `focus`는 상태별 마스터 원칙 문장. `source`는 `"챔피언 빌드표"`·`"규칙표"`·`"원칙만"` |
+| `build_position` | 챔피언 빌드표를 쓴 포지션(`TOP`·`JUNGLE`·`MIDDLE`·`BOTTOM`·`UTILITY`). 표에 없는 챔피언이면 `null` |
 | `basis` | 근거 출처 문장(규칙표와 Data Dragon 판 번호). 모델 계산이 아님을 밝힌다 |
 
 **규칙표 적용 순서**
 
+0. 챔피언 빌드표: `champion_builds[챔피언 ID][포지션]`(포지션은 `/strategy`의 `me.position`, `/coach`는 포지션이 없어 그 챔피언의 `default` 포지션)이 있으면 그 표의 `starter`·`boots`·`cores`(1~5코어 순서)·`skill_order`를 쓴다. 이 표는 공개 통계(OP.GG 16.23 에메랄드+, 1위 코어 빌드·신발·시작템·스킬 마스터 순서)를 사람이 보고 옮긴 것이고 패치마다 다시 확인한다. 자동 수집하지 않는다. 표가 없으면 계열 규칙(아래 1~7)으로 고른다: 신발 `boots.by_class[내 계열]`, 코어 `[core.ahead[내 계열]] + followup_cores[내 계열]`.
 1. 내 계열: 역할군이면 `AD → marksman`, `AP → mage`, `TANK → tank`, `SUPPORT → support`. 챔피언이면 Data Dragon `tags`의 첫 값. 주 피해는 계열이 `mage`이거나 Data Dragon `info.magic > info.attack`이면 `AP`, 아니면 `AD`.
-2. 위협 유형: 유형으로 받으면 그대로. 챔피언이면 규칙표의 `heal_champions`에 있으면 `HEAL`, `tags` 첫 값이 `Tank`면 `TANK`, 아니면 그 챔피언의 주 피해(`AD`·`AP`).
-3. 1단계 신발: `behind`이고 위협이 `AD`·`AP`면 그 피해를 막는 신발(`boots.defensive`), 그 밖에는 내 계열 신발(`boots.by_class`).
-4. 2단계 하위템: 위협이 `HEAL`이면 치유 감소(`anti_heal[내 피해 또는 tank]`), `TANK`면 관통(`anti_tank[…]`), 그 밖에 `behind`면 방어 하위템(`defensive_component[위협]`), 아니면 피해 하위템(`damage_component[내 계열]`).
-5. 3단계 코어: `behind`이고 위협이 `AD`·`AP`면 `core.behind[위협][내 계열]`, 그 밖에는 `core.ahead[내 계열]`.
-6. 스킬: `skill_orders[챔피언 ID]`가 있으면 그 순서, `focus`는 `skill_focus[state]`.
-7. 시작 아이템: `starter[내 계열]`, `why`는 `why.starter`.
+2. 위협 유형: 유형으로 받으면 그대로. 챔피언이면 규칙표의 `heal_champions`에 있으면 `HEAL`, `tags` 첫 값이 `Tank`면 `TANK`, 아니면 그 챔피언의 주 피해(`AD`·`AP`). 상대 공개 아이템에 회복 아이템이 있으면 `HEAL`(아이템 감지), 탱커 아이템이 있으면 `TANK`.
+3. **구매 계획(우세·접전)**: ① 1코어(`코어`) ② 신발(`신발`) ③ 위협이 `HEAL`·`TANK`이고 (`even`이거나, `ahead`인데 회복 아이템이 실제로 보이면) 대응 하위템(`대응`: `anti_heal`·`anti_tank[내 피해 또는 tank]`) ④ 나머지 코어(`다음 코어`, 대응이 들어갔으면 대응 코어 `anti_heal_core`·`anti_tank_core`를 2코어 뒤에) ⑤ 영약(`영약`). 우세하면 피해 코어를 먼저 완성하고 신발은 코어 뒤에 산다(첫 귀환에 신발 업그레이드를 먼저 권하지 않는다). 우세에서 아이템 감지가 아닌 대응은 상황별 아이템(8)으로만 낸다.
+4. **구매 계획(열세)**: ① 신발(위협이 `AD`·`AP`면 `boots.defensive[위협]`, 아니면 0의 신발) ② 하위템(위협이 `HEAL`·`TANK`면 대응 하위템, 아니면 `defensive_component[위협]`) ③ 코어(위협이 `AD`·`AP`면 `core.behind[위협][내 계열]`, 아니면 0의 1코어) ④ 나머지 코어(대응 코어가 있으면 맨 앞) ⑤ 영약.
+5. 보여 줄 3칸(`recommended_items`): 보유 아이템(`/strategy`의 `me.items`)을 계획에서 지운다. 신발 칸은 2단계 신발 하나라도 있으면 산 것으로 본다. 코어를 하나라도 가졌으면 `하위템`·`대응` 칸은 건너뛴다(코어에 합쳐져 인벤토리에서 사라진다). 가진 코어가 있으면 `[가장 뒤의 보유 코어, 남은 계획 앞 2개]`, 없으면 남은 계획 앞 3개. 모자라면 앞의 보유 코어, 그래도 모자라면 영약으로 채운다. `/coach`는 보유 아이템이 없어 계획 앞 3개다.
+6. 스킬: 챔피언 빌드표의 `skill_order`, 없으면 `skill_orders[챔피언 ID]`, `focus`는 `skill_focus[state]`.
+7. 시작 아이템: 챔피언 빌드표 `starter`(`why.champion_starter`), 없으면 포지션이 `UTILITY`면 `position_starter.UTILITY`, `JUNGLE`이면 `position_starter.JUNGLE[내 피해 또는 tank]`, 그 밖에는 `starter[내 계열]`(`why.starter`).
 8. 상황별 아이템: 후보를 이 순서로 놓는다. ① `anti_heal[내 피해 또는 tank]`(`why.situational_heal`) ② `anti_tank[…]`(`why.situational_tank`) ③ `defensive_component.AD`(`why.situational_ad`) ④ `defensive_component.AP`(`why.situational_ap`). `recommended_items`에 이미 있는 아이템과 앞 후보와 같은 아이템을 빼고 앞에서 3개.
 
-규칙표와 `game_data.json`은 패치마다 사람이 다시 확인한다. `training/ddragon.py`가 Data Dragon 최신 판에서 `game_data.json`을 다시 만들고, 규칙표의 아이템 ID가 그 판에 없으면 실패한다.
+규칙표와 `game_data.json`은 패치마다 사람이 다시 확인한다. `training/ddragon.py`가 Data Dragon 최신 판에서 `game_data.json`을 다시 만들고(규칙표·챔피언 빌드표 아이템과 그 재료의 이름·가격·`from`), 규칙표의 아이템 ID나 빌드표 챔피언이 그 판에 없으면 실패한다.
 
 **코칭 계산 정의**
 
@@ -483,12 +485,14 @@ Windows 10/11 전체 화면 최적화(FSO) 환경에서는 전체 화면(`Window
 | `kills` / `alive` / `dead` / `key_factors` | 팀 킬·생존 수·사망 수 `{"ally", "enemy"}`(인원 비대칭 수적 우위·열세는 사망 수 차이로만 판단), 핵심 근거 최대 3개 |
 | `lanes` / `ally_carry` | 5라인 매치업(한쪽이 비어 있는 라인은 `status="unpaired"`로 두고 우세·열세 판정과 winning/losing 목록에서 제외, `lanes_reliable=false`이면 `lane_ko="매치업 미확인"`, 연습 모드면 빈 배열), 아군 캐리(본인 제외, 아군 1명 이하·비대칭이면 `null`) |
 | `enemy_comp` / `objectives` | 상대 5인 전체 AD/AP/탱커/치유 집계, 일반 드래곤·장로·공허 유충·바론·포탑·억제기 집계 |
-| `recall_advice` / `strategies` / `build_advice` / `summary_briefing` | 시작 아이템·하위템 차감 보유 골드 귀환 조언(14자 이내 `short` 포함), 모순 제거된 우선순위 전략 카드 최대 3장(아군 1명 이하·비대칭에서는 `전 라인 운영`·`스노우볼`·`열세 복구`와 `합류`·`아군` 문구 미생성), 조합·보유 아이템 반영 빌드(1코어 완성 이후 후속 코어·영약까지 이어서 추천, 14자 이내 `tactical_tip_short` 포함), 동적 요약 |
+| `recall_advice` / `strategies` / `build_advice` / `summary_briefing` | 시작 아이템·하위템 차감 보유 골드 귀환 조언(14자 이내 `short`, `next_item`·`next_item_id`·`gold_needed`, 다음 아이템을 다 못 사면 그 재료(`game_data.json`의 `from`, 재료의 재료까지) 가운데 보유 재료를 뺀 값(`gold`, 실제로 내는 값)이 지금 골드 이하이면서 가장 큰 것 `buy_now {item_id, name, gold}`(그 값이 700G 이상일 때만, 없으면 `null`), `can_buy_now`는 다음 아이템이나 `buy_now`를 살 수 있으면 true), 모순 제거된 우선순위 전략 카드 최대 3장(아군 1명 이하·비대칭에서는 `전 라인 운영`·`스노우볼`·`열세 복구`와 `합류`·`아군` 문구 미생성), 조합·보유 아이템 반영 빌드(1코어 완성 이후 후속 코어·영약까지 이어서 추천, 14자 이내 `tactical_tip_short` 포함), 동적 요약 |
 | `model` / `model_version` | `/health`와 같은 값 |
+
+- **빌드 기준 상대(`build_advice.enemy_top_threat`)**: 내 포지션의 라인 상대(내가 `UTILITY`면 상대 `BOTTOM`)로 고정한다. 다른 상대의 위협도(`_player_power + 킬 × 220`)가 라인 상대의 `1.5배 + 1,000`을 넘을 때만 그 상대로 바꾼다(비슷한 위협끼리 2초마다 기준이 뒤바뀌지 않게). 위치를 모르거나 연습 모드면 위협도 1위. 빌드는 `me.position`을 포지션으로 넘겨 챔피언 빌드표(4절 적용 순서 0)를 고른다.
 
 `POST /strategy/briefing`은 `/strategy` 응답 전체에 `briefing`, `source`(`"llm"` 또는 `"dynamic_rule"`), `llm_model`, `fallback_reason`을 더해 돌려준다.
 - 로컬 LLM 주소 판별은 `urlparse(url).hostname`이 `localhost`·`127.0.0.1`·`host.docker.internal`·`::1`인 경우만 허용한다.
-- 검사기 `validate_strategy_briefing`: ① 마크다운 기호(`**`, `__`, `` ` ``, `#`, 목록 기호)를 지운 뒤 검사·표시 ② 3문장 이상 거절(`sentences: n`) ③ 단위가 붙은 숫자(`초`·`분`·`명`·`G`·`%`)는 같은 단위의 `payload` 값과만 대조하고, 단위 없는 숫자는 `payload` 전체 숫자(쉼표·정수 반올림 허용, `1대1` 제외)와 대조해 없는 숫자를 거절(`number: x`) ④ `recommended_items` 및 `payload` 문자열 안에 없는 아이템 이름 거절(`item: 이름`) ⑤ `api/build_rules.json`의 `item_stats`(공격력·주문력·방어력·마법 저항력·체력)에 없는 능력치를 해당 아이템과 짝지어 말하면 거절(`item_stat: <아이템>(<능력치>)`).
+- 검사기 `validate_strategy_briefing`: ① 마크다운 기호(`**`, `__`, `` ` ``, `#`, 목록 기호)를 지운 뒤 검사·표시 ② 3문장 이상 거절(`sentences: n`) ③ 단위가 붙은 숫자(`초`·`분`·`명`·`G`·`%`)는 같은 단위의 `payload` 값과만 대조하고, 단위 없는 숫자는 `payload` 전체 숫자(쉼표·정수 반올림 허용, `1대1` 제외)와 대조해 없는 숫자를 거절(`number: x`) ④ `recommended_items`·`situational_items`(상황별 아이템 이름, payload 에 함께 넣는다) 및 `payload` 문자열 안에 없는 아이템 이름 거절(`item: 이름`) ⑤ `api/build_rules.json`의 `item_stats`(공격력·주문력·방어력·마법 저항력·체력)에 없는 능력치를 해당 아이템과 짝지어 말하면 거절(`item_stat: <아이템>(<능력치>)`).
 - 캐시 키는 전략 제목 대신 `(phase, state, my_champion, lanes 상태, 상위 2개 전략 category, recommended_items, win_prob 2% 단위)`를 쓰고 수명은 20초다.
 
 ### `GET /meta/champions` (웹 시뮬레이터용, `include_in_schema=False`)
@@ -623,7 +627,7 @@ p_blue   = 1 / (1 + exp(−gold_est / 2500))
 - **정확도 0.68의 근거**: 사전 분석에서 규칙 기준선의 평가셋 정확도가 약 0.71이고, 공개 지표 로지스틱 회귀도 약 0.71이었다. 정확도로는 둘이 비슷하므로 주 기준은 확률 품질(Brier·LogLoss)로 두고, 정확도는 "규칙보다 3%p 넘게 떨어진 고장 난 모델"을 막는 하한으로만 쓴다.
 - **Brier를 주 기준으로 두는 이유**: 이 서비스는 "승률 43%", "+10.2%p"처럼 확률을 숫자로 보여 준다. 맞힌 비율보다 확률이 실제 빈도와 맞는지가 중요하다.
 
-**자동 테스트 기준선**: 2026-11-21 `uv run pytest api client tests -q -rs` **410 passed**(`uv sync --all-groups` 환경에서 skipped 0; `dev` 그룹만 설치된 환경에서는 `pandas`·`sklearn`이 필요한 재학습 로더 검사 2건이 건너뛰어지며 이는 `pyproject.toml`의 `train` 그룹 분리 정책 때문이다). 이보다 줄면 커밋 메시지와 `인수인계.md`에 이유를 적는다.
+**자동 테스트 기준선**: 2026-11-23 `uv run pytest api client tests -q -rs` **428 passed**(`uv sync --all-groups` 환경에서 skipped 0; `dev` 그룹만 설치된 환경에서는 `pandas`·`sklearn`이 필요한 재학습 로더 검사 2건이 건너뛰어지며 이는 `pyproject.toml`의 `train` 그룹 분리 정책 때문이다). 이보다 줄면 커밋 메시지와 `인수인계.md`에 이유를 적는다.
 
 **UI 점검(헤드리스 Chromium, Playwright)**: `/`, `/download`, `/slides`(일곱 장 모두), `/overlay`를 PC 1280×800·모바일 390×844(·태블릿 700×900)에서 열어 `documentElement.scrollWidth <= clientWidth`, 화면 밖으로 나간 요소 0개. 세 페이지 상단 메뉴에 `/overlay` 링크가 없고, 상단 메뉴로 `/` → `/download` → `/` → `/download` → `/slides` → `/` 클릭 이동이 모두 그 주소로 간다. `/`의 `인게임 HUD 미리보기`를 누르면 `/overlay` 팝업(400×580, `window.name` `lolHud`)이 뜨고 가로 넘침 0, 승률 숫자가 채워지며, 한 번 더 눌러도 창이 늘지 않는다. console error·pageerror 0건(팝업 포함). `/overlay`는 브리지가 없으면 `127.0.0.1:8765` 연결 거부가 console error로 찍히므로 브리지를 저장 응답(`--file ... --overlay`)으로 띄워 둔 상태에서 잰다.
 

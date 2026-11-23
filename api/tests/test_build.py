@@ -31,27 +31,34 @@ def ids(b):
     return [i["item_id"] for i in b["recommended_items"]]
 
 
-@pytest.mark.parametrize("game,opt,want_state,want_ids,want_threat", [
-    # 우세 · 징크스(원딜, AD) · 상대 AP → 계열 신발 3006, 피해 하위템 1038, 우세 코어 3031
-    (AHEAD, {"my_champion": "Jinx", "enemy_top_threat": "AP"}, "ahead", [3006, 1038, 3031], "AP"),
-    # 열세 · 아리(마법사, AP) · 상대 제드(암살자, AD) → 방어 신발 3047, 천 갑옷 1029, 열세 AD 마법사 코어 3157
-    (BEHIND, {"my_champion": "아리", "enemy_top_threat": "제드"}, "behind", [3047, 1029, 3157], "AD"),
-    # 열세 · AD 역할군 · 상대 소라카(치유) → 막을 피해 유형이 없어 계열 신발 3006, 치유 감소 3123, 우세 코어표 3031
-    (BEHIND, {"my_champion": "AD", "enemy_top_threat": "Soraka"}, "behind", [3006, 3123, 3031], "HEAL"),
-    # 접전 · 탱커 역할군 · 상대 말파이트(탱커) → 탱커 신발 3047, 탱커용 관통 열 1028, 코어 3068
-    (EVEN_GAME, {"my_champion": "TANK", "enemy_top_threat": "Malphite"}, "even", [3047, 1028, 3068], "TANK"),
+@pytest.mark.parametrize("game,opt,want_state,want_ids,want_slots,want_threat", [
+    # 우세 · 징크스(원딜, 빌드표 없음) · 상대 AP → 구매 계획(우세·접전): 1코어 core.ahead 3031, 계열 신발 3006,
+    # followup_cores.marksman 에서 1코어를 뺀 첫 값 3094
+    (AHEAD, {"my_champion": "Jinx", "enemy_top_threat": "AP"}, "ahead", [3031, 3006, 3094],
+     ["코어", "신발", "다음 코어"], "AP"),
+    # 열세 · 아리(마법사, AP) · 상대 제드(암살자, AD) → 구매 계획(열세): 방어 신발 3047, 천 갑옷 1029, 열세 AD 마법사 코어 3157
+    (BEHIND, {"my_champion": "아리", "enemy_top_threat": "제드"}, "behind", [3047, 1029, 3157],
+     ["신발", "하위템", "코어"], "AD"),
+    # 열세 · AD 역할군 · 상대 소라카(치유) → 막을 피해 유형이 없어 계열 신발 3006, 치유 감소 3123, 1코어 3031
+    (BEHIND, {"my_champion": "AD", "enemy_top_threat": "Soraka"}, "behind", [3006, 3123, 3031],
+     ["신발", "하위템", "코어"], "HEAL"),
+    # 접전 · 탱커 역할군 · 상대 말파이트(탱커) → 1코어 3068, 탱커 신발 3047, 대응 anti_tank.tank 1028
+    (EVEN_GAME, {"my_champion": "TANK", "enemy_top_threat": "Malphite"}, "even", [3068, 3047, 1028],
+     ["코어", "신발", "대응"], "TANK"),
     # 열세 · 가렌(전사, AD) · 상대 AP → 3111, 마법무효화의 망토 1033, 열세 AP 전사 코어 3156
-    (BEHIND, {"my_champion": "Garen", "enemy_top_threat": "AP"}, "behind", [3111, 1033, 3156], "AP"),
-    # 생략 → 기본값 AD(원딜) · AP, 접전
-    (EVEN_GAME, {}, "even", [3006, 1038, 3031], "AP"),
+    (BEHIND, {"my_champion": "Garen", "enemy_top_threat": "AP"}, "behind", [3111, 1033, 3156],
+     ["신발", "하위템", "코어"], "AP"),
+    # 생략 → 기본값 AD(원딜) · AP, 접전 → 첫 사례와 같은 계획
+    (EVEN_GAME, {}, "even", [3031, 3006, 3094], ["코어", "신발", "다음 코어"], "AP"),
 ])
-def test_rule_table_order(client, game, opt, want_state, want_ids, want_threat):
+def test_rule_table_order(client, game, opt, want_state, want_ids, want_slots, want_threat):
     b = coach(client, game, **opt)
     assert b["state"] == want_state
     assert ids(b) == want_ids
     assert b["threat_type"] == want_threat
     assert [i["step"] for i in b["recommended_items"]] == [1, 2, 3]
-    assert [i["slot"] for i in b["recommended_items"]] == ["신발", "하위템", "코어"]
+    assert [i["slot"] for i in b["recommended_items"]] == want_slots
+    assert b["build_position"] is None
     for i in b["recommended_items"]:  # 이름·가격은 Data Dragon 표에서
         assert (i["name"], i["gold"]) == (GAME["items"][str(i["item_id"])]["name"],
                                           GAME["items"][str(i["item_id"])]["gold"])
@@ -78,13 +85,14 @@ def test_role_given_has_no_champion_and_no_skill_order(client):
     b = coach(client, EVEN_GAME, my_champion="ap", enemy_top_threat="heal")
     assert (b["my_champion"], b["my_class"], b["my_damage"]) == (None, "mage", "AP")
     assert (b["enemy_top_threat"], b["threat_type"]) == (None, "HEAL")
-    assert ids(b)[1] == RULES["anti_heal"]["AP"]
+    # 접전 + HEAL: 1코어 → 신발 → 대응 치유 감소 (구매 계획 ③)
+    assert ids(b)[2] == RULES["anti_heal"]["AP"] and b["recommended_items"][2]["slot"] == "대응"
     assert b["skill_order"]["order"] is None and b["skill_order"]["source"] == "원칙만"
 
 
 def test_champion_without_skill_table(client):
-    b = coach(client, EVEN_GAME, my_champion="Teemo")
-    assert "Teemo" not in RULES["skill_orders"]
+    b = coach(client, EVEN_GAME, my_champion="Shaco")
+    assert "Shaco" not in RULES["skill_orders"] and "Shaco" not in RULES["champion_builds"]
     assert b["skill_order"]["order"] is None and b["skill_order"]["source"] == "원칙만"
 
 

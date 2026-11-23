@@ -51,7 +51,7 @@
 
 | 항목 | 실측 수치 | 근거 |
 |---|---|---|
-| **자동 테스트** | **437 passed** (`uv sync --all-groups` 시 skipped 0, Windows 에서는 `.env` 0600 권한 검사 1건이 파일 시스템 차이로 실패) | `uv run pytest api client tests deploy -q -rs` |
+| **자동 테스트** | **445 passed** (`uv sync --all-groups` 시 skipped 0, Windows 에서는 `.env` 0600 권한 검사 1건이 파일 시스템 차이로 실패) | `uv run pytest api client tests deploy -q -rs` |
 | **성능 게이트 (`m1` → `m2`)** | `m1`(500경기) Brier 0.1891 → `m2`(5,000경기) **0.1824** (규칙 대비 +4.84%) | [docs/model_comparison.md](docs/model_comparison.md) |
 | **ONNX 일치 (Parity)** | 원본 sklearn vs ONNX 23건 최대 오차 `1.19e-07` (허용 `0.0001`) | `training/check_parity.py` |
 | **서빙 부하 (로컬 / 실서버)** | 로컬 ONNX `/predict` p95 **0.73ms**, 실서버 160건 동시 10건 **성공률 100%** | [docs/benchmark_summary.json](docs/benchmark_summary.json), [docs/benchmark_cloud_summary.json](docs/benchmark_cloud_summary.json) |
