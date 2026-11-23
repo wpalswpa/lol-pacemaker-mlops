@@ -94,6 +94,18 @@ jobs:
       - uses: actions/checkout@v7
       - name: 배포 파일 놓기
         run: cp deploy/lightsail/compose.yml deploy/lightsail/server.sh deploy/lightsail/Caddyfile /srv/lol/
+      - name: 선택 환경 변수 반영 (RIOT_API_KEY)
+        env:
+          RIOT_API_KEY: ${{ secrets.RIOT_API_KEY }}
+        run: |
+          if [ -n "$RIOT_API_KEY" ]; then
+            umask 077
+            touch /srv/lol/.env
+            chmod 600 /srv/lol/.env
+            { grep -v '^RIOT_API_KEY=' /srv/lol/.env || true; } > /srv/lol/.env.new
+            printf 'RIOT_API_KEY=%s\n' "$RIOT_API_KEY" >> /srv/lol/.env.new
+            mv /srv/lol/.env.new /srv/lol/.env
+          fi
       - name: 새 이미지로 바꾸기 (토큰은 stdin 으로만)
         env:
           GH_TOKEN: ${{ github.token }}
