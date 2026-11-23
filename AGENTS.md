@@ -197,7 +197,7 @@
 | `popup` / `hud_window` | 팝업 실행·항상 위 고정 결과, Windows 인게임 팝업 창 상태(`frameless`·`alpha`·`click_through`·`visible`·`lol_detected`·`lol_window_mode`) |
 | `pace_warning` | 위 "시각 경고" 결과 `{level, text}`, 해당 없으면 `null` |
 
-**HUD 의 AI 감독 브리핑**: HUD 는 `/strategy` 응답의 핵심 전장 키(페이즈·유불리·챔피언·전 라인 상태·상위 2개 전략 **카테고리**·승률 2% 단위)가 바뀌고 직전 요청(실패 포함)에서 최소 20초가 지났을 때 `POST /strategy/briefing`을 같은 출처로 부른다. 요청 도중 화면 모드(LIVE/데모)가 바뀌면 늦게 온 응답은 버린다. 한 번에 하나만 보내고, `AI 감독 브리핑` 칸에 `briefing`과 출처(`LLM · {model}` 또는 `동적 전략`)를 textContent로 넣는다. 실패하면 칸에 "브리핑 없음"을 적고 나머지 HUD 는 그대로 둔다.
+**HUD 의 AI 감독 브리핑**: HUD 는 `/strategy` 응답의 핵심 전장 키(페이즈·유불리·챔피언·전 라인 상태·상위 2개 전략 **카테고리**·승률 2% 단위)가 바뀌고 직전 요청(실패 포함)에서 최소 20초가 지났을 때 `POST /strategy/briefing`을 같은 출처로 부른다. 요청 도중 화면 모드(LIVE/데모)가 바뀌면 늦게 온 응답은 버린다. 한 번에 하나만 보내고, **`source === "llm"`이고 1순위 전략 카드(`title`·`detail`)와 겹치지 않을 때만** `AI 감독 브리핑` 칸을 표시하며 `briefing`과 출처(`LLM · {model}`)를 textContent로 넣는다. `source !== "llm"`이거나 호출에 실패하면 브리핑 칸을 숨기고(1순위 카드 반복 금지) 나머지 HUD 는 그대로 둔다.
 
 **팝업 `--launch-popup`**: `http://127.0.0.1:<포트>/overlay?bridge_url=http://127.0.0.1:<포트>/bridge/state&token=<무작위 토큰>`을 380×560 인게임 팝업 HUD로 띄운다(`--server`는 `--api`와 같은 옵션).
 
@@ -249,14 +249,15 @@ Windows 10/11 전체 화면 최적화(FSO) 환경에서는 전체 화면(`Window
 - 새 게임은 게임 시각이 `NEW_GAME_REWIND_SEC`(5초) 넘게 되돌아가거나, `(팀, 챔피언)` 10쌍(`game_key`)이 바뀌면 판별한다(Live Client API 에는 경기 ID 가 없다). 새 게임이면 저장 여부·코칭 간격을 처음으로 돌린다. 브리지가 새 게임을 0:30 이후에 처음 봐도(로딩 중 폴링 실패, 늦게 켬) 그 게임 결과를 저장한다.
 - 서버 계산이 실패하면 브리지는 직전 코칭을 그대로 두고 `coach_error`를 채운다. HUD 는 이때 배지를 `🟠 LIVE · 서버 재연결 중`으로 바꾸고 문구 앞에 "서버 연결이 끊겨 마지막 계산 값을 보여요"를 붙인다(옛 승률을 지금 값처럼 보이지 않게).
 
-**오버레이 화면 (`api/static/overlay.html`)**: 화면이 계산을 새로 하지 않고 `/strategy` 응답과 브리지 상태만 옮긴다. OP.GG 인게임 오버레이처럼 **바깥 배경(`html, body`)은 완전히 투명(`transparent`)**하게 두고, 개별 다크 글래스 위젯 카드(`.hud-card`)만 게임 화면 위에 또렷하게 띄운다. 글자 가독성을 해치는 `body.style.opacity` 이중 감쇠를 쓰지 않고 카드 배경 알파(`--card-alpha`)와 OS 창 알파만 조절하며, 모든 본문·라벨 글자는 최소 11px~14px(핵심 승률 28px 이상) 굵은 고대비 타이포그래피로 표시한다. 토큰(`token`) 쿼리가 없을 때는 `/bridge/window` 제어 요청을 보내지 않아 단독 미리보기에서도 콘솔 오류(403)가 0건이어야 한다.
+**오버레이 화면 (`api/static/overlay.html`)**: 화면이 계산을 새로 하지 않고 `/strategy` 응답과 브리지 상태만 옮긴다. OP.GG 인게임 오버레이처럼 **바깥 배경(`html, body`)은 완전히 투명(`transparent`)**하게 두고, 개별 다크 글래스 위젯 카드(`.hud-card`)만 게임 화면 위에 또렷하게 띄운다. 글자 가독성을 해치는 `body.style.opacity` 이중 감쇠를 쓰지 않고, **창 OS 알파는 230(약 90%) 아래로 내리지 않으며 투명도 버튼(95%/82%/68%)은 카드 배경 알파(`--card-alpha`)만 바꾼다(글자는 늘 불투명)**. 모든 본문·라벨 글자는 고대비 타이포그래피로 표시하며, 380×560에서 `.hud-card` 안의 모든 보이는 요소가 `scrollWidth <= clientWidth`를 만족한다. 토큰(`token`) 쿼리가 없을 때는 `/bridge/window` 제어 요청을 보내지 않아 단독 미리보기에서도 콘솔 오류(403)가 0건이어야 한다.
 
 | 칸 | 무엇을 보고 | 어떻게 보여 주나 |
 |---|---|---|
-| 상단 컨트롤 알약 바 | 브리지 `connected`, `game_time_sec`, `hud_window` | 드래그 이동 핸들 + `🟢 게임 중 LIVE (MM:SS)` / `🟡 게임 중 시뮬레이션 (MM:SS)` 배지, `집중`, `이펙트 ON/OFF`, 투명도(`95%`/`82%`/`68%`, 카드 배경 및 Win32 창 알파 연동), 접기(`−`), 종료(`×`), 클릭 통과(`F8`)·숨김(`F9`) 안내 |
-| 실시간 판세 & 핵심 오더 위젯 | `strategy.win_prob`, `phase_label`, `team_gold_diff`, `alive`, `strategies`, `/strategy/briefing` | 제목 `실시간 게임 중 승률`, 승률(28px+)·전술 배지·팀 골드 차·생존 인원·핵심 요인 칩과 1순위 맞춤 전략 배너·AI 감독 브리핑(`LLM · {model}` / `동적 전략`)을 한 위젯에서 한눈에 읽히게 통합 표시 |
-| 빌드 · 스킬 추천 위젯 | `strategy.build_advice`, `strategy.recall_advice`, `owned_items`, `skill_order.order`, `next_skill` | 보유 골드·즉시 구매 목표 배너, 3단계 코어 구매 카드(`34×34px` 아이콘, 12px 굵은 이름, 보유 `✓ 보유 완료`, 다음 미보유 `지금 구매 추천` 금색 맥박 테두리), 시작·상황별 아이콘 줄, 스킬 레벨업 키캡(`[Q]`·`[E]` 청록 맥박 테두리) |
-| 전 라인 골드 비교 위젯 | `strategy.lanes`, `strategy.enemy_comp` | 5v5에서는 `탑 · 정글 · 미드 · 원딜 · 서폿` 5칸 초상화·골드 격차 표시. 1v1·1v5 봇전처럼 `매치업 미확인`/`미확인` 슬롯이 섞인 경우에는 확인된 실제 교전 라인만 선명한 매치업 행으로 보여 주고 빈 `미확인` 칸이 화면을 차지하지 않게 축약 |
+| 상단 컨트롤 알약 바 | 브리지 `connected`, `game_time_sec`, `hud_window` | 드래그 이동 핸들 + `🟢 게임 중 LIVE (MM:SS)` / `🟡 게임 중 시뮬레이션 (MM:SS)` 배지, `≡` 메뉴(위젯 표시 설정·`집중`·`이펙트 ON/OFF`·투명도 `95%`/`82%`/`68%`), 접기(`−`), 종료(`×`)만 간결히 배치 |
+| 기본 접힘 화면 (약 380×180) | `strategy.win_prob`, `tactical_badge_short`, `gold_basis`, `team_gold_diff`, `dead`, `recall_advice`, `build_advice`, `next_skill` | 승률 줄(`52% · 초반 박빙` 한 번만, `gold_basis`에 맞춘 `골드`/`1인당` 칩, 사망자가 있을 때만 `아군 사망 n · 상대 사망 m` 칩, `상세 ▾` 펼침 토글) + 다음 구매·스킬 줄만 표시. 펼침 상태는 `localStorage`에 기억(실패해도 동작) |
+| 펼침: 실시간 맞춤 전략 & 브리핑 | `strategy.strategies`, `/strategy/briefing` | 순번 배지 `①`·`②` 전략 카드 2장(조합 요약은 전략 카드에만 표시), `AI 감독 브리핑` 칸은 `source === "llm"`이고 1순위 카드와 겹치지 않을 때만 표시(`source !== "llm"`이면 숨김) |
+| 펼침: 빌드 · 스킬 추천 위젯 | `strategy.build_advice`, `strategy.recall_advice`, `owned_items`, `skill_order.order`, `next_skill` | 짧은 구매 문구(`recall_advice.short`), 3단계 코어 구매 슬롯(배지는 카드 바깥 위쪽에 두어 테두리·이름을 가리지 않고, 이름이 넘치면 아이콘과 가격만 표시; 1코어 완성 이후에도 후속 코어·영약 추천으로 자동 전환), 시작·상황별 아이콘 줄, 스킬 레벨업 키캡 |
+| 펼침: 아이템 골드 비교 위젯 | `strategy.gold_basis`, `strategy.team_gold`, `strategy.team_gold_diff`, `strategy.lanes` | 머리글에 기준(`팀 합계` 또는 `1인당 평균`, 조합 중복 문구 없음), 앞선 팀 이름이 든 차이 표기(`블루 +...G` / `레드 +...G`). 아군이 없는 줄(`unpaired`)은 상대만 한 줄로 축약하고, 매치업 차이는 오른쪽 열에 색(초록/빨강)으로 표시(라인 라벨에 차이를 섞지 않음) |
 | 폴링 | `?bridge_url=`(기본 `http://127.0.0.1:8765/bridge/state`) | 2초마다. 실패하면 시뮬레이션으로 둔다 |
 | 데모 | `초반 우세 06:30`·`중반 박빙 14:20`·`후반 열세 23:10` | 세 시간대의 10인 실시간 전장 스냅샷을 `/strategy`·`/strategy/briefing`에 보내 유동 전략 변화를 바로 확인한다 |
 
@@ -476,17 +477,18 @@ Windows 10/11 전체 화면 최적화(FSO) 환경에서는 전체 화면(`Window
 | 출력 필드 | 보장 |
 |---|---|
 | `game_time_sec` / `phase` / `phase_label` | 경과 초, `"early"`(<840s)·`"mid"`(840~1499s)·`"late"`(≥1500s), 한국어 페이즈명 |
-| `win_prob` / `state` / `state_ko` / `tactical_badge` | 실시간 판세 0.05~0.95(`me.current_gold` 미포함), `"ahead"`(>0.56)·`"even"`·`"behind"`(<0.44), 페이즈별 배지 |
+| `win_prob` / `state` / `state_ko` / `tactical_badge` / `tactical_badge_short` | 실시간 판세 0.05~0.95(`me.current_gold` 미포함), `"ahead"`(>0.56)·`"even"`·`"behind"`(<0.44), 페이즈별 배지 및 14자 이내 짧은 배지(`"초반 박빙"` 등) |
 | `ml_blended` / `practice_mode` / `lanes_reliable` | 8~12분 ML 모델 블렌딩 여부, 상대 0명 연습 모드 여부, 위치 확인 선수 4명 이상 여부 |
-| `team_gold_diff` / `kills` / `alive` / `key_factors` | 양 팀 추정 골드 차(아이템 골드 기반, `current_gold` 제외), 팀 킬·생존 수, 핵심 근거 최대 3개 |
-| `lanes` / `ally_carry` | 5라인 매치업(`lanes_reliable=false`이면 `lane_ko="매치업 미확인"`, 연습 모드면 빈 배열), 아군 캐리(본인 제외) |
+| `gold_basis` / `team_gold` / `team_gold_diff` | 골드 비교 기준(`"team"` 또는 인원 비대칭 시 `"per_player"`), 그 기준의 양 팀 골드 `{"ally", "enemy"}`와 차이(화면의 칩·위젯 모두 이 기준 하나만 따름) |
+| `kills` / `alive` / `dead` / `key_factors` | 팀 킬·생존 수·사망 수 `{"ally", "enemy"}`(인원 비대칭 수적 우위·열세는 사망 수 차이로만 판단), 핵심 근거 최대 3개 |
+| `lanes` / `ally_carry` | 5라인 매치업(한쪽이 비어 있는 라인은 `status="unpaired"`로 두고 우세·열세 판정과 winning/losing 목록에서 제외, `lanes_reliable=false`이면 `lane_ko="매치업 미확인"`, 연습 모드면 빈 배열), 아군 캐리(본인 제외, 아군 1명 이하·비대칭이면 `null`) |
 | `enemy_comp` / `objectives` | 상대 5인 전체 AD/AP/탱커/치유 집계, 일반 드래곤·장로·공허 유충·바론·포탑·억제기 집계 |
-| `recall_advice` / `strategies` / `build_advice` / `summary_briefing` | 시작 아이템·하위템 차감 보유 골드 귀환 조언, 모순 제거된 우선순위 전략 카드 최대 3장, 조합 반영 빌드, 동적 요약 |
+| `recall_advice` / `strategies` / `build_advice` / `summary_briefing` | 시작 아이템·하위템 차감 보유 골드 귀환 조언(14자 이내 `short` 포함), 모순 제거된 우선순위 전략 카드 최대 3장(아군 1명 이하·비대칭에서는 `전 라인 운영`·`스노우볼`·`열세 복구`와 `합류`·`아군` 문구 미생성), 조합·보유 아이템 반영 빌드(1코어 완성 이후 후속 코어·영약까지 이어서 추천, 14자 이내 `tactical_tip_short` 포함), 동적 요약 |
 | `model` / `model_version` | `/health`와 같은 값 |
 
 `POST /strategy/briefing`은 `/strategy` 응답 전체에 `briefing`, `source`(`"llm"` 또는 `"dynamic_rule"`), `llm_model`, `fallback_reason`을 더해 돌려준다.
 - 로컬 LLM 주소 판별은 `urlparse(url).hostname`이 `localhost`·`127.0.0.1`·`host.docker.internal`·`::1`인 경우만 허용한다.
-- 검사기 `validate_strategy_briefing`: ① 3문장 이상 거절(`sentences: n`) ② `payload` 모든 값·문자열 속 숫자(쉼표·정수 반올림 허용, `1대1` 제외)에 없는 숫자 거절(`number: x`) ③ `recommended_items` 및 `payload` 문자열 안에 없는 아이템 이름 거절(`item: 이름`).
+- 검사기 `validate_strategy_briefing`: ① 마크다운 기호(`**`, `__`, `` ` ``, `#`, 목록 기호)를 지운 뒤 검사·표시 ② 3문장 이상 거절(`sentences: n`) ③ 단위가 붙은 숫자(`초`·`분`·`명`·`G`·`%`)는 같은 단위의 `payload` 값과만 대조하고, 단위 없는 숫자는 `payload` 전체 숫자(쉼표·정수 반올림 허용, `1대1` 제외)와 대조해 없는 숫자를 거절(`number: x`) ④ `recommended_items` 및 `payload` 문자열 안에 없는 아이템 이름 거절(`item: 이름`) ⑤ `api/build_rules.json`의 `item_stats`(공격력·주문력·방어력·마법 저항력·체력)에 없는 능력치를 해당 아이템과 짝지어 말하면 거절(`item_stat: <아이템>(<능력치>)`).
 - 캐시 키는 전략 제목 대신 `(phase, state, my_champion, lanes 상태, 상위 2개 전략 category, recommended_items, win_prob 2% 단위)`를 쓰고 수명은 20초다.
 
 ### `GET /meta/champions` (웹 시뮬레이터용, `include_in_schema=False`)

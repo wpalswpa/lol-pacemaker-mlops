@@ -780,7 +780,7 @@ def test_opgg_scouter_hud_and_electron_download(client, app_module):
     assert "document.body.style.opacity" not in ov  # 글자 대비 이중 감쇠 금지
     assert "--card-alpha" in ov
     assert "if (!BRIDGE_TOKEN) return;" in ov       # 단독 열람 시 403 콘솔 오류 0건
-    for marker in ('id="blueGoldTxt"', 'id="redGoldTxt"', 'id="tugFill"', "scouter-row", "S·1순위", "A·2순위", "tier-badge"):
+    for marker in ('id="blueGoldTxt"', 'id="redGoldTxt"', 'id="tugFill"', "scouter-row", "①", "②", "tier-badge"):
         assert marker in ov, marker
 
     el_res = client.get("/download/overlay_electron.js")

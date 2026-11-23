@@ -23,7 +23,10 @@ def get(url: str) -> Any:
 
 def rule_item_ids(rules: dict) -> set[int]:
     """규칙표 안의 모든 아이템 ID (중첩 표를 다 훑는다)."""
-    keys = ("boots", "anti_heal", "anti_tank", "defensive_component", "damage_component", "core", "starter")
+    keys = (
+        "boots", "anti_heal", "anti_heal_core", "anti_tank", "anti_tank_core",
+        "defensive_component", "damage_component", "core", "followup_cores", "elixir", "starter",
+    )
     ids: set[int] = set()
 
     def walk(v):
@@ -37,7 +40,8 @@ def rule_item_ids(rules: dict) -> set[int]:
             ids.add(v)
 
     for k in keys:
-        walk(rules[k])
+        if k in rules:
+            walk(rules[k])
     return ids
 
 

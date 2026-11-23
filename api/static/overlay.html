@@ -7,13 +7,14 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='6' fill='%23d8b45a'/%3E%3C/svg%3E">
 <style>
   /* OP.GG 인게임 스카우터 & AI 코치 플로팅 위젯 HUD (AGENTS.md 3-4절).
-     바깥 배경은 완전 투명(transparent)으로 두고 380x560 안에 4개 정밀 위젯 카드가 스크롤 없이 들어간다. */
+     바깥 배경은 완전 투명(transparent), 기본 화면은 ~380x180 컴팩트 모드, 펼침 시 전 라인·전략·빌드 표시.
+     창 OS 알파는 230(약 90%) 아래로 내리지 않고 카드 배경 알파(--card-alpha)만 조절해 글자를 항상 불투명하게 유지한다. */
   :root {
-    --card-alpha: 0.94;
+    --card-alpha: 0.95;
     --card: rgba(15, 18, 27, var(--card-alpha));
-    --card-inner: rgba(24, 29, 43, .78);
-    --line: rgba(255, 255, 255, .13);
-    --line2: rgba(255, 255, 255, .24);
+    --card-inner: rgba(24, 29, 43, .82);
+    --line: rgba(255, 255, 255, .14);
+    --line2: rgba(255, 255, 255, .26);
     --text: #f8fafc;
     --sub: #cbd5e1;
     --dim: #94a3b8;
@@ -39,10 +40,11 @@
     -webkit-font-smoothing: antialiased;
   }
   body {
-    font: 11.5px/1.25 -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", "Segoe UI", sans-serif;
+    font: 11.5px/1.3 -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", "Segoe UI", sans-serif;
+    width: 100%;
     max-width: 380px;
     margin: 0 auto;
-    padding: 2px 4px;
+    padding: 3px 4px;
     display: flex;
     flex-direction: column;
     gap: 4px;
@@ -62,23 +64,39 @@
     backdrop-filter: blur(10px);
   }
 
-  /* ── 위젯 0: 상단 OP.GG 스타일 컨트롤 도크 ── */
-  .top-card { padding: 4px 5px; display: flex; flex-direction: column; gap: 2px; }
-  .top { display: flex; align-items: center; gap: 2px; cursor: grab; }
+  /* ── 위젯 0: 상단 간결 컨트롤 바 (LIVE 배지, ≡, −, ×) ── */
+  .top-card { padding: 4px 6px; display: flex; flex-direction: column; gap: 3px; }
+  .top { display: flex; align-items: center; gap: 4px; cursor: grab; }
   .top:active { cursor: grabbing; }
-  .brand-pill {
-    display: inline-grid; place-items: center; padding: 2px 5px; border-radius: 5px;
-    background: linear-gradient(135deg, #6366f1, #8b5cf6); color: #fff; border: 1px solid rgba(255, 255, 255, .25);
-    font-size: 9.5px; font-weight: 900; letter-spacing: -.3px; flex: none; text-shadow: none;
+  .grip { color: var(--sub); font-size: 11px; font-weight: 900; padding: 0 1px; letter-spacing: -1px; flex: none; }
+  .live {
+    flex: 1; min-width: 0; display: flex; align-items: center; gap: 4px; padding: 3px 7px; border-radius: 6px;
+    background: rgba(255, 255, 255, .05); border: 1px solid var(--line); font-weight: 800; font-size: 10.5px;
+    text-align: left;
   }
-  .brand-pill:hover { filter: brightness(1.12); }
+  .live.on { color: var(--green); border-color: rgba(52, 211, 153, .45); background: rgba(52, 211, 153, .11); }
+  .live:not(.on) { color: var(--yellow); border-color: rgba(250, 204, 21, .35); }
+  .ctrl {
+    padding: 3px 7px; border-radius: 6px; border: 1px solid var(--line); background: rgba(255, 255, 255, .06);
+    color: var(--sub); font-weight: 800; white-space: nowrap; font-size: 10.5px; flex: none;
+  }
+  .ctrl:hover { border-color: var(--line2); color: var(--text); }
+  .ctrl.active, .ctrl[aria-pressed="true"] {
+    border-color: rgba(124, 110, 255, .85); background: rgba(124, 110, 255, .25); color: #efeaff;
+  }
+  .fx {
+    padding: 3px 6px; border-radius: 6px; border: 1px solid rgba(251, 191, 36, .55); background: rgba(251, 191, 36, .16);
+    color: var(--gold); font-weight: 800; white-space: nowrap; font-size: 10px;
+  }
+  .fx[aria-pressed="false"] { border-color: var(--line); background: rgba(255, 255, 255, .04); color: var(--dim); }
 
-  /* OP.GG 스타일 개별 위젯 ON/OFF 토글 서랍 */
+  /* ≡ 메뉴 서랍 (집중·이펙트·투명도·위젯 ON/OFF) */
   .opgg-drawer {
-    display: flex; flex-direction: column; gap: 4px;
-    padding: 6px 8px; margin-top: 3px; border-radius: 8px;
-    background: rgba(12, 15, 24, .96); border: 1px solid var(--line2);
+    display: flex; flex-direction: column; gap: 6px;
+    padding: 7px 8px; margin-top: 2px; border-radius: 8px;
+    background: rgba(12, 15, 24, .97); border: 1px solid var(--line2);
   }
+  .menu-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
   .sw-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 10px; }
   .sw-row {
     display: flex; align-items: center; justify-content: space-between; gap: 6px;
@@ -96,77 +114,62 @@
   .sw-row[aria-pressed="true"] .sw-pill { background: rgba(124, 110, 255, .45); }
   .sw-row[aria-pressed="true"] .sw-pill::after { transform: translateX(10px); background: #8b7cff; }
   body.hide-order #strats { display: none !important; }
-  body.hide-sub .brief-box { display: none !important; }
+  body.hide-sub #briefBox { display: none !important; }
   body.hide-gold .lanes-sec { display: none !important; }
-  body.hide-build .build-top, body.hide-build #buy { display: none !important; }
-  body.hide-skill .skill-strip { display: none !important; }
-  .grip { color: var(--sub); font-size: 11px; font-weight: 900; padding: 0 1px; letter-spacing: -1px; flex: none; }
-  .live {
-    flex: 1; min-width: 0; display: flex; align-items: center; gap: 3px; padding: 3px 5px; border-radius: 6px;
-    background: rgba(255, 255, 255, .05); border: 1px solid var(--line); font-weight: 800; font-size: 10px; letter-spacing: -.2px;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left;
-  }
-  .live.on { color: var(--green); border-color: rgba(52, 211, 153, .45); background: rgba(52, 211, 153, .11); }
-  .live:not(.on) { color: var(--yellow); border-color: rgba(250, 204, 21, .35); }
-  .fx {
-    padding: 3px 4px; border-radius: 6px; border: 1px solid rgba(251, 191, 36, .55); background: rgba(251, 191, 36, .16);
-    color: var(--gold); font-weight: 800; white-space: nowrap; font-size: 9.5px;
-  }
-  .fx[aria-pressed="false"] { border-color: var(--line); background: rgba(255, 255, 255, .04); color: var(--dim); }
-  .ctrl {
-    padding: 3px 4px; border-radius: 6px; border: 1px solid var(--line); background: rgba(255, 255, 255, .05);
-    color: var(--sub); font-weight: 800; white-space: nowrap; font-size: 9.5px;
-  }
-  .ctrl:hover { border-color: var(--line2); color: var(--text); }
-  .ctrl.active, .ctrl[aria-pressed="true"] {
-    border-color: rgba(124, 110, 255, .85); background: rgba(124, 110, 255, .25); color: #efeaff;
-  }
+  body.hide-build .build-top, body.hide-build #buy, body.hide-build .compact-buy { display: none !important; }
+  body.hide-skill .skill-strip, body.hide-skill .compact-skill { display: none !important; }
+
   .hk-bar {
-    display: flex; justify-content: space-between; align-items: center; gap: 6px;
-    padding: 0 2px; font-size: 10.5px; font-weight: 700; color: var(--dim);
+    display: flex; justify-content: space-between; align-items: center; gap: 6px; flex-wrap: wrap;
+    padding: 0 2px; font-size: 10px; font-weight: 700; color: var(--dim);
   }
   .hk-bar .warn-fs { color: var(--yellow); font-weight: 800; }
   .mini-bar {
-    padding: 5px 8px; font-size: 11.5px; font-weight: 800; color: var(--text);
+    padding: 4px 6px; font-size: 11px; font-weight: 800; color: var(--text);
     display: flex; justify-content: space-between; align-items: center; gap: 8px;
   }
-  body.minimized .win, body.minimized .sec, body.minimized .demo, body.minimized .foot, body.minimized .hk-bar { display: none !important; }
-  body.minimized { min-height: 0; }
-  body.focus-mode .lanes-sec, body.focus-mode .brief-box, body.focus-mode .demo, body.focus-mode .foot,
-  body.focus-mode .mrow, body.focus-mode .strat.sub, body.focus-mode .tip { display: none !important; }
-  body.focus-mode { min-height: 0; }
 
-  /* ── 위젯 1: AI 판세 스카우터 & 티어별 실시간 오더 ── */
+  /* 기본 접힘 모드(~380x180) vs 펼침 모드 */
+  body:not(.expanded) .exp-only { display: none !important; }
+  body.expanded .compact-only { display: none !important; }
+  body.minimized .win, body.minimized .sec, body.minimized .demo, body.minimized .foot, body.minimized .hk-bar { display: none !important; }
+  body.focus-mode .lanes-sec, body.focus-mode #briefBox, body.focus-mode .demo, body.focus-mode .foot,
+  body.focus-mode .mrow, body.focus-mode .strat.sub { display: none !important; }
+
+  /* ── 위젯 1: 승률 줄 & 전략 카드 ── */
   .win {
-    padding: 5px 8px;
+    padding: 6px 8px;
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 5px;
     background: linear-gradient(160deg, rgba(20, 25, 40, var(--card-alpha)), rgba(13, 17, 27, var(--card-alpha)));
   }
-  .win-top { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
-  .win-left { display: flex; align-items: center; gap: 7px; min-width: 0; }
-  .prob { font-size: 24px; font-weight: 900; line-height: 1; letter-spacing: -.8px; color: var(--text); }
-  .win-titles { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
-  .win-titles b { font-size: 11px; font-weight: 800; color: var(--sub); }
+  .win-top { display: flex; align-items: center; justify-content: space-between; gap: 6px; flex-wrap: wrap; }
+  .win-headline { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+  .prob { font-size: 22px; font-weight: 900; line-height: 1; letter-spacing: -.6px; color: var(--text); }
+  .sep-dot { color: var(--dim); font-weight: 900; }
   .tac {
-    display: inline-block; padding: 1px 7px; border-radius: 999px; font-weight: 800; border: 1px solid;
-    font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    display: inline-block; padding: 2px 7px; border-radius: 999px; font-weight: 800; border: 1px solid;
+    font-size: 11px;
   }
   .tac.ahead { color: var(--green); border-color: rgba(52, 211, 153, .5); background: rgba(52, 211, 153, .14); }
   .tac.even { color: var(--yellow); border-color: rgba(250, 204, 21, .5); background: rgba(250, 204, 21, .14); }
   .tac.behind { color: var(--red); border-color: rgba(251, 113, 133, .5); background: rgba(251, 113, 133, .14); }
-  .win-right { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; flex: none; }
-  .phase-tag { font-size: 10.5px; font-weight: 700; color: var(--sub); }
-  .chips { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 3px; }
+  .exp-btn {
+    padding: 2px 7px; border-radius: 6px; border: 1px solid var(--line2); background: rgba(255, 255, 255, .07);
+    color: var(--text); font-size: 10.5px; font-weight: 800; flex: none;
+  }
+  .exp-btn:hover { background: rgba(124, 110, 255, .24); border-color: rgba(124, 110, 255, .7); }
+
+  .chips { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
   .chip {
-    font-size: 10.5px; font-weight: 800; padding: 1px 6px; border-radius: 5px;
+    font-size: 10.5px; font-weight: 800; padding: 2px 6px; border-radius: 5px;
     background: rgba(255, 255, 255, .07); border: 1px solid var(--line); color: var(--sub);
   }
   .chip.pos { color: var(--green); border-color: rgba(52, 211, 153, .4); background: rgba(52, 211, 153, .12); }
   .chip.neg { color: var(--red); border-color: rgba(251, 113, 133, .4); background: rgba(251, 113, 133, .12); }
+  .chip.death { color: #fecdd3; border-color: rgba(251, 113, 133, .45); background: rgba(232, 64, 87, .18); }
 
-  /* 승률 게이지 바 */
   .prob-track {
     height: 4px; width: 100%; border-radius: 99px; background: rgba(232, 64, 87, .35);
     overflow: hidden; position: relative;
@@ -176,42 +179,41 @@
     background: linear-gradient(90deg, #3b82f6, #38e8ff);
     transition: width .25s ease;
   }
-  .stale-msg { color: var(--yellow); font-size: 11px; font-weight: 700; }
+  .stale-msg { color: var(--yellow); font-size: 10.5px; font-weight: 700; }
 
-  /* OP.GG 증강체/티어표 스타일 우선순위 전략 슬롯 */
+  /* 순번 ①·② 전략 카드 (잘림 없이 자연 줄바꿈) */
   .strat-list { display: flex; flex-direction: column; gap: 4px; }
   .strat {
     background: var(--card-inner); border: 1px solid var(--line);
-    border-radius: 7px; padding: 4px 7px; cursor: pointer;
+    border-radius: 7px; padding: 5px 7px; cursor: pointer;
   }
   .strat.urgent { border-color: rgba(251, 113, 133, .4); background: rgba(251, 113, 133, .1); }
   .strat.gold { border-color: rgba(251, 191, 36, .4); background: rgba(251, 191, 36, .09); }
   .strat.macro { border-color: rgba(52, 211, 153, .4); background: rgba(52, 211, 153, .09); }
-  .strat-head { display: flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 800; color: var(--text); }
+  .strat-head { display: flex; align-items: flex-start; gap: 5px; font-size: 11px; font-weight: 800; color: var(--text); }
   .tier-badge {
-    display: inline-grid; place-items: center; padding: 1px 5px; border-radius: 4px;
-    font-size: 10px; font-weight: 900; flex: none; text-shadow: none; letter-spacing: -.2px;
+    display: inline-grid; place-items: center; min-width: 18px; padding: 0 3px; border-radius: 4px;
+    font-size: 11px; font-weight: 900; flex: none; text-shadow: none; line-height: 1.3;
   }
-  .tier-s { background: linear-gradient(135deg, #f59e0b, #fbbf24); color: #111827; }
-  .tier-a { background: linear-gradient(135deg, #6366f1, #8b5cf6); color: #ffffff; }
-  .strat.urgent .tier-s { background: linear-gradient(135deg, #e11d48, #fb7185); color: #ffffff; }
+  .tier-1 { background: linear-gradient(135deg, #f59e0b, #fbbf24); color: #111827; }
+  .tier-2 { background: linear-gradient(135deg, #6366f1, #8b5cf6); color: #ffffff; }
+  .strat.urgent .tier-1 { background: linear-gradient(135deg, #e11d48, #fb7185); color: #ffffff; }
   .strat-tag {
-    font-size: 10.5px; font-weight: 800; padding: 1px 5px; border-radius: 4px;
-    background: rgba(255, 255, 255, .09); color: var(--sub); flex: none;
+    font-size: 10px; font-weight: 800; padding: 1px 5px; border-radius: 4px;
+    background: rgba(255, 255, 255, .1); color: var(--sub); flex: none;
   }
-  .strat-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .strat-title { flex: 1; min-width: 0; white-space: normal; word-break: keep-all; overflow-wrap: anywhere; }
   .strat-detail {
-    margin: 2px 0 0; font-size: 11px; color: var(--sub); line-height: 1.3;
-    display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden;
+    margin: 3px 0 0; font-size: 10.5px; color: var(--sub); line-height: 1.35;
+    white-space: normal; word-break: keep-all; overflow-wrap: anywhere;
   }
-  .strat.sub .strat-detail { display: none; }
-  .strat.open .strat-detail { display: block; -webkit-line-clamp: unset; }
+  .strat.sub:not(.open) .strat-detail { display: none; }
 
-  /* OP.GG 'AI 에이전트 자막' 스타일 감독 브리핑 바 */
+  /* AI 감독 브리핑 (source === "llm" 일 때만 표시) */
   .brief-box {
     display: flex; flex-direction: column; gap: 2px;
-    background: rgba(124, 110, 255, .11); border: 1px solid rgba(124, 110, 255, .3);
-    border-radius: 7px; padding: 3px 7px 4px;
+    background: rgba(124, 110, 255, .12); border: 1px solid rgba(124, 110, 255, .35);
+    border-radius: 7px; padding: 4px 7px;
   }
   .brief-badge {
     display: flex; align-items: center; justify-content: space-between; gap: 4px;
@@ -223,14 +225,14 @@
   }
   .brief-src.llm { background: rgba(52, 211, 153, .22); color: var(--green); }
   .brief-text {
-    margin: 0; font-size: 10.5px; font-weight: 700; color: #f1f5f9; line-height: 1.26;
-    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+    margin: 0; font-size: 10.5px; font-weight: 700; color: #f1f5f9; line-height: 1.32;
+    white-space: normal; word-break: keep-all; overflow-wrap: anywhere;
   }
 
   /* ── 공통 위젯 헤더 ── */
-  .sec { padding: 5px 8px; }
+  .sec { padding: 6px 8px; }
   .sec-head {
-    margin: 0 0 3px; font-size: 11.5px; color: var(--text); font-weight: 900;
+    margin: 0 0 4px; font-size: 11px; color: var(--text); font-weight: 900;
     display: flex; justify-content: space-between; gap: 6px; align-items: center;
   }
   .sec-title { display: flex; align-items: center; gap: 5px; }
@@ -238,125 +240,120 @@
     width: 15px; height: 15px; border-radius: 4px; display: inline-grid; place-items: center;
     background: rgba(251, 191, 36, .18); color: var(--gold); font-size: 10px; font-weight: 900; text-shadow: none;
   }
-  .sec-head small { color: var(--sub); font-weight: 700; font-size: 10.5px; }
+  .sec-head small { color: var(--sub); font-weight: 700; font-size: 10px; }
 
-  /* ── 위젯 2: OP.GG '아이템 골드 비교' & 10인 라인 스카우터 ── */
+  /* ── 위젯 2: 아이템 골드 비교 & 라인 스카우터 (P0-1·P1-8·P2-12) ── */
   .tug-hdr {
-    display: flex; justify-content: space-between; align-items: center;
-    font-size: 11px; font-weight: 800; margin-bottom: 3px;
+    display: flex; justify-content: space-between; align-items: center; gap: 4px;
+    font-size: 10.5px; font-weight: 800; margin-bottom: 3px;
   }
   .tug-blue { color: #7aa2f7; }
   .tug-red { color: #f7768e; }
-  .tug-mid { font-size: 11.5px; font-weight: 900; }
+  .tug-mid { font-size: 11px; font-weight: 900; }
   .tug-mid.blue-lead { color: #7aa2f7; }
   .tug-mid.red-lead { color: #f7768e; }
   .tug-mid.even-lead { color: var(--gold); }
   .tug-bar {
     height: 3.5px; width: 100%; border-radius: 99px; background: var(--red-team);
-    overflow: hidden; margin-bottom: 4px;
+    overflow: hidden; margin-bottom: 5px;
   }
   .tug-fill { height: 100%; width: 50%; background: var(--blue); transition: width .25s ease; }
 
-  .lanes { display: flex; flex-direction: column; gap: 2.5px; }
+  .lanes { display: flex; flex-direction: column; gap: 3px; }
   .scouter-row {
-    display: grid; grid-template-columns: 1fr 42px 1fr; align-items: center; gap: 4px;
-    height: 20px; padding: 0 4px; border-radius: 5px;
-    background: rgba(255, 255, 255, .035); border: 1px solid rgba(255, 255, 255, .06);
+    display: grid; grid-template-columns: 30px minmax(0, 1fr) minmax(0, 1fr) 46px;
+    align-items: center; gap: 4px; padding: 2px 5px; border-radius: 5px;
+    background: rgba(255, 255, 255, .04); border: 1px solid rgba(255, 255, 255, .07);
+  }
+  .scouter-row.unpaired {
+    grid-template-columns: 30px minmax(0, 1fr) 54px;
   }
   .scouter-row.me-row {
-    border-color: rgba(251, 191, 36, .45);
+    border-color: rgba(251, 191, 36, .5);
     background: linear-gradient(90deg, rgba(251, 191, 36, .12), rgba(255, 255, 255, .04));
   }
+  .sc-pos { font-size: 9.5px; font-weight: 900; color: var(--dim); text-align: left; }
   .sc-side {
-    display: flex; align-items: center; gap: 4px; min-width: 0; position: relative;
-    height: 16px; padding: 0 2px; border-radius: 4px; overflow: hidden;
+    display: flex; align-items: center; gap: 4px; min-width: 0;
   }
-  .sc-side.right { justify-content: flex-end; }
-  .sc-bar {
-    position: absolute; top: 0; bottom: 0; opacity: .22; pointer-events: none; border-radius: 3px;
-  }
-  .sc-side.left .sc-bar { left: 0; background: var(--blue); }
-  .sc-side.right .sc-bar { right: 0; background: var(--red-team); }
   .ava {
-    width: 18px; height: 18px; border-radius: 4px; border: 1px solid var(--line2); background: #161d2e;
-    overflow: hidden; display: grid; place-items: center; font-size: 9.5px; font-weight: 800; color: var(--sub);
-    flex: none; position: relative; z-index: 1;
+    width: 17px; height: 17px; border-radius: 4px; border: 1px solid var(--line2); background: #161d2e;
+    overflow: hidden; display: grid; place-items: center; font-size: 9px; font-weight: 800; color: var(--sub);
+    flex: none;
   }
-  .ava.me-ava { border-color: var(--gold); box-shadow: 0 0 4px rgba(251, 191, 36, .6); }
+  .ava.me-ava { border-color: var(--gold); }
   .ava img { width: 100%; height: 100%; display: block; object-fit: cover; }
-  .sc-name {
-    font-size: 11px; font-weight: 700; color: var(--text); white-space: nowrap;
-    overflow: hidden; text-overflow: ellipsis; position: relative; z-index: 1;
-  }
-  .sc-gold {
-    font-size: 11px; font-weight: 800; color: #e2e8f0; flex: none;
-    margin-left: auto; position: relative; z-index: 1;
-  }
-  .sc-side.right .sc-gold { margin-left: 0; margin-right: auto; }
-  .sc-empty { font-size: 10.5px; color: rgba(255, 255, 255, .22); font-weight: 700; padding: 0 4px; }
+  .sc-name { font-size: 10.5px; font-weight: 700; color: var(--text); word-break: keep-all; }
+  .sc-gold { font-size: 10px; font-weight: 800; color: var(--sub); margin-left: auto; flex: none; }
+  .sc-unp-tag { font-size: 9.5px; font-weight: 800; color: #f7768e; flex: none; }
   .sc-dead {
-    font-size: 9.5px; font-weight: 900; padding: 0 3px; border-radius: 3px;
-    background: rgba(232, 64, 87, .35); color: #fecdd3; flex: none; position: relative; z-index: 1;
+    font-size: 9px; font-weight: 900; padding: 0 3px; border-radius: 3px;
+    background: rgba(232, 64, 87, .35); color: #fecdd3; flex: none;
   }
-  .sc-mid {
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
-    line-height: 1; flex: none;
-  }
-  .sc-pos { font-size: 9.5px; font-weight: 800; color: var(--dim); }
-  .sc-diff { font-size: 10px; font-weight: 900; }
+  .sc-diff { font-size: 10.5px; font-weight: 900; text-align: right; flex: none; }
   .sc-diff.ahead { color: var(--green); }
   .sc-diff.behind { color: var(--red); }
   .sc-diff.even { color: var(--sub); }
 
-  /* ── 위젯 3: OP.GG 추천 아이템 빌드 슬롯 & 스킬 마스터 도크 ── */
+  /* ── 위젯 3: 컴팩트 다음 구매·스킬 줄 (접힘) & 전체 빌드·스킬 위젯 (펼침) ── */
+  .compact-bar {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  }
+  .compact-buy {
+    display: flex; align-items: center; gap: 6px; min-width: 0; flex: 1;
+  }
+  .compact-buy-meta { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+  .compact-buy-main { font-size: 11px; font-weight: 800; color: var(--gold); word-break: keep-all; }
+  .compact-buy-sub { font-size: 10px; font-weight: 700; color: var(--sub); }
+  .compact-skill {
+    display: flex; align-items: center; gap: 5px; flex: none;
+    padding-left: 8px; border-left: 1px solid var(--line);
+  }
+  .compact-skill-txt { font-size: 11px; font-weight: 900; color: var(--cyan); }
+
   .build-top {
-    display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 5px;
+    display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 6px; flex-wrap: wrap;
   }
   .gold-bar {
-    flex: 1; min-width: 0; font-size: 11px; color: var(--gold); font-weight: 800;
+    flex: 1; min-width: 120px; font-size: 11px; color: var(--gold); font-weight: 800;
     background: rgba(251, 191, 36, .11); border: 1px solid rgba(251, 191, 36, .32);
-    border-radius: 6px; padding: 3px 7px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    border-radius: 6px; padding: 3px 7px; white-space: normal; word-break: keep-all;
   }
   .mrow { display: flex; align-items: center; gap: 3px; flex: none; }
-  .mrow .lab { color: var(--sub); font-size: 10.5px; font-weight: 800; margin: 0 1px 0 4px; }
+  .mrow .lab { color: var(--sub); font-size: 10px; font-weight: 800; margin: 0 1px 0 4px; }
   .mrow .lab:first-child { margin-left: 0; }
   .icon {
     width: 24px; height: 24px; border-radius: 5px; border: 1px solid var(--line2); background: #161d2e;
-    display: grid; place-items: center; font-size: 10px; font-weight: 800; color: var(--sub);
+    display: grid; place-items: center; font-size: 9.5px; font-weight: 800; color: var(--sub);
     overflow: hidden; flex: none; position: relative;
   }
   .icon img { width: 100%; height: 100%; display: block; border-radius: 4px; }
-  .mrow .icon { overflow: visible; }
-  .mrow .icon.owned { opacity: .45; }
-  .mrow .icon .ck {
-    position: absolute; right: -3px; bottom: -3px; width: 11px; height: 11px; border-radius: 50%; background: var(--green);
-    color: #04130c; font-size: 8.5px; font-weight: 900; display: grid; place-items: center; text-shadow: none;
-  }
-  .mrow .icon .tier-tag {
-    position: absolute; top: -4px; left: -3px; padding: 0 3px; border-radius: 3px;
-    background: #8b5cf6; color: #fff; font-size: 8.5px; font-weight: 900; line-height: 1.2; text-shadow: none;
-  }
+  .mrow .icon.owned { opacity: .45; border-color: var(--green); }
 
-  /* 3코어 추천 아이템 가로 슬롯 체인 ([아이콘+이름] ▶ [아이콘+이름] ▶ [아이콘+이름]) */
-  .buy { display: flex; align-items: center; gap: 3px; }
-  .buy .arr { color: var(--sub); font-weight: 900; font-size: 9.5px; flex: none; }
+  /* 3코어 추천 아이템 가로 슬롯 (P1-7: 배지는 카드 바깥 위쪽, P1-5: 이름 넘치면 아이콘+가격만) */
+  .buy { display: grid; grid-template-columns: minmax(0, 1fr) 10px minmax(0, 1fr) 10px minmax(0, 1fr); align-items: end; gap: 2px; }
+  .buy .arr { color: var(--sub); font-weight: 900; font-size: 9px; text-align: center; padding-bottom: 12px; }
+  .buy-slot { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .slot-badge {
+    min-height: 14px; font-size: 9.5px; font-weight: 900; text-align: center; border-radius: 4px;
+    padding: 0 4px; line-height: 14px; text-shadow: none;
+  }
+  .slot-badge.now { background: var(--gold); color: #171102; }
+  .slot-badge.own { background: #143628; color: var(--green); border: 1px solid rgba(52, 211, 153, .45); }
+  .slot-badge.empty { visibility: hidden; }
   .card {
-    position: relative; flex: 1; min-width: 0;
+    width: 100%; min-width: 0;
     display: flex; align-items: center; gap: 4px;
     background: var(--card-inner); border: 1.5px solid var(--line);
-    border-radius: 7px; padding: 4px 4px 3px; text-align: left;
+    border-radius: 7px; padding: 4px 5px; text-align: left;
   }
-  .card .icon { width: 25px; height: 25px; border-radius: 5px; flex: none; }
+  .card.icon-only { justify-content: center; gap: 5px; }
+  .card .icon { width: 24px; height: 24px; border-radius: 5px; flex: none; }
   .card-info { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 1px; }
-  .card .nm { font-size: 10.5px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); letter-spacing: -.2px; }
-  .card .gd { color: var(--gold); font-size: 10px; font-weight: 800; line-height: 1; }
-  .card .badge {
-    position: absolute; top: -7px; right: 4px; white-space: nowrap;
-    font-size: 9.5px; font-weight: 900; padding: 0 5px; border-radius: 999px; text-shadow: none;
-  }
-  .card.owned .badge { background: #143628; color: var(--green); border: 1px solid rgba(52, 211, 153, .45); }
-  .card.now-buy .badge { background: var(--gold); color: #171102; }
-  .card.owned { opacity: .48; }
+  .card.icon-only .card-info { flex: 0 1 auto; }
+  .card .nm { font-size: 10.5px; font-weight: 800; white-space: nowrap; color: var(--text); }
+  .card .gd { color: var(--gold); font-size: 10px; font-weight: 800; line-height: 1.1; }
+  .card.owned { opacity: .55; }
 
   .now-buy {
     border-color: var(--gold); box-shadow: 0 0 8px rgba(251, 191, 36, .45);
@@ -374,17 +371,13 @@
 
   /* 스킬 추천 바 */
   .skill-strip {
-    margin-top: 5px; padding-top: 4px; border-top: 1px solid var(--line);
+    margin-top: 6px; padding-top: 5px; border-top: 1px solid var(--line);
     display: flex; align-items: center; justify-content: space-between; gap: 6px;
   }
-  .skill-left { display: flex; align-items: center; gap: 5px; min-width: 0; flex: 1; }
-  .skill-title { font-size: 11px; font-weight: 900; color: var(--text); flex: none; }
-  .skill-lv { color: var(--sub); font-size: 10.5px; font-weight: 800; flex: none; }
-  .skill-when { color: var(--cyan); font-size: 11px; font-weight: 900; flex: none; }
-  .tip {
-    color: var(--sub); font-size: 10.5px; font-weight: 600; margin: 0;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
-  }
+  .skill-left { display: flex; align-items: center; gap: 6px; min-width: 0; flex: 1; flex-wrap: wrap; }
+  .skill-title { font-size: 11px; font-weight: 900; color: var(--text); }
+  .skill-lv { color: var(--sub); font-size: 10.5px; font-weight: 800; }
+  .skill-when { color: var(--cyan); font-size: 11px; font-weight: 900; }
   .key {
     display: inline-grid; place-items: center; width: 21px; height: 21px; border-radius: 5px;
     font: 900 11.5px/1 ui-monospace, Menlo, Consolas, monospace;
@@ -397,29 +390,31 @@
   .demo { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
   .demo button {
     padding: 4px 3px; border-radius: 7px; border: 1px solid var(--line); background: var(--card);
-    font-size: 11px; font-weight: 800; white-space: nowrap; box-shadow: 0 4px 10px rgba(0, 0, 0, .45);
+    font-size: 10.5px; font-weight: 800; box-shadow: 0 4px 10px rgba(0, 0, 0, .45);
   }
   .demo button[aria-pressed="true"] { border-color: var(--accent); background: rgba(124, 110, 255, .28); color: #efeaff; }
-  .foot { color: var(--dim); font-size: 10px; font-weight: 700; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .foot { color: var(--dim); font-size: 10px; font-weight: 700; text-align: center; }
   [hidden] { display: none !important; }
 </style>
 </head>
 <body>
-  <!-- 위젯 0: 상단 OP.GG 스타일 컨트롤 도크 -->
+  <!-- 위젯 0: 상단 간결 컨트롤 도크 (P2-10: LIVE 배지, ≡, −, × 만 노출) -->
   <div class="hud-card top-card">
     <div class="top" id="dragBar" title="상단 바를 드래그해 HUD 위치를 옮길 수 있습니다">
-      <button type="button" class="brand-pill" id="drawerBtn" aria-expanded="false" title="OP.GG 스타일 개별 위젯 표시 설정 열기/닫기">AI ▾</button>
       <span class="grip" aria-hidden="true">⋮⋮</span>
       <button type="button" class="live" id="live" title="브리지에 연결되어 있으면 눌러서 LIVE 로 돌아갑니다">
         <span id="liveText">🟡 게임 중 시뮬레이션 (00:00)</span>
       </button>
-      <button type="button" class="ctrl" id="focusBtn" aria-pressed="false" title="집중 모드: 핵심 전략·빌드·스킬만 간략히 표시">집중</button>
-      <button type="button" class="fx" id="fx" aria-pressed="true">이펙트 ON</button>
-      <button type="button" class="ctrl" id="opac" title="배경 투명도 조절">94%</button>
+      <button type="button" class="ctrl" id="drawerBtn" aria-expanded="false" title="메뉴 열기/닫기 (집중·이펙트·투명도·위젯 설정)">≡</button>
       <button type="button" class="ctrl" id="minBtn" aria-expanded="true" title="창 최소화(접기/펼치기)">−</button>
       <button type="button" class="ctrl" id="closeBtn" title="오버레이 및 백그라운드 브리지 종료">×</button>
     </div>
-    <div class="opgg-drawer" id="widgetDrawer" hidden aria-label="위젯 표시 설정">
+    <div class="opgg-drawer" id="widgetDrawer" hidden aria-label="위젯 및 표시 설정">
+      <div class="menu-actions">
+        <button type="button" class="ctrl" id="focusBtn" aria-pressed="false" title="집중 모드: 핵심 전략·빌드·스킬만 간략히 표시">집중</button>
+        <button type="button" class="fx" id="fx" aria-pressed="true">이펙트 ON</button>
+        <button type="button" class="ctrl" id="opac" title="카드 배경 투명도 조절 (글자는 불투명 유지)">95%</button>
+      </div>
       <div class="sw-grid">
         <button type="button" class="sw-row" data-toggle-cls="hide-order" aria-pressed="true"><span>AI 에이전트 오더</span><span class="sw-pill"></span></button>
         <button type="button" class="sw-row" data-toggle-cls="hide-sub" aria-pressed="true"><span>AI 에이전트 자막</span><span class="sw-pill"></span></button>
@@ -428,75 +423,89 @@
         <button type="button" class="sw-row" data-toggle-cls="hide-skill" aria-pressed="true"><span>스킬 추천</span><span class="sw-pill"></span></button>
       </div>
     </div>
-    <div class="hk-bar">
+    <div class="hk-bar exp-only">
       <span id="hkHint">F8 클릭통과 · F9 숨김</span>
-      <span id="fsWarn" class="warn-fs" hidden>전체 화면 · 가려지면 테두리 없음 권장</span>
+      <span id="fsWarn" class="warn-fs" hidden>전체 화면 · 테두리 없음 권장</span>
       <span id="carryNote"></span>
     </div>
-    <div class="mini-bar" id="miniBar" hidden><span id="miniSummary">대기 중</span><span style="color:var(--sub);font-size:10.5px">최소화됨</span></div>
+    <div class="mini-bar" id="miniBar" hidden><span id="miniSummary">대기 중</span><span style="color:var(--sub);font-size:10px">최소화됨</span></div>
   </div>
 
-  <!-- 위젯 1: 실시간 AI 판세 스카우터 & 티어별 맞춤 오더 -->
+  <!-- 위젯 1: 승률 줄(P1-8: 52% · 초반 박빙 한 번만) & 펼침 시 전략·LLM 브리핑 -->
   <section class="hud-card win" aria-live="polite" aria-label="실시간 게임 중 승률">
     <div class="win-top">
-      <div class="win-left">
-        <div class="prob num" id="prob">--%</div>
-        <div class="win-titles">
-          <b>실시간 게임 중 승률</b>
-          <span class="tac even" id="tac">분석 중</span>
-        </div>
+      <div class="win-headline">
+        <span class="prob num" id="prob">--%</span>
+        <span class="sep-dot" aria-hidden="true">·</span>
+        <span class="tac even" id="tac">분석 중</span>
       </div>
-      <div class="win-right">
-        <span class="phase-tag num" id="phaseNote">실시간 종합 판세</span>
-        <div class="chips" id="factors"></div>
-      </div>
+      <button type="button" class="exp-btn" id="expandBtn" aria-expanded="false">상세 ▾</button>
+    </div>
+    <div class="chips" id="factors">
+      <span class="chip num" id="goldChip">골드 0G</span>
+      <span class="chip num death" id="deathChip" hidden></span>
     </div>
     <div class="prob-track" aria-hidden="true"><div class="prob-fill" id="probBar"></div></div>
     <div class="stale-msg" id="staleMsg" hidden></div>
-    <div class="strat-list" id="strats" aria-label="실시간 맞춤 전략"></div>
-    <div class="brief-box" aria-label="AI 감독 브리핑">
-      <span class="brief-badge">AI 감독 브리핑 <span class="brief-src" id="briefSrc">대기 중</span></span>
+    <div class="strat-list exp-only" id="strats" aria-label="실시간 맞춤 전략"></div>
+    <div class="brief-box exp-only" id="briefBox" hidden aria-label="AI 감독 브리핑">
+      <span class="brief-badge">AI 감독 브리핑 <span class="brief-src" id="briefSrc">동적 전략</span></span>
       <p class="brief-text" id="briefText">실시간 전장 데이터를 분석해 전략 브리핑을 생성합니다</p>
     </div>
   </section>
 
-  <!-- 위젯 2: OP.GG 스타일 아이템 골드 비교 & 10인 라인 스카우터 -->
-  <section class="hud-card sec lanes-sec" aria-label="전 라인 상황">
+  <!-- 위젯 2: 아이템 골드 비교 (펼침 시 표시, P0-1·P1-8·P2-12) -->
+  <section class="hud-card sec lanes-sec exp-only" aria-label="전 라인 상황">
     <div class="sec-head">
       <span class="sec-title"><span class="sec-ico">G</span><span>아이템 골드 비교</span></span>
-      <small id="compNote"></small>
+      <small id="goldBasisTag">팀 합계</small>
     </div>
     <div class="tug-hdr num">
-      <span class="tug-blue" id="blueGoldTxt">아군 0G</span>
-      <span class="tug-mid even-lead" id="diffGoldTxt">0G</span>
-      <span class="tug-red" id="redGoldTxt">상대 0G</span>
+      <span class="tug-blue" id="blueGoldTxt">블루 0G</span>
+      <span class="tug-mid even-lead" id="diffGoldTxt">동률 0G</span>
+      <span class="tug-red" id="redGoldTxt">레드 0G</span>
     </div>
     <div class="tug-bar" aria-hidden="true"><div class="tug-fill" id="tugFill"></div></div>
     <div class="lanes" id="lanes"></div>
   </section>
 
-  <!-- 위젯 3: OP.GG 스타일 추천 아이템 빌드 슬롯 & 스킬 추천 -->
-  <section class="hud-card sec" aria-label="아이템 및 스킬">
-    <div class="sec-head">
-      <span class="sec-title"><span class="sec-ico">★</span><span>추천 아이템 빌드 · 스킬 추천</span></span>
-      <small id="champ">카드를 누르면 보유 표시</small>
-    </div>
-    <div class="build-top">
-      <div class="gold-bar" id="recallBar">보유 골드 확인 중</div>
-      <div class="mrow">
-        <span class="lab">시작</span><span class="mrow" id="starter"></span>
-        <span class="lab">상황</span><span class="mrow" id="situ"></span>
+  <!-- 위젯 3: 다음 구매·스킬 (접힘: 컴팩트 1줄, 펼침: 3슬롯 빌드 + 스킬) -->
+  <section class="hud-card sec build-sec" aria-label="아이템 및 스킬">
+    <div class="compact-bar compact-only">
+      <div class="compact-buy">
+        <span id="compactItemIcon"></span>
+        <div class="compact-buy-meta">
+          <span class="compact-buy-main num" id="compactBuyMain">빌드 확인 중</span>
+          <span class="compact-buy-sub num" id="compactBuySub">보유 0G</span>
+        </div>
+      </div>
+      <div class="compact-skill">
+        <span class="compact-skill-txt" id="compactSkillTxt">다음 -</span>
+        <span id="compactSkillKey"></span>
       </div>
     </div>
-    <div class="buy" id="buy"></div>
-    <div class="skill-strip">
-      <div class="skill-left">
-        <span class="skill-title">스킬</span>
-        <span class="skill-lv" id="lv"></span>
-        <span class="skill-when" id="nextWhen"></span>
-        <p class="tip" id="focus"></p>
+
+    <div class="exp-only">
+      <div class="sec-head">
+        <span class="sec-title"><span class="sec-ico">★</span><span>추천 아이템 · 스킬</span></span>
+        <small id="champ">카드를 누르면 보유 표시</small>
       </div>
-      <div class="order-keys" id="keys"></div>
+      <div class="build-top">
+        <div class="gold-bar num" id="recallBar">확인 중</div>
+        <div class="mrow">
+          <span class="lab">시작</span><span class="mrow" id="starter"></span>
+          <span class="lab">상황</span><span class="mrow" id="situ"></span>
+        </div>
+      </div>
+      <div class="buy" id="buy"></div>
+      <div class="skill-strip">
+        <div class="skill-left">
+          <span class="skill-title">스킬</span>
+          <span class="skill-lv num" id="lv"></span>
+          <span class="skill-when" id="nextWhen"></span>
+        </div>
+        <div class="order-keys" id="keys"></div>
+      </div>
     </div>
   </section>
 
@@ -517,8 +526,8 @@ const WINDOW_URL = BRIDGE_URL.replace(/\/bridge\/state.*$/, "/bridge/window");
 const SHUTDOWN_URL = BRIDGE_URL.replace(/\/bridge\/state.*$/, "/bridge/shutdown");
 const POLL_MS = 2000;
 const BRIEF_MIN_MS = 20000;
+const MIN_OS_OPACITY = 230 / 255;
 
-// 10인 전 라인·보유 골드·상대 아이템·생존자·오브젝트가 모두 다른 실시간 데모 시나리오
 const DEMOS = {
   ahead: {
     t: 390, level: 6, ownedSteps: 0,
@@ -619,10 +628,10 @@ function icon(item) {
   if (ddVersion && Number.isInteger(item.item_id)) {
     const img = new Image();
     img.alt = item.name; img.loading = "lazy";
-    img.dataset.fb = item.name.slice(0, 3);
+    img.dataset.fb = item.name.slice(0, 2);
     img.src = `https://ddragon.leagueoflegends.com/cdn/${encodeURIComponent(ddVersion)}/img/item/${item.item_id}.png`;
     box.append(img);
-  } else box.textContent = item.name.slice(0, 3);
+  } else box.textContent = item.name.slice(0, 2);
   return box;
 }
 document.addEventListener("error", (e) => {
@@ -630,15 +639,13 @@ document.addEventListener("error", (e) => {
   if (img instanceof HTMLImageElement && img.dataset.fb != null) { const p = img.parentElement; p.textContent = img.dataset.fb; }
 }, true);
 
-function miniRow(target, items, owned, withTier) {
-  target.replaceChildren(...items.slice(0, 3).map((it, idx) => {
+function miniRow(target, items, owned) {
+  target.replaceChildren(...items.slice(0, 3).map((it) => {
     const own = owned.has(it.item_id);
     const m = icon(it);
     if (own) m.classList.add("owned");
     m.title = `${it.name} ${it.gold}G · ${it.why}${own ? " · ✓ 보유 완료" : ""}`;
     m.setAttribute("aria-label", m.title);
-    if (own) m.append(el("span", "ck", "✓"));
-    else if (withTier && idx === 0) m.append(el("span", "tier-tag", "S"));
     return m;
   }));
 }
@@ -667,36 +674,51 @@ function makeAvatar(p, isMe) {
 }
 
 const POS_SHORT = { TOP: "TOP", JUNGLE: "JGL", MIDDLE: "MID", BOTTOM: "ADC", UTILITY: "SUP" };
+const TIER2_BOOTS = new Set([3006, 3009, 3020, 3047, 3111, 3158, 3010]);
+
+function isItemOwned(it, owned) {
+  if (owned.has(it.item_id)) return true;
+  if (it.slot === "신발") {
+    for (const bid of TIER2_BOOTS) {
+      if (owned.has(bid)) return true;
+    }
+  }
+  return false;
+}
 
 function renderLanes(s) {
   const allLanes = s.lanes || [];
   const boxEl = $("lanes");
-  let allySum = 0, enemySum = 0, maxGold = 500;
-  for (const ln of allLanes) {
-    const ag = (ln.ally && ln.ally.item_gold) || 0;
-    const eg = (ln.enemy && ln.enemy.item_gold) || 0;
-    allySum += ag;
-    enemySum += eg;
-    if (ag > maxGold) maxGold = ag;
-    if (eg > maxGold) maxGold = eg;
-  }
+  const basis = s.gold_basis === "per_player" ? "per_player" : "team";
+  $("goldBasisTag").textContent = basis === "per_player" ? "1인당 평균" : "팀 합계";
 
-  $("blueGoldTxt").textContent = `블루팀 ${allySum.toLocaleString()}G`;
-  $("redGoldTxt").textContent = `레드팀 ${enemySum.toLocaleString()}G`;
-  const rawDiff = allySum - enemySum;
+  const allyGold = (s.team_gold && typeof s.team_gold.ally === "number")
+    ? s.team_gold.ally
+    : allLanes.reduce((acc, ln) => acc + ((ln.ally && ln.ally.item_gold) || 0), 0);
+  const enemyGold = (s.team_gold && typeof s.team_gold.enemy === "number")
+    ? s.team_gold.enemy
+    : allLanes.reduce((acc, ln) => acc + ((ln.enemy && ln.enemy.item_gold) || 0), 0);
+  const rawDiff = typeof s.team_gold_diff === "number" ? s.team_gold_diff : (allyGold - enemyGold);
+
+  const mySide = (view && view.ctx && view.ctx.my_side === "red") ? "red" : "blue";
+  const allyTeamName = mySide === "red" ? "레드" : "블루";
+  const enemyTeamName = mySide === "red" ? "블루" : "레드";
+
+  $("blueGoldTxt").textContent = `${allyTeamName} ${allyGold.toLocaleString()}G`;
+  $("redGoldTxt").textContent = `${enemyTeamName} ${enemyGold.toLocaleString()}G`;
   const diffEl = $("diffGoldTxt");
-  if (rawDiff > 50) {
-    diffEl.textContent = `◀ +${rawDiff.toLocaleString()}G`;
+  if (rawDiff > 0) {
+    diffEl.textContent = `${allyTeamName} +${rawDiff.toLocaleString()}G`;
     diffEl.className = "tug-mid blue-lead";
-  } else if (rawDiff < -50) {
-    diffEl.textContent = `+${Math.abs(rawDiff).toLocaleString()}G ▶`;
+  } else if (rawDiff < 0) {
+    diffEl.textContent = `${enemyTeamName} +${Math.abs(rawDiff).toLocaleString()}G`;
     diffEl.className = "tug-mid red-lead";
   } else {
-    diffEl.textContent = "박빙 0G";
+    diffEl.textContent = "동률 0G";
     diffEl.className = "tug-mid even-lead";
   }
-  const totalG = allySum + enemySum;
-  const bluePct = totalG > 0 ? Math.max(12, Math.min(88, Math.round((allySum / totalG) * 100))) : 50;
+  const totalG = allyGold + enemyGold;
+  const bluePct = totalG > 0 ? Math.max(12, Math.min(88, Math.round((allyGold / totalG) * 100))) : 50;
   $("tugFill").style.width = `${bluePct}%`;
 
   const rows = allLanes.map((ln) => {
@@ -704,60 +726,72 @@ function renderLanes(s) {
     const e = ln.enemy || {};
     const aValid = a.champion && a.champion !== "미확인";
     const eValid = e.champion && e.champion !== "미확인";
+    const posTag = POS_SHORT[ln.position] || "VS";
+
+    // P2-12: 아군이 없는 줄(unpaired)은 상대만 한 줄로 축약
+    if (ln.status === "unpaired" || (!aValid && eValid)) {
+      const row = el("div", "scouter-row unpaired");
+      row.title = `${ln.lane_ko}: 상대 ${e.champion || "-"}(${e.kda || "-"}, CS ${e.cs || 0})`;
+      const side = el("div", "sc-side");
+      side.append(el("span", "sc-unp-tag", "상대"), makeAvatar(e, false), el("span", "sc-name", e.champion || "-"));
+      if (e.is_dead && e.respawn_timer > 0) side.append(el("span", "sc-dead num", `${Math.round(e.respawn_timer)}s`));
+      row.append(
+        el("span", "sc-pos", posTag),
+        side,
+        el("span", "sc-diff num even", `${(e.item_gold || 0).toLocaleString()}G`),
+      );
+      return row;
+    }
+
     const row = el("div", "scouter-row" + (ln.is_me ? " me-row" : ""));
     row.title = `${ln.lane_ko}: ${a.champion || "-"}(${a.kda || "-"}, CS ${a.cs || 0}) vs ${e.champion || "-"}(${e.kda || "-"}, CS ${e.cs || 0})`;
 
-    // 좌측 (블루/아군)
-    const left = el("div", "sc-side left");
+    const left = el("div", "sc-side");
     if (aValid) {
-      const aGold = a.item_gold || 0;
-      const bar = el("div", "sc-bar");
-      bar.style.width = `${Math.min(100, Math.round((aGold / maxGold) * 100))}%`;
-      left.append(bar, makeAvatar(a, ln.is_me), el("span", "sc-name", a.champion));
+      left.append(makeAvatar(a, ln.is_me), el("span", "sc-name", a.champion));
       if (a.is_dead && a.respawn_timer > 0) left.append(el("span", "sc-dead num", `${Math.round(a.respawn_timer)}s`));
-      left.append(el("span", "sc-gold num", `${aGold.toLocaleString()}G`));
-    } else {
-      left.append(el("span", "sc-empty", "—"));
+      left.append(el("span", "sc-gold num", `${(a.item_gold || 0).toLocaleString()}G`));
     }
 
-    // 중앙 (라인·골드 격차)
-    const mid = el("div", "sc-mid");
-    const posTag = POS_SHORT[ln.position] || (ln.lane_ko === "매치업 미확인" ? "VS" : ln.lane_ko);
-    mid.append(el("span", "sc-pos", posTag));
-    if (aValid && eValid) {
-      const gd = (a.item_gold || 0) - (e.item_gold || 0);
-      const dTxt = gd === 0 ? "0" : `${gd > 0 ? "+" : ""}${Math.abs(gd) >= 1000 ? (Math.round(gd / 100) / 10) + "k" : gd}`;
-      mid.append(el("span", `sc-diff num ${ln.status}`, dTxt));
-    }
-
-    // 우측 (레드/상대)
-    const right = el("div", "sc-side right");
+    const right = el("div", "sc-side");
     if (eValid) {
-      const eGold = e.item_gold || 0;
-      const bar = el("div", "sc-bar");
-      bar.style.width = `${Math.min(100, Math.round((eGold / maxGold) * 100))}%`;
-      right.append(bar, el("span", "sc-gold num", `${eGold.toLocaleString()}G`));
+      right.append(makeAvatar(e, false), el("span", "sc-name", e.champion));
       if (e.is_dead && e.respawn_timer > 0) right.append(el("span", "sc-dead num", `${Math.round(e.respawn_timer)}s`));
-      right.append(el("span", "sc-name", e.champion), makeAvatar(e, false));
-    } else {
-      right.append(el("span", "sc-empty", "—"));
+      right.append(el("span", "sc-gold num", `${(e.item_gold || 0).toLocaleString()}G`));
     }
 
-    row.append(left, mid, right);
+    // P2-12: 라벨(POS)과 차이를 분리해 차이는 오른쪽 열에 초록/빨강 색으로만 표시
+    const gd = (a.item_gold || 0) - (e.item_gold || 0);
+    const dTxt = gd === 0 ? "0G" : `${gd > 0 ? "+" : "-"}${Math.abs(gd) >= 1000 ? (Math.round(Math.abs(gd) / 100) / 10) + "k" : Math.abs(gd) + "G"}`;
+    const diffCls = gd > 0 ? "ahead" : (gd < 0 ? "behind" : "even");
+    row.append(el("span", "sc-pos", posTag), left, right, el("span", `sc-diff num ${diffCls}`, dTxt));
     return row;
   });
   boxEl.replaceChildren(...rows);
 }
 
-function compactRecallMessage(msg) {
-  if (!msg) return "카드를 누르면 보유 표시";
-  const m1 = msg.match(/보유\s*([0-9,]+G).*?\[([^\]]+)\].*?([0-9,]+G)$/);
-  if (m1) return `${m1[1]} 보유 · ${m1[2]} -${m1[3]}`;
-  const m2 = msg.match(/([0-9,]+G)\s*보유.*?\[([^\]]+)\]\s*즉시 구매/);
-  if (m2) return `${m2[1]} 보유 · ${m2[2]} 즉시 구매!`;
-  return msg
-    .replace(" · 다음 목표 ", " → ")
-    .replace(/\(남은 비용 [0-9,]+G\)/g, "");
+function fitItemCards() {
+  // P1-5: 아이템 이름이 넘치면 아이콘과 가격만 보여 준다
+  document.querySelectorAll("#buy .card").forEach((card) => {
+    const nm = card.querySelector(".nm");
+    if (!nm) return;
+    nm.hidden = false;
+    card.classList.remove("icon-only");
+    if (nm.scrollWidth > nm.clientWidth + 1 || card.scrollWidth > card.clientWidth + 1) {
+      nm.hidden = true;
+      card.classList.add("icon-only");
+    }
+  });
+}
+
+function briefOverlapsPrimary(text, strategy) {
+  const s1 = strategy && strategy.strategies && strategy.strategies[0];
+  if (!text || !s1) return false;
+  const norm = (v) => String(v || "").replace(/\s+/g, "").trim();
+  const bt = norm(text);
+  const t1 = norm(s1.title);
+  const d1 = norm(s1.detail);
+  return Boolean((t1 && bt.includes(t1)) || (d1 && bt.includes(d1)));
 }
 
 function render() {
@@ -768,35 +802,40 @@ function render() {
   const stale = live && view.stale;
   $("liveText").textContent = `${live ? (stale ? "🟠 LIVE · 서버 재연결 중" : "🟢 게임 중 LIVE") : "🟡 게임 중 시뮬레이션"} (${mmss(view.t)})`;
 
+  // P1-8: 승률 줄은 "52% · 초반 박빙" 한 번만 표시
   const wp = Math.round(s.win_prob * 100);
   $("prob").textContent = `${wp}%`;
   $("probBar").style.width = `${Math.max(8, Math.min(92, wp))}%`;
   $("tac").className = `tac ${s.state}`;
-  $("tac").textContent = s.tactical_badge || s.state_ko;
-  $("phaseNote").textContent = `${s.phase_label} · ${mmss(view.t)} · 생존 ${s.alive.ally}v${s.alive.enemy}`;
+  $("tac").textContent = s.tactical_badge_short || s.state_ko;
+  $("tac").title = s.tactical_badge || s.state_ko;
 
-  const chips = [];
+  // P0-1: 골드 칩도 gold_basis 하나만 따름
   const gDiff = s.team_gold_diff || 0;
-  chips.push(el("span", "chip num " + (gDiff > 300 ? "pos" : gDiff < -300 ? "neg" : ""), `골드 ${gDiff >= 0 ? "+" : ""}${gDiff.toLocaleString()}G`));
-  for (const f of (s.key_factors || []).slice(0, 2)) {
-    if (!f.startsWith("팀 골드")) chips.push(el("span", "chip num", f));
+  const goldLabel = s.gold_basis === "per_player" ? "1인당" : "골드";
+  $("goldChip").textContent = `${goldLabel} ${gDiff >= 0 ? "+" : ""}${gDiff.toLocaleString()}G`;
+  $("goldChip").className = "chip num " + (gDiff > 0 ? "pos" : gDiff < 0 ? "neg" : "");
+
+  // P0-3: 사망자가 있을 때만 "아군 사망 n · 상대 사망 m" 표시, 없으면 숨김
+  const dead = s.dead || { ally: 0, enemy: 0 };
+  const hasDead = (dead.ally || 0) > 0 || (dead.enemy || 0) > 0;
+  $("deathChip").hidden = !hasDead;
+  if (hasDead) {
+    $("deathChip").textContent = `아군 사망 ${dead.ally} · 상대 사망 ${dead.enemy}`;
   }
-  $("factors").replaceChildren(...chips.slice(0, 2));
 
   $("staleMsg").hidden = !stale;
   $("staleMsg").textContent = stale ? "서버 연결이 끊겨 마지막 계산 값을 보여요" : "";
 
-  // OP.GG 스타일 아이템 골드 비교 & 10인 라인 스카우터
-  $("compNote").textContent = (s.enemy_comp && s.enemy_comp.profile_label) ? `상대: ${s.enemy_comp.profile_label}` : "";
   renderLanes(s);
 
-  // OP.GG 티어표 스타일 실시간 맞춤 전략 (S·1순위 + A·2순위 슬롯; 펼침 상태는 2초 폴링 뒤에도 유지)
+  // P2-9: 순번 ①·② 전략 카드 (펼침 상태는 2초 폴링 뒤에도 유지)
   $("carryNote").textContent = s.ally_carry ? `캐리: ${s.ally_carry}` : "";
   const stratNodes = (s.strategies || []).slice(0, 2).map((st, idx) => {
     const cls = "strat " + stratTone(st.category) + (idx === 0 ? " main" : " sub") + (openStratCats.has(st.category) ? " open" : "");
     const card = el("div", cls);
     const head = el("div", "strat-head");
-    const tier = el("span", "tier-badge " + (idx === 0 ? "tier-s" : "tier-a"), idx === 0 ? "S·1순위" : "A·2순위");
+    const tier = el("span", "tier-badge " + (idx === 0 ? "tier-1" : "tier-2"), idx === 0 ? "①" : "②");
     head.append(tier, el("span", "strat-tag", st.category), el("span", "strat-title", st.title));
     card.append(head, el("p", "strat-detail", st.detail));
     card.title = `${st.title}\n${st.detail}`;
@@ -811,41 +850,56 @@ function render() {
   $("strats").replaceChildren(...stratNodes);
   $("demoBar").hidden = live;
 
-  // 추천 아이템 빌드 슬롯 & 보유 골드 연동
+  // 빌드·스킬 추천 (P1-5 short 필드, P1-7 배지 카드 바깥 위쪽)
   const rec = s.recall_advice || {};
-  $("recallBar").textContent = compactRecallMessage(rec.message);
+  const recShort = rec.short || "빌드 확인";
+  const curGold = typeof rec.current_gold === "number" ? `${rec.current_gold.toLocaleString()}G` : "";
+  $("recallBar").textContent = curGold ? `${curGold} · ${recShort}` : recShort;
   $("recallBar").title = rec.message || "";
   $("champ").textContent = [b.my_champion, b.enemy_top_threat && `vs ${b.enemy_top_threat}`].filter(Boolean).join(" ") || "카드를 누르면 보유 표시";
-  miniRow($("starter"), b.starter_items || [], view.owned, false);
-  miniRow($("situ"), b.situational_items || [], view.owned, true);
+  miniRow($("starter"), b.starter_items || [], view.owned);
+  miniRow($("situ"), b.situational_items || [], view.owned);
 
   const items = b.recommended_items || [];
-  const nextBuy = items.find((it) => !view.owned.has(it.item_id));
+  const nextBuy = items.find((it) => !isItemOwned(it, view.owned));
+
+  // 접힘 모드 컴팩트 다음 구매·스킬 바
+  const targetItem = nextBuy || items[items.length - 1];
+  $("compactItemIcon").replaceChildren(...(targetItem ? [icon(targetItem)] : []));
+  $("compactBuyMain").textContent = recShort;
+  $("compactBuySub").textContent = targetItem ? `${targetItem.gold.toLocaleString()}G${curGold ? " · 보유 " + curGold : ""}` : (curGold ? `보유 ${curGold}` : "");
+  const skillShort = view.next ? `${view.when === "next_level" ? "다음" : "지금"} ${view.next}` : "스킬 대기";
+  $("compactSkillTxt").textContent = skillShort;
+  $("compactSkillKey").replaceChildren(...(view.next ? [el("span", "key now-skill", view.next)] : []));
+
   $("buy").replaceChildren(...items.flatMap((it, idx) => {
-    const own = view.owned.has(it.item_id), now = it === nextBuy;
+    const own = isItemOwned(it, view.owned), now = it === nextBuy;
+    const slot = el("div", "buy-slot");
+    const badge = el("span", "slot-badge " + (own ? "own" : (now ? "now" : "empty")), own ? "✓ 보유 완료" : (now ? "지금 구매 추천" : "·"));
     const card = el("button", "card" + (own ? " owned" : "") + (now ? " now-buy" : ""));
     card.type = "button"; card.dataset.item = String(it.item_id);
     card.setAttribute("aria-pressed", String(own));
     card.title = `${it.name} ${it.gold}G · ${it.why}`;
-    if (own || now) card.append(el("span", "badge", own ? "✓ 보유 완료" : "지금 구매 추천"));
+    card.setAttribute("aria-label", card.title);
     const info = el("div", "card-info");
     info.append(el("div", "nm", it.name), el("div", "gd num", `${it.gold}G`));
     card.append(icon(it), info);
-    return idx ? [el("span", "arr", "▶"), card] : [card];
+    slot.append(badge, card);
+    return idx ? [el("span", "arr", "▶"), slot] : [slot];
   }));
+  fitItemCards();
 
   // 스킬 추천 바
   const order = b.skill_order.order;
   $("lv").textContent = view.level ? `Lv ${view.level}` : "";
-  $("nextWhen").textContent = view.next ? `[${view.next}] ${view.when === "next_level" ? "다음" : "지금"}` : "";
+  $("nextWhen").textContent = skillShort;
+  $("nextWhen").title = b.tactical_tip || b.skill_order.focus || "";
   const keys = order ? order.split(">").map((k) => k.trim()) : (view.next ? [view.next] : []);
   $("keys").replaceChildren(...keys.flatMap((k, i) => {
     const isNext = k === view.next;
     const cap = el("span", "key" + (isNext ? " now-skill" : " off"), k);
     return i ? [el("span", null, "▶"), cap] : [cap];
   }));
-  $("focus").textContent = b.tactical_tip || b.skill_order.focus;
-  $("focus").title = b.tactical_tip || b.skill_order.focus || "";
 
   // Windows HUD 상태 표시
   const hw = view.hudWindow;
@@ -859,19 +913,17 @@ function render() {
     $("fsWarn").hidden = !fsWarn;
   }
 
-  $("foot").textContent = `모델 ${s.model_version || "-"} · 실시간 종합 전략(전 라인·골드·아이템·오브젝트)`;
-  if (lastBriefSource !== "llm" && s.summary_briefing) {
-    $("briefText").textContent = s.summary_briefing;
-    $("briefText").title = s.summary_briefing;
-    $("briefSrc").textContent = "동적 전략";
-    $("briefSrc").className = "brief-src";
+  $("foot").textContent = `모델 ${s.model_version || "-"} · 실시간 종합 전략`;
+  // P0-4: source !== "llm" 이면 브리핑 칸 숨김
+  if (lastBriefSource !== "llm") {
+    $("briefBox").hidden = true;
   }
   requestBriefing(s, view.ctx);
   document.querySelectorAll("[data-demo]").forEach((btn) => btn.setAttribute("aria-pressed", String(view.mode === "demo" && btn.dataset.demo === view.demo)));
   syncCardRegions();
 }
 
-// ── AI 감독 전략 브리핑 (H5·M7·M8: category 키 + 최소 20초 간격 + 모드 변경 시 폐기 + '동적 전략'/'브리핑 없음') ──
+// ── AI 감독 전략 브리핑 (P0-4: source === "llm" 이고 1순위 카드와 겹치지 않을 때만 표시) ──
 const openStratCats = new Set();
 let briefKey = null, briefBusy = false, lastBriefAt = 0, lastBriefSource = "dynamic_rule";
 function briefingKey(s) {
@@ -899,12 +951,17 @@ async function requestBriefing(s, ctx) {
     $("briefText").title = r.briefing || "";
     $("briefSrc").textContent = llm ? `LLM · ${r.llm_model}` : "동적 전략";
     $("briefSrc").className = llm ? "brief-src llm" : "brief-src";
+    const dup = briefOverlapsPrimary(r.briefing, view.strategy);
+    $("briefBox").hidden = !(llm && r.briefing && !dup);
+    syncCardRegions();
   } catch (_) {
     if (!view || view.mode !== reqMode || (reqMode === "demo" && view.demo !== reqDemo)) return;
     lastBriefSource = "dynamic_rule";
     $("briefText").textContent = "브리핑 없음";
     $("briefSrc").textContent = "동적 전략";
+    $("briefBox").hidden = true;
     briefKey = null;
+    syncCardRegions();
   } finally {
     lastBriefAt = Date.now();
     briefBusy = false;
@@ -931,7 +988,7 @@ let fxSaved = null;
 try { fxSaved = localStorage.getItem("lolpace.overlay.fx"); } catch (_) {}
 setFx(fxSaved !== "off");
 
-// ── Win32·macOS Swift·Electron 인게임 팝업 제어 (M6: X-Bridge-Token 이 있을 때만 HTTP 전송해 단독 열람 시 403 방지) ──
+// ── Win32·macOS Swift·Electron 인게임 팝업 제어 ──
 function controlHeaders() {
   const h = { "Content-Type": "application/json" };
   if (BRIDGE_TOKEN) h["X-Bridge-Token"] = BRIDGE_TOKEN;
@@ -950,7 +1007,6 @@ function sendWindowCmd(cmd) {
   fetch(WINDOW_URL, { method: "POST", headers: controlHeaders(), body: JSON.stringify(cmd) }).catch(() => {});
 }
 
-// Electron 투명 오버레이에서 카드 밖 빈 영역은 클릭을 게임으로 통과시킨다
 if (/Electron/i.test(navigator.userAgent)) {
   let passThrough = false;
   window.addEventListener("mousemove", (e) => {
@@ -989,7 +1045,9 @@ async function runDemo(name, lock) {
     const owned = new Set([...(d.ctx.me.items || []), ...b.recommended_items.slice(0, d.ownedSteps).map((i) => i.item_id)].filter(Number.isInteger));
     const plan = skillPlan(b.skill_order.order);
     view = { mode: "demo", demo: name, t: d.t, strategy: strat, ctx: d.ctx, owned, level: d.level, next: plan[d.level - 1], when: "now", hudWindow: lastLive ? lastLive.hud_window : null };
-    lastBriefAt = 0;  // 데모 버튼 전환 시에는 새 시나리오 브리핑을 바로 표시
+    lastBriefAt = 0;
+    lastBriefSource = "dynamic_rule";
+    $("briefBox").hidden = true;
     render();
   } catch (err) {
     $("briefText").textContent = `서버에 연결하지 못했어요 (${err.message})`;
@@ -997,10 +1055,11 @@ async function runDemo(name, lock) {
 }
 document.querySelectorAll("[data-demo]").forEach((btn) => btn.addEventListener("click", () => runDemo(btn.dataset.demo, true)));
 
-// ── 브리지 폴링 (H8: /strategy 없을 때 /coach 최소 폴백, M7: stale 은 strategy_error 만) ──
+// ── 브리지 폴링 (H8: /strategy 없을 때 /coach 최소 폴백) ──
 function coachFallbackView(st) {
   const c = st.coach, b = c.build_advice;
   const goal = (c.coaching && c.coaching[0]) ? c.coaching[0].message : "지금 페이스 유지";
+  const stKo = b.state === "ahead" ? "우세" : b.state === "behind" ? "열세" : "박빙";
   return {
     mode: "live",
     t: st.game_time_sec,
@@ -1009,15 +1068,19 @@ function coachFallbackView(st) {
       phase_label: "코치 폴백",
       win_prob: c.my_win_prob,
       state: b.state,
-      state_ko: b.state === "ahead" ? "우세" : b.state === "behind" ? "열세" : "박빙",
+      state_ko: stKo,
       tactical_badge: b.posture,
+      tactical_badge_short: stKo,
+      gold_basis: "team",
+      team_gold: { ally: 0, enemy: 0 },
       team_gold_diff: 0,
       alive: { ally: 5, enemy: 5 },
+      dead: { ally: 0, enemy: 0 },
       key_factors: [c.pace],
       lanes: [],
       ally_carry: null,
       enemy_comp: null,
-      recall_advice: { message: "카드를 누르면 보유 표시" },
+      recall_advice: { short: "빌드 확인", message: "카드를 누르면 보유 표시" },
       strategies: [{ category: "코치 폴백", title: goal, detail: b.tactical_tip || b.posture }],
       build_advice: b,
       model_version: c.model_version,
@@ -1070,24 +1133,24 @@ $("live").addEventListener("click", () => {
   if (bridgeAlive && lastLive) applyLive(lastLive);
 });
 
-// ── 투명도 (글자 대비는 100%로 유지하고 카드 배경 알파와 OS 창 알파만 연동) & 최소화 & 종료 ──
-const OPAC_STEPS = [0.94, 0.82, 0.68];
+// ── P1-6: 투명도 (카드 배경 알파 --card-alpha 만 변경, OS 창 알파는 항상 230/255 이상 유지) ──
+const OPAC_STEPS = [0.95, 0.82, 0.68];
 let opacIdx = 0;
 try {
-  const savedOp = Number(localStorage.getItem("lol_hud_opac") || "0.94");
+  const savedOp = Number(localStorage.getItem("lol_hud_opac") || "0.95");
   const idx = OPAC_STEPS.indexOf(savedOp);
   if (idx >= 0) opacIdx = idx;
 } catch (_) {}
 function applyOpac(pushNative) {
-  const val = OPAC_STEPS[opacIdx] || 0.94;
+  const val = OPAC_STEPS[opacIdx] || 0.95;
   document.documentElement.style.setProperty("--card-alpha", String(val));
   $("opac").textContent = `${Math.round(val * 100)}%`;
-  if (pushNative) sendWindowCmd({ opacity: val });
+  if (pushNative) sendWindowCmd({ opacity: Math.max(MIN_OS_OPACITY, val) });
 }
 applyOpac(true);
 $("opac").addEventListener("click", () => {
   opacIdx = (opacIdx + 1) % OPAC_STEPS.length;
-  applyOpac(true);
+  applyOpac(false);
   try { localStorage.setItem("lol_hud_opac", String(OPAC_STEPS[opacIdx])); } catch (_) {}
 });
 
@@ -1109,6 +1172,20 @@ function syncCardRegions() {
   }
 }
 
+// ── P2-11: 기본 접힘(~380x180) / 펼침 토글 (localStorage 에 기억, 실패해도 동작) ──
+function setExpanded(on) {
+  document.body.classList.toggle("expanded", on);
+  $("expandBtn").setAttribute("aria-expanded", String(on));
+  $("expandBtn").textContent = on ? "접기 ▴" : "상세 ▾";
+  try { localStorage.setItem("lol_hud_expanded", on ? "1" : "0"); } catch (_) {}
+  if (on) fitItemCards();
+  syncCardRegions();
+}
+let expSaved = false;
+try { expSaved = localStorage.getItem("lol_hud_expanded") === "1"; } catch (_) {}
+setExpanded(expSaved);
+$("expandBtn").addEventListener("click", () => setExpanded(!document.body.classList.contains("expanded")));
+
 function setFocusMode(on) {
   document.body.classList.toggle("focus-mode", on);
   $("focusBtn").setAttribute("aria-pressed", String(on));
@@ -1118,7 +1195,7 @@ function setFocusMode(on) {
 try { setFocusMode(localStorage.getItem("lol_hud_focus") === "1"); } catch (_) {}
 $("focusBtn").addEventListener("click", () => setFocusMode(!document.body.classList.contains("focus-mode")));
 
-// ── OP.GG 스타일 개별 위젯 토글 서랍 ──
+// ── ≡ 메뉴 서랍 토글 ──
 $("drawerBtn").addEventListener("click", () => {
   const d = $("widgetDrawer");
   d.hidden = !d.hidden;
@@ -1141,7 +1218,7 @@ function setMinimized(on) {
   $("miniBar").hidden = !on;
   if (on) {
     const p = $("prob").textContent || "--%";
-    const sk = $("nextWhen").textContent || "-";
+    const sk = $("compactSkillTxt").textContent || "-";
     $("miniSummary").textContent = `판세 ${p} · ${sk}`;
   }
   syncCardRegions();

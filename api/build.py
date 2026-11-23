@@ -103,6 +103,7 @@ def _situational(pierce: str, taken: set[int]) -> list[dict]:
 
 ENEMY_HEAL_ITEMS = frozenset({3153, 3072, 6673, 3033, 3065, 6616, 1053})
 ENEMY_TANK_ITEMS = frozenset({3068, 3075, 3084, 6665, 3143, 3110, 3001, 2502})
+TIER2_BOOTS_IDS = frozenset({3006, 3009, 3020, 3047, 3111, 3158, 3010})
 
 
 def _enemy_tactical_tip(state: str, threat: str, detected_by_item: str | None) -> str:
@@ -117,13 +118,112 @@ def _enemy_tactical_tip(state: str, threat: str, detected_by_item: str | None) -
     return f"접전 -> 미니언 파밍 유지하며 상대 {threat} 아이템 완성 타이밍 체크"
 
 
+def _enemy_tactical_tip_short(state: str, threat: str, detected_by_item: str | None) -> str:
+    if detected_by_item == "HEAL":
+        return "치감 우선"
+    if detected_by_item == "TANK":
+        return "관통 우선"
+    if state == "behind":
+        return f"{threat} 방어 우선"
+    if state == "ahead":
+        return "딜 코어 압박"
+    return "파밍·타이밍"
+
+
+def _core_item(step: int, slot: str, item_id: int, why_key: str) -> dict:
+    it = GAME["items"][str(item_id)]
+    return {
+        "step": step,
+        "slot": slot,
+        "item_id": item_id,
+        "name": it["name"],
+        "gold": it["gold"],
+        "why": RULES["why"][why_key],
+    }
+
+
+def _extend_for_owned(
+    picked: list[dict],
+    owned_items: list[int],
+    cls: str,
+    pierce: str,
+    state: str,
+    threat: str,
+) -> list[dict]:
+    """코어 완성 이후에도 다음 코어(2~5코어·영약)를 계속 추천하도록 3슬롯 창을 전진시킨다."""
+    owned = set(owned_items)
+    boots, _comp, core1 = picked
+    followup_list = list(RULES.get("followup_cores", {}).get(cls) or ())
+    if not followup_list:
+        return picked
+
+    # 우선순위 코어 체인 구성: 1코어 → 위협 대응 코어(치감/관통/방어) → 계열 후속 코어
+    chain_ids: list[int] = [core1["item_id"]]
+    if threat == "HEAL":
+        ah_core = (RULES.get("anti_heal_core") or {}).get(pierce)
+        if ah_core and ah_core not in chain_ids:
+            chain_ids.append(ah_core)
+    elif threat == "TANK":
+        at_core = (RULES.get("anti_tank_core") or {}).get(pierce)
+        if at_core and at_core not in chain_ids:
+            chain_ids.append(at_core)
+    elif state == "behind" and threat in ("AD", "AP"):
+        def_core = RULES["core"]["behind"][threat][cls]
+        if def_core not in chain_ids:
+            chain_ids.append(def_core)
+    for cid in followup_list:
+        if cid not in chain_ids:
+            chain_ids.append(cid)
+
+    owned_cores = [cid for cid in chain_ids if cid in owned]
+    if not owned_cores:
+        return picked
+
+    has_boots = (boots["item_id"] in owned) or bool(owned & TIER2_BOOTS_IDS)
+    unowned_cores = [cid for cid in chain_ids if cid not in owned]
+    elixir_id = (RULES.get("elixir") or {}).get(pierce, 2140)
+
+    def mk(step: int, slot: str, cid: int) -> dict:
+        if cid == core1["item_id"]:
+            return {**core1, "step": step, "slot": slot}
+        if cid == elixir_id:
+            return _core_item(step, slot, cid, "elixir")
+        return _core_item(step, slot, cid, "core_followup")
+
+    if not has_boots and len(unowned_cores) >= 2:
+        return [
+            {**boots, "step": 1, "slot": "신발"},
+            mk(2, "코어", unowned_cores[0]),
+            mk(3, "후속 코어", unowned_cores[1]),
+        ]
+    if len(unowned_cores) >= 2:
+        return [
+            mk(1, "코어", owned_cores[-1]),
+            mk(2, "다음 코어", unowned_cores[0]),
+            mk(3, "후속 코어", unowned_cores[1]),
+        ]
+    if len(unowned_cores) == 1:
+        return [
+            mk(1, "코어", owned_cores[-1]),
+            mk(2, "마지막 코어", unowned_cores[0]),
+            mk(3, "영약", elixir_id),
+        ]
+    last_two = owned_cores[-2:] if len(owned_cores) >= 2 else [owned_cores[-1], owned_cores[-1]]
+    return [
+        mk(1, "코어", last_two[0]),
+        mk(2, "코어", last_two[1]),
+        mk(3, "영약", elixir_id),
+    ]
+
+
 def advise(
     my_win_prob: float,
     my_champion: str | None,
     enemy_top_threat: str | None,
     enemy_items: list[int] | None = None,
+    owned_items: list[int] | None = None,
 ) -> dict:
-    """AGENTS.md "규칙표 적용 순서" 1~6 및 상대 공개 아이템 기반 동적 위협 보정."""
+    """AGENTS.md "규칙표 적용 순서" 1~6 및 상대 공개 아이템·보유 코어 기반 동적 위협 보정."""
     me, th = resolve_my(my_champion), resolve_threat(enemy_top_threat)
     state, cls, dmg, threat = state_of(my_win_prob), me["class"], me["damage"], th["threat"]
     item_set = set(enemy_items or ())
@@ -156,6 +256,8 @@ def advise(
 
     order = RULES["skill_orders"].get(me["champion_id"] or "")
     picked = [boots, comp, core]
+    if owned_items is not None:
+        picked = _extend_for_owned(picked, owned_items, cls, pierce, state, threat)
     return {
         "state": state,
         "my_champion": me["champion"],
@@ -165,6 +267,7 @@ def advise(
         "threat_type": threat,
         "posture": RULES["posture"][state],
         "tactical_tip": _enemy_tactical_tip(state, threat, detected_by_item),
+        "tactical_tip_short": _enemy_tactical_tip_short(state, threat, detected_by_item),
         "recommended_items": picked,
         "starter_items": [_extra(i, "starter") for i in RULES["starter"][cls]],
         "situational_items": _situational(pierce, {it["item_id"] for it in picked}),

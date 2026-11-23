@@ -9,11 +9,17 @@ if exist "artifacts\model_sklearn.onnx" if exist "artifacts\model.json" if exist
   set "MODEL_DIR=artifacts"
 )
 set "LLM_API_URL=http://127.0.0.1:11434/v1/chat/completions"
-set "LLM_MODEL=qwen3:4b-instruct-2507-q4_K_M"
+REM Override LLM_MODEL via environment variable if desired.
+REM Recommended lightweight model during live games (low CPU latency):
+REM   set LLM_MODEL=hf.co/LGAI-EXAONE/EXAONE-4.0-1.2B-GGUF:Q4_K_M
+if not defined LLM_MODEL set "LLM_MODEL=qwen3:4b-instruct-2507-q4_K_M"
 set "LLM_STRATEGY_TIMEOUT_SEC=12.0"
 
 set "LOG_DIR=%TEMP%\lol-pace-client"
 if not exist "%LOG_DIR%" mkdir "%LOG_DIR%"
+
+REM Short Ollama warmup request with keep_alive=30m so the first in-game briefing does not cold-start
+curl.exe -sS -m 20 -X POST "http://127.0.0.1:11434/api/generate" -H "Content-Type: application/json" -d "{\"model\":\"%LLM_MODEL%\",\"prompt\":\"ok\",\"stream\":false,\"keep_alive\":\"30m\",\"options\":{\"num_predict\":1}}" >nul 2>nul
 
 set "PYW_EXE=.venv\Scripts\pythonw.exe"
 if not exist "%PYW_EXE%" set "PYW_EXE=pythonw"

@@ -21,6 +21,7 @@ from api.build import (
     ENEMY_TANK_ITEMS,
     GAME,
     RULES,
+    TIER2_BOOTS_IDS,
     advise as build_advise,
     find_champion,
     resolve_my,
@@ -257,19 +258,26 @@ def _analyze_lanes(allies: list[LivePlayer], enemies: list[LivePlayer], me: Live
         e_info = _champ_info(e.champion if e else None)
         a_gold = a.item_gold if a else 0.0
         e_gold = e.item_gold if e else 0.0
-        gold_diff = round(a_gold - e_gold)
-        power_diff = (_player_power(a) if a else 0.0) - (_player_power(e) if e else 0.0)
-        if power_diff >= 650.0:
-            status = "ahead"
-        elif power_diff <= -650.0:
-            status = "behind"
+        if not a or not e:
+            status = "unpaired"
+            status_ko = "상대만" if e else "아군만"
+            gold_diff = 0
+            power_diff = 0.0
         else:
-            status = "even"
+            gold_diff = round(a_gold - e_gold)
+            power_diff = _player_power(a) - _player_power(e)
+            if power_diff >= 650.0:
+                status = "ahead"
+            elif power_diff <= -650.0:
+                status = "behind"
+            else:
+                status = "even"
+            status_ko = STATE_KO[status]
         lanes.append({
             "position": pos,
             "lane_ko": LANE_KO[pos] if lanes_reliable else "매치업 미확인",
             "status": status,
-            "status_ko": STATE_KO[status],
+            "status_ko": status_ko,
             "gold_diff": gold_diff,
             "power_diff": round(power_diff),
             "is_me": bool(a and _is_me_player(a, me)),
@@ -402,11 +410,21 @@ def _recall_advice(me: LivePlayer, recommended_items: list[dict], starter_items:
             "gold_needed": max(0, starter_cost - gold),
             "next_item": starter_items[0]["name"],
             "next_item_gold": starter_cost,
+            "short": "시작템 구매",
             "message": f"게임 시작 · [{starter_names}] 구매 후 라인으로 이동하세요",
         }
 
     owned = set(me.items)
-    next_item = next((it for it in recommended_items if it["item_id"] not in owned), None)
+    has_any_boots = bool(owned & TIER2_BOOTS_IDS)
+
+    def _is_owned(it: dict) -> bool:
+        if it["item_id"] in owned:
+            return True
+        if it.get("slot") == "신발" and has_any_boots:
+            return True
+        return False
+
+    next_item = next((it for it in recommended_items if not _is_owned(it)), None)
     if not next_item:
         if gold >= 1500:
             return {
@@ -414,6 +432,7 @@ def _recall_advice(me: LivePlayer, recommended_items: list[dict], starter_items:
                 "can_buy_now": True,
                 "gold_needed": 0,
                 "next_item": None,
+                "short": "귀환 정비",
                 "message": f"보유 {gold:,}G 누적 · 귀환해 상황별 아이템 또는 제어 와드를 챙기세요",
             }
         return {
@@ -421,6 +440,7 @@ def _recall_advice(me: LivePlayer, recommended_items: list[dict], starter_items:
             "can_buy_now": False,
             "gold_needed": 0,
             "next_item": None,
+            "short": "빌드 완료",
             "message": f"현재 보유 {gold:,}G · 핵심 추천 빌드 완료",
         }
     base_cost = int(next_item["gold"])
@@ -429,18 +449,23 @@ def _recall_advice(me: LivePlayer, recommended_items: list[dict], starter_items:
     diff = max(0, effective_cost - gold)
     if diff == 0:
         msg = f"지금 {gold:,}G 보유 · 웨이브 밀고 귀환하면 [{next_item['name']}] 즉시 구매 가능"
+        short = "즉시 구매 가능"
     elif diff <= 350:
         msg = f"[{next_item['name']}]까지 {diff:,}G 남음 · 미니언 1~2웨이브 정리 후 귀환 추천"
+        short = f"부족 {diff:,}G"
     elif gold >= 1600:
         msg = f"미사용 골드 {gold:,}G 누적 · 교전 전에 귀환해 하위템부터 스펙 전환하세요"
+        short = "귀환 골드 전환"
     else:
         msg = f"보유 {gold:,}G · 다음 목표 [{next_item['name']}](남은 비용 {effective_cost:,}G)까지 {diff:,}G"
+        short = f"부족 {diff:,}G"
     return {
         "current_gold": gold,
         "can_buy_now": diff == 0,
         "gold_needed": diff,
         "next_item": next_item["name"],
         "next_item_gold": effective_cost,
+        "short": short,
         "message": msg,
     }
 
@@ -488,21 +513,29 @@ def analyze_live_strategy(req: LiveStrategyRequest, reference_10m_prob: float | 
     ally_dead = len(allies) - ally_alive
     enemy_dead = len(enemies) - enemy_alive
     asymmetric = (not practice_mode) and len(allies) > 0 and len(enemies) > 0 and (len(allies) != len(enemies))
+    solo_or_asymmetric = (len(allies) <= 1) or asymmetric
+    gold_basis: Literal["team", "per_player"] = "per_player" if asymmetric else "team"
 
     # H3: 내 current_gold 는 판세·팀 골드 차에 넣지 않는다 (귀환 조언 전용)
-    # 비대칭 커스텀 게임(예: 1v5 봇전)에서는 1인 평균과 사망자 차로 공정 비교한다
+    # P0-1: 비대칭 게임은 1인당 평균(per_player), 대칭 게임은 팀 합계(team)로 단일 기준 통일
     if practice_mode:
+        ally_gold_shown = round(ally_item_gold)
+        enemy_gold_shown = 0
         item_gold_diff = 0.0
         kills_diff = 0
         cs_diff = 0
         alive_diff = 0
     elif asymmetric:
-        item_gold_diff = (ally_item_gold / len(allies)) - (enemy_item_gold / len(enemies))
+        ally_gold_shown = round(ally_item_gold / len(allies))
+        enemy_gold_shown = round(enemy_item_gold / len(enemies))
+        item_gold_diff = float(ally_gold_shown - enemy_gold_shown)
         kills_diff = int(round((ally_kills / len(allies) - enemy_kills / len(enemies)) * len(allies)))
         cs_diff = int(round((ally_cs / len(allies) - enemy_cs / len(enemies)) * len(allies)))
         alive_diff = enemy_dead - ally_dead
     else:
-        item_gold_diff = ally_item_gold - enemy_item_gold
+        ally_gold_shown = round(ally_item_gold)
+        enemy_gold_shown = round(enemy_item_gold)
+        item_gold_diff = float(ally_gold_shown - enemy_gold_shown)
         kills_diff = ally_kills - enemy_kills
         cs_diff = ally_cs - enemy_cs
         alive_diff = ally_alive - enemy_alive
@@ -569,12 +602,15 @@ def analyze_live_strategy(req: LiveStrategyRequest, reference_10m_prob: float | 
     if practice_mode:
         key_factors = ["연습 모드", f"CS {req.me.cs}", f"보유 {int(round(req.me.current_gold)):,}G"]
     else:
+        gold_prefix = "1인당 골드" if gold_basis == "per_player" else "팀 골드"
+        death_label = f"사망 {ally_dead}:{enemy_dead}" if asymmetric else f"생존 {ally_alive}v{enemy_alive}"
+        death_mag = abs(alive_score) * 1.4 if (alive_diff != 0 and (not asymmetric or ally_dead > 0 or enemy_dead > 0)) else 0
         factor_candidates = [
-            (abs(est_gold_diff), f"팀 골드 {'+' if est_gold_diff >= 0 else ''}{int(round(est_gold_diff)):,}G"),
+            (abs(est_gold_diff), f"{gold_prefix} {'+' if est_gold_diff >= 0 else ''}{int(round(est_gold_diff)):,}G"),
             (abs(kills_diff) * 320, f"킬 {ally_kills}:{enemy_kills}"),
             (abs(dragon_score), f"드래곤 {obj.my_dragons}:{obj.enemy_dragons}"),
             (abs(tower_score), f"포탑 {obj.my_towers}:{obj.enemy_towers}"),
-            (abs(alive_score) * 1.4 if alive_diff != 0 else 0, f"생존 {ally_alive}v{enemy_alive}"),
+            (death_mag, death_label),
             (abs(momentum_score) if abs(recent_diff) >= 2 else 0, f"최근 3분 교전 {req.momentum.recent_ally_kills}:{req.momentum.recent_enemy_kills}"),
         ]
         key_factors = [label for mag, label in sorted(factor_candidates, key=lambda x: -x[0]) if mag >= 280][:3]
@@ -592,19 +628,19 @@ def analyze_live_strategy(req: LiveStrategyRequest, reference_10m_prob: float | 
         comp = _analyze_enemy_comp(enemies)
         winning_lanes = sorted([l for l in lanes if l["status"] == "ahead"], key=lambda l: -l["power_diff"])
         losing_lanes = sorted([l for l in lanes if l["status"] == "behind"], key=lambda l: l["power_diff"])
-        # M4: ally_carry 후보에서 나 자신(is_me)은 제외한다
+        # M4 & P0-2: ally_carry 후보에서 나 자신(is_me) 및 1인·비대칭 게임은 제외한다
         teammate_wins = [l for l in winning_lanes if not l.get("is_me")]
-        ally_carry = teammate_wins[0] if (lanes_reliable and teammate_wins) else None
+        ally_carry = teammate_wins[0] if (lanes_reliable and teammate_wins and not solo_or_asymmetric) else None
 
-    # 5. 동적 빌드 가이드 & 보유 골드 귀환 판정
+    # 5. 동적 빌드 가이드 & 보유 골드 귀환 판정 (코어 완성 뒤에도 후속 코어 이어서 추천)
     threat_target, threat_items, comp_override = _select_adaptive_threat(comp, state, t)
     my_champ_arg = _safe_resolve_my(req.me.champion)
     threat_arg = _safe_resolve_threat(threat_target)
-    build = build_advise(win_prob, my_champ_arg, threat_arg, enemy_items=threat_items)
+    build = build_advise(win_prob, my_champ_arg, threat_arg, enemy_items=threat_items, owned_items=req.me.items)
     if comp_override == "HEAL" and build["threat_type"] != "HEAL":
-        build = build_advise(win_prob, my_champ_arg, "HEAL", enemy_items=threat_items)
+        build = build_advise(win_prob, my_champ_arg, "HEAL", enemy_items=threat_items, owned_items=req.me.items)
     elif comp_override == "TANK" and build["threat_type"] != "TANK":
-        build = build_advise(win_prob, my_champ_arg, "TANK", enemy_items=threat_items)
+        build = build_advise(win_prob, my_champ_arg, "TANK", enemy_items=threat_items, owned_items=req.me.items)
 
     recall = _recall_advice(req.me, build["recommended_items"], build.get("starter_items") or [], t)
 
@@ -626,22 +662,37 @@ def analyze_live_strategy(req: LiveStrategyRequest, reference_10m_prob: float | 
         cs_per_min = req.me.cs / minutes
         add_strategy(75, "파밍 점검", f"현재 CS {req.me.cs} (분당 {cs_per_min:.1f})", "라인전 10분 기준 분당 7~8 CS 페이스를 목표로 미니언 막타를 맞춰 보세요.", f"CS/분 {cs_per_min:.1f}")
     else:
-        # (A) 긴급 수적 우위·열세 / 부활 타이머 콜 (H2 조건 강화)
+        # (A) 긴급 수적 우위·열세 / 부활 타이머 콜 (H2·P0-2·P0-3)
         dead_enemies = [e for e in enemies if e.is_dead]
         dead_jungler = next((e for e in dead_enemies if _norm_pos(e.position) == "JUNGLE" or e.has_smite), None)
         if req.me.is_dead:
+            revive_tail = (
+                "복귀 직후 웨이브 위치와 상대 라인 동선을 먼저 확인하세요."
+                if solo_or_asymmetric
+                else "복귀 직후 아군 합류 위치와 웨이브를 먼저 확인하세요."
+            )
             add_strategy(
                 100, "부활 준비",
                 f"부활까지 {int(round(req.me.respawn_timer))}초 · 아이템 정비 후 복귀",
-                recall["message"] + ". 복귀 직후 아군 합류 위치와 웨이브를 먼저 확인하세요.",
+                recall["message"] + ". " + revive_tail,
                 "본인 사망 상태",
             )
         elif alive_diff <= -2:
+            outnum_title = (
+                f"사망 열세(상대 우위) → 교전 금지·포탑 수성"
+                if asymmetric
+                else f"수적 열세({ally_alive}v{enemy_alive}) → 교전 금지·포탑 수성"
+            )
+            outnum_detail = (
+                "무리한 교전을 피하고 포탑 앞에서 웨이브만 정리하며 시간을 버세요."
+                if solo_or_asymmetric
+                else "아군 합류 전까지 시야 체크나 1대1 싸움을 멈추고, 포탑 앞에서 웨이브만 정리하며 시간을 버세요."
+            )
             add_strategy(
                 97, "수성 경보",
-                f"수적 열세({ally_alive}v{enemy_alive}) → 교전 금지·포탑 수성",
-                "아군 합류 전까지 시야 체크나 1대1 싸움을 멈추고, 포탑 앞에서 웨이브만 정리하며 시간을 버세요.",
-                f"생존 인원 {ally_alive}v{enemy_alive}",
+                outnum_title,
+                outnum_detail,
+                f"사망 {ally_dead}:{enemy_dead}" if asymmetric else f"생존 인원 {ally_alive}v{enemy_alive}",
             )
         elif dead_jungler is not None and t >= 300.0 and alive_diff >= 0 and dead_jungler.respawn_timer >= 15.0:
             obj_name = "바론 또는 장로" if phase == "late" else ("드래곤/전령" if phase == "early" else "드래곤/바론")
@@ -653,41 +704,76 @@ def analyze_live_strategy(req: LiveStrategyRequest, reference_10m_prob: float | 
                 f"상대 정글 사망({int(round(dead_jungler.respawn_timer))}s)",
             )
         elif alive_diff >= 2:
+            adv_title = (
+                f"상대 {enemy_dead}명 부재 → 오브젝트·포탑 즉시 압박"
+                if asymmetric
+                else f"수적 우위({ally_alive}v{enemy_alive}) → 오브젝트·포탑 즉시 압박"
+            )
             add_strategy(
                 95, "수적 우위",
-                f"수적 우위({ally_alive}v{enemy_alive}) → 오브젝트·포탑 즉시 압박",
+                adv_title,
                 "상대 인원이 비어 있습니다. 무리한 킬 추격보다 포탑 채굴·드래곤·바론 중 가까운 이득을 확정하세요.",
-                f"생존 인원 {ally_alive}v{enemy_alive}",
+                f"사망 {ally_dead}:{enemy_dead}" if asymmetric else f"생존 인원 {ally_alive}v{enemy_alive}",
             )
 
         # (B) 장로·바론·억제기·드래곤 영혼 전략 (M3 포함)
         if elder_active == "ally":
-            add_strategy(94, "장로 운영", "아군 장로 버프 활성 → 본대 한타로 경기 마무리", "처형 버프가 살아 있는 동안 본대로 뭉쳐 시야를 밀고 한타를 강제하세요.", "아군 장로 버프")
+            add_strategy(
+                94, "장로 운영",
+                "장로 버프 활성 → 교전으로 경기 마무리" if solo_or_asymmetric else "아군 장로 버프 활성 → 본대 한타로 경기 마무리",
+                "처형 버프가 살아 있는 동안 시야를 밀고 교전을 강제하세요." if solo_or_asymmetric else "처형 버프가 살아 있는 동안 본대로 뭉쳐 시야를 밀고 한타를 강제하세요.",
+                "장로 버프" if solo_or_asymmetric else "아군 장로 버프",
+            )
         elif elder_active == "enemy":
             add_strategy(94, "수성 경보", "상대 장로 버프 활성 → 한타 회피·포탑 뒤 수성", "처형 버프 동안 정면 교전은 치명적입니다. 원거리 웨이브 정리로 버프 시간을 넘기세요.", "상대 장로 버프")
 
         if baron_active == "ally":
-            add_strategy(92, "바론 운영", "아군 바론 버프 활성 → 사이드 동시 압박", "미니언 강화 효과를 살려 1-3-1 또는 1-4로 분산 압박하고, 뭉쳐서 한타 각을 주지 마세요.", "아군 바론 버프")
+            add_strategy(
+                92, "바론 운영",
+                "바론 버프 활성 → 포탑 압박" if solo_or_asymmetric else "아군 바론 버프 활성 → 사이드 동시 압박",
+                "미니언 강화 효과를 살려 포탑을 빠르게 철거하세요." if solo_or_asymmetric else "미니언 강화 효과를 살려 1-3-1 또는 1-4로 분산 압박하고, 뭉쳐서 한타 각을 주지 마세요.",
+                "바론 버프" if solo_or_asymmetric else "아군 바론 버프",
+            )
         elif baron_active == "enemy":
             add_strategy(93, "바론 수성", "상대 바론 버프 → 포탑 뒤 원거리 웨이브 클리어", "정면 한타를 피하고 강화 미니언만 빠르게 지워 버프 시간(3분)을 흘려보내세요.", "상대 바론 버프")
 
         if obj.enemy_inhibs > obj.my_inhibs:
-            add_strategy(90, "억제기 수성", f"아군 억제기 파괴 열세({obj.my_inhibs}:{obj.enemy_inhibs}) → 슈퍼 미니언 수성 우선", "슈퍼 미니언이 밀려오는 라인을 먼저 정리하며 본진 시야를 복구하고, 무리한 원정 교전을 피하세요.", "억제기 열세")
+            add_strategy(
+                90, "억제기 수성",
+                f"본진 억제기 파괴 열세({obj.my_inhibs}:{obj.enemy_inhibs}) → 슈퍼 미니언 수성 우선" if solo_or_asymmetric else f"아군 억제기 파괴 열세({obj.my_inhibs}:{obj.enemy_inhibs}) → 슈퍼 미니언 수성 우선",
+                "슈퍼 미니언이 밀려오는 라인을 먼저 정리하며 본진 시야를 복구하고, 무리한 원정 교전을 피하세요.",
+                "억제기 열세",
+            )
         elif obj.my_inhibs > obj.enemy_inhibs:
             add_strategy(85, "억제기 운영", f"상대 억제기 파괴 우위({obj.my_inhibs}:{obj.enemy_inhibs}) → 반대편 오브젝트 압박", "슈퍼 미니언이 자동으로 라인을 미는 동안 반대편 바론·드래곤 시야를 장악해 수적 우위를 만드세요.", "억제기 우위")
 
         if obj.enemy_dragons == 3:
             add_strategy(89, "영혼 저지", "상대 드래곤 3스택(영혼 매치포인트) → 다음 용 1분 전 시야 선점", "다음 드래곤을 내주면 영혼이 완성됩니다. 웨이브를 먼저 밀고 용 둥지 시야와 귀환 타이밍을 맞추세요.", "상대 3용 경고")
         elif obj.my_dragons == 3:
-            add_strategy(86, "영혼 확정", "아군 드래곤 3스택 → 용 타이밍 맞춰 본대 합류", "다음 드래곤으로 영혼을 확정할 수 있습니다. 1분 전 귀환해 아이템과 시야를 정비하고 먼저 자리 잡으세요.", "아군 3용 매치포인트")
+            add_strategy(
+                86, "영혼 확정",
+                "드래곤 3스택 → 용 타이밍 맞춰 시야 선점" if solo_or_asymmetric else "아군 드래곤 3스택 → 용 타이밍 맞춰 본대 합류",
+                "다음 드래곤으로 영혼을 확정할 수 있습니다. 1분 전 귀환해 아이템과 시야를 정비하고 먼저 자리 잡으세요.",
+                "3용 매치포인트" if solo_or_asymmetric else "아군 3용 매치포인트",
+            )
         elif obj.last_dragon_sec is not None:
             next_drake = (obj.last_dragon_sec + 300.0) - t
             if 0 <= next_drake <= 75.0:
-                add_strategy(84, "용 타이밍", f"다음 드래곤 {int(round(next_drake))}초 전 → 웨이브 정리 후 합류", "라인을 먼저 밀어두고 귀환·와드 설치 뒤 바텀 강가 주도권을 선점하세요.", f"드래곤 리스폰 임박({int(round(next_drake))}s)")
+                add_strategy(
+                    84, "용 타이밍",
+                    f"다음 드래곤 {int(round(next_drake))}초 전 → 웨이브 정리 후 시야 선점" if solo_or_asymmetric else f"다음 드래곤 {int(round(next_drake))}초 전 → 웨이브 정리 후 합류",
+                    "라인을 먼저 밀어두고 귀환·와드 설치 뒤 바텀 강가 주도권을 선점하세요.",
+                    f"드래곤 리스폰 임박({int(round(next_drake))}s)",
+                )
 
         # (C) 내 보유 골드 & 귀환 타이밍 전략 (M1 반영)
         if t < 90.0 and not req.me.items:
-            add_strategy(88, "귀환 타이밍", recall["message"], "초반 시작 아이템을 챙기고 아군 정글 리시 또는 라인 선점 위치를 잡으세요.", "게임 시작")
+            start_detail = (
+                "초반 시작 아이템을 챙기고 라인 선점 위치를 잡으세요."
+                if solo_or_asymmetric
+                else "초반 시작 아이템을 챙기고 아군 정글 리시 또는 라인 선점 위치를 잡으세요."
+            )
+            add_strategy(88, "귀환 타이밍", recall["message"], start_detail, "게임 시작")
         elif recall["can_buy_now"] and recall["next_item"]:
             add_strategy(88, "귀환 타이밍", f"{recall['current_gold']:,}G 보유 → [{recall['next_item']}] 즉시 구매 각", f"지금 귀환하면 [{recall['next_item']}]을 바로 뽑을 수 있습니다. 대포 웨이브를 밀어 넣고 귀환해 아이템 파워 스파이크를 먼저 잡으세요.", f"보유 골드 {recall['current_gold']:,}G >= {recall['next_item_gold']:,}G")
         elif recall["current_gold"] >= 1600:
@@ -695,8 +781,8 @@ def analyze_live_strategy(req: LiveStrategyRequest, reference_10m_prob: float | 
         elif 0 < recall["gold_needed"] <= 350 and recall["next_item"]:
             add_strategy(74, "파워 스파이크", f"[{recall['next_item']}]까지 {recall['gold_needed']:,}G → 2웨이브 후 귀환", f"무리한 딜교 대신 안전하게 {recall['gold_needed']:,}G만 채우고 귀환하면 다음 교전에서 확실한 아이템 우위를 잡습니다.", f"다음 아이템 근접(-{recall['gold_needed']:,}G)")
 
-        # (D) 전 라인 상황 기반 매크로 운영 (H1: lanes_reliable 일 때만!)
-        if lanes_reliable:
+        # (D) 전 라인 상황 기반 매크로 운영 (H1·P0-2: lanes_reliable 이고 대칭 멀티플레이어일 때만!)
+        if lanes_reliable and not solo_or_asymmetric:
             if ally_carry and losing_lanes:
                 weak = losing_lanes[0]
                 add_strategy(
@@ -744,10 +830,15 @@ def analyze_live_strategy(req: LiveStrategyRequest, reference_10m_prob: float | 
                     "탱커/방어 코어 감지",
                 )
             elif gold_gap_vs_me >= 800:
+                th_detail = (
+                    f"{th_name}({th_p.kills}/{th_p.deaths}/{th_p.assists})이 아이템 격차로 앞서 있습니다. 시야 밖 기습을 경계하고 포탑 근처에서 안전하게 파밍하세요."
+                    if solo_or_asymmetric
+                    else f"{th_name}({th_p.kills}/{th_p.deaths}/{th_p.assists})이 아이템 격차로 앞서 있습니다. 시야 밖 기습을 경계하고 아군 CC와 함께 제압하세요."
+                )
                 add_strategy(
                     81, "위협 경계",
                     f"상대 {th_name} 아이템 +{gold_gap_vs_me:,}G 우위 → 단독 교전 회피",
-                    f"{th_name}({th_p.kills}/{th_p.deaths}/{th_p.assists})이 아이템 격차로 앞서 있습니다. 시야 밖 기습을 경계하고 아군 CC와 함께 제압하세요.",
+                    th_detail,
                     f"상대 위협 아이템 격차 +{gold_gap_vs_me:,}G",
                 )
             elif comp["ad_count"] >= 3 or comp["ap_count"] >= 3:
@@ -769,7 +860,12 @@ def analyze_live_strategy(req: LiveStrategyRequest, reference_10m_prob: float | 
         if phase == "early" and lanes_reliable and my_pos not in ("", "UTILITY", "JUNGLE") and t >= 240.0 and cs_per_min < 5.5:
             add_strategy(70, "성장 보완", f"현재 분당 CS {cs_per_min:.1f} → 무리한 로밍보다 라인 CS 집중", "초반 CS 격차가 누적되면 1코어 타이밍이 밀립니다. 대포 미니언을 놓치지 말고 라인을 먼저 정리한 뒤 움직이세요.", f"CS/분 {cs_per_min:.1f}")
         elif phase == "late" and len(strategies) < 3:
-            add_strategy(71, "후반 운영", "후반 부활 시간 김 → 단독 사이드·시야 체크 금지", "한 번 잘리면 바로 바론·넥서스로 이어집니다. 아군과 간격을 유지하며 본대 중심으로 오브젝트를 준비하세요.", "후반 25분+ 구간")
+            late_detail = (
+                "한 번 잘리면 바로 바론·넥서스로 이어집니다. 무리한 추격을 피하고 웨이브와 포탑 중심으로 오브젝트를 준비하세요."
+                if solo_or_asymmetric
+                else "한 번 잘리면 바로 바론·넥서스로 이어집니다. 아군과 간격을 유지하며 본대 중심으로 오브젝트를 준비하세요."
+            )
+            add_strategy(71, "후반 운영", "후반 부활 시간 김 → 단독 사이드·시야 체크 금지", late_detail, "후반 25분+ 구간")
 
         # H2: 모순 콜 필터링
         cats_present = {s["category"] for s in strategies}
@@ -805,6 +901,17 @@ def analyze_live_strategy(req: LiveStrategyRequest, reference_10m_prob: float | 
         ("late", "even"): "후반 박빙 · 잘림 주의·한타 집중",
         ("late", "behind"): "후반 열세 · 포탑 수성·한타 반전",
     }[(phase, state)]
+    tactical_badge_short = "연습 모드" if practice_mode else {
+        ("early", "ahead"): "초반 우세",
+        ("early", "even"): "초반 박빙",
+        ("early", "behind"): "초반 열세",
+        ("mid", "ahead"): "중반 우세",
+        ("mid", "even"): "중반 박빙",
+        ("mid", "behind"): "중반 열세",
+        ("late", "ahead"): "후반 우세",
+        ("late", "even"): "후반 박빙",
+        ("late", "behind"): "후반 열세",
+    }[(phase, state)]
 
     return {
         "game_time_sec": round(t, 1),
@@ -814,12 +921,16 @@ def analyze_live_strategy(req: LiveStrategyRequest, reference_10m_prob: float | 
         "state": state,
         "state_ko": STATE_KO[state],
         "tactical_badge": tactical_badge,
+        "tactical_badge_short": tactical_badge_short,
         "ml_blended": ml_blended,
         "practice_mode": practice_mode,
         "lanes_reliable": lanes_reliable,
+        "gold_basis": gold_basis,
+        "team_gold": {"ally": ally_gold_shown, "enemy": enemy_gold_shown},
         "team_gold_diff": int(round(est_gold_diff)),
         "kills": {"ally": ally_kills, "enemy": enemy_kills},
         "alive": {"ally": ally_alive, "enemy": enemy_alive},
+        "dead": {"ally": ally_dead, "enemy": enemy_dead},
         "key_factors": key_factors,
         "lanes": lanes,
         "ally_carry": ally_carry["lane_ko"] + f"({ally_carry['ally']['champion']})" if ally_carry else None,

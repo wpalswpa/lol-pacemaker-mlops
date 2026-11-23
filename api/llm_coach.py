@@ -49,7 +49,52 @@ def _game_item_names() -> tuple[str, ...]:
     return tuple(sorted({v["name"] for v in data["items"].values()}, key=len, reverse=True))
 
 
+def _game_item_stats() -> dict[str, frozenset[str]]:
+    data = json.loads((Path(__file__).with_name("game_data.json")).read_text(encoding="utf-8"))
+    rules = json.loads((Path(__file__).with_name("build_rules.json")).read_text(encoding="utf-8"))
+    raw_stats = rules.get("item_stats") or {}
+    out: dict[str, frozenset[str]] = {}
+    for item_id, meta in data["items"].items():
+        if item_id in raw_stats:
+            out[meta["name"]] = frozenset(raw_stats[item_id])
+    return out
+
+
 GAME_ITEM_NAMES = _game_item_names()
+GAME_ITEM_STATS = _game_item_stats()
+
+_MD_BOLD_RE = re.compile(r"\*\*(.+?)\*\*|__(.+?)__")
+_MD_CODE_RE = re.compile(r"`([^`]+)`")
+_MD_HEAD_RE = re.compile(r"(?m)^\s*#+\s*")
+_MD_LIST_RE = re.compile(r"(?m)^\s*(?:[-*•]|\d+[.)])\s+")
+_UNIT_NUM_RE = re.compile(
+    r"(?<!\d)(\d[\d,]*(?:\.\d+)?)\s*(%p|%|G|골드|초|s(?![A-Za-z])|분|명)?"
+)
+_CLAUSE_SPLIT_RE = re.compile(r"[.!?,·\n]+|하며|하고")
+_STAT_ALIASES = (
+    ("마법 저항력", "마법 저항력"),
+    ("마법 방어력", "마법 저항력"),
+    ("마법 방어", "마법 저항력"),
+    ("마저", "마법 저항력"),
+    ("물리 방어력", "방어력"),
+    ("물리 방어", "방어력"),
+    ("방어력", "방어력"),
+    ("공격력", "공격력"),
+    ("주문력", "주문력"),
+    ("체력", "체력"),
+)
+
+
+def strip_markdown(text: str) -> str:
+    """마크다운 강조(**·__·`), 제목(#), 목록 기호(- · * · 1.)를 지운 평문을 돌려준다."""
+    s = (text or "").strip()
+    s = _MD_BOLD_RE.sub(lambda m: m.group(1) if m.group(1) is not None else m.group(2), s)
+    s = _MD_CODE_RE.sub(r"\1", s)
+    s = _MD_HEAD_RE.sub("", s)
+    s = re.sub(r"(?<=\s)#+\s+", "", s)
+    s = _MD_LIST_RE.sub("", s)
+    s = s.replace("**", "").replace("__", "").replace("`", "")
+    return s.strip()
 
 
 # ── 규칙 문장 ──
@@ -267,10 +312,9 @@ def generate_briefing(coach_result: dict) -> dict:
 # ── 실시간 종합 전략 LLM 브리핑 (POST /strategy/briefing, 로컬 Ollama 포함) ──
 STRATEGY_SYSTEM_PROMPT = (
     "너는 LoL 프로팀 실시간 전략 코치다. "
-    "반드시 [실시간 전장 JSON]의 시간대·골드 격차·내 보유 골드·전 라인 유불리·생존 인원·오브젝트·상대 위협/조합·권장 아이템만 근거로 "
-    "한국어 2문장 이내의 구체적이고 유동적인 실전 전략을 제시하라. "
-    "일반론이나 10분 환산 표현은 쓰지 말고, 지금 이 순간 가장 중요한 행동과 다음 판단을 바로 말하라. "
-    "JSON에 없는 수치나 아이템 이름은 절대 지어내지 마라."
+    "반드시 [실시간 전장 JSON]의 시간대·골드 격차·내 보유 골드·전 라인 유불리·사망 인원·오브젝트·상대 위협/조합·권장 아이템만 근거로 "
+    "한국어 2문장 이내의 구체적이고 유동적인 실전 전략을 평문으로만 제시하라. "
+    "마크다운 기호(**, *, #, `)를 쓰지 말고, JSON에 없는 시간(초·분)·인원 수·아이템 이름이나 아이템과 맞지 않는 능력치를 절대 지어내지 마라."
 )
 DEFAULT_OLLAMA_URL = "http://127.0.0.1:11434/v1/chat/completions"
 DEFAULT_OLLAMA_MODEL = "qwen3:4b-instruct-2507-q4_K_M"
@@ -294,15 +338,18 @@ def build_strategy_prompt_payload(strategy_result: dict) -> dict:
     lanes_compact = [
         f"{l['lane_ko']}:{l['ally']['champion']} vs {l['enemy']['champion']}({l['status_ko']}, {l['gold_diff']:+d}G)"
         for l in strategy_result.get("lanes") or []
+        if l.get("status") != "unpaired"
     ]
     return {
         "phase": strategy_result.get("phase_label"),
         "game_time_min": round(float(strategy_result.get("game_time_sec", 0.0)) / 60.0, 1),
         "win_prob_pct": round(float(strategy_result.get("win_prob", 0.5)) * 100.0, 1),
         "state": strategy_result.get("state_ko"),
+        "gold_basis": strategy_result.get("gold_basis", "team"),
+        "team_gold": strategy_result.get("team_gold"),
         "team_gold_diff": strategy_result.get("team_gold_diff"),
         "kills": strategy_result.get("kills"),
-        "alive": strategy_result.get("alive"),
+        "dead": strategy_result.get("dead"),
         "key_factors": strategy_result.get("key_factors"),
         "lanes": lanes_compact,
         "ally_carry": strategy_result.get("ally_carry"),
@@ -425,29 +472,142 @@ def _payload_strings(v) -> list[str]:
     return out
 
 
+def _norm_unit(raw: str | None) -> str | None:
+    if not raw:
+        return None
+    if raw in ("%", "%p"):
+        return "%"
+    if raw in ("G", "골드"):
+        return "G"
+    if raw in ("초", "s"):
+        return "초"
+    if raw == "분":
+        return "분"
+    if raw == "명":
+        return "명"
+    return None
+
+
+def _unit_numbers(text: str) -> list[tuple[float, str | None]]:
+    cleaned = _ONE_V_ONE.sub(" ", text)
+    out: list[tuple[float, str | None]] = []
+    for m in _UNIT_NUM_RE.finditer(cleaned):
+        val = float(m.group(1).replace(",", ""))
+        out.append((val, _norm_unit(m.group(2))))
+    return out
+
+
+def _allowed_numbers_by_unit(payload: dict) -> dict[str, set[float]]:
+    by_unit: dict[str, set[float]] = {"%": set(), "G": set(), "초": set(), "분": set(), "명": set()}
+
+    def add(unit: str, x: float, allow_round: bool = True) -> None:
+        v = abs(float(x))
+        by_unit[unit].add(round(v, 6))
+        if allow_round:
+            by_unit[unit].add(float(math.floor(v + 0.5)))
+        else:
+            by_unit[unit].add(float(math.floor(v)))
+
+    if isinstance(payload.get("win_prob_pct"), (int, float)) and not isinstance(payload["win_prob_pct"], bool):
+        add("%", payload["win_prob_pct"])
+    if isinstance(payload.get("team_gold_diff"), (int, float)) and not isinstance(payload["team_gold_diff"], bool):
+        add("G", payload["team_gold_diff"])
+    if isinstance(payload.get("team_gold"), dict):
+        for v in payload["team_gold"].values():
+            if isinstance(v, (int, float)) and not isinstance(v, bool):
+                add("G", v)
+    if isinstance(payload.get("game_time_min"), (int, float)) and not isinstance(payload["game_time_min"], bool):
+        add("분", payload["game_time_min"], allow_round=False)
+    if isinstance(payload.get("game_time_sec"), (int, float)) and not isinstance(payload["game_time_sec"], bool):
+        add("초", payload["game_time_sec"])
+
+    for s in _payload_strings(payload):
+        for val, unit in _unit_numbers(s):
+            if unit in by_unit:
+                add(unit, val)
+    return by_unit
+
+
+def _validate_item_stats(text: str) -> str | None:
+    """아이템과 능력치(공격력·주문력·방어력·마법 저항력·체력) 오짝짓기를 거절한다."""
+    for clause in _CLAUSE_SPLIT_RE.split(text):
+        clause = clause.strip()
+        if not clause:
+            continue
+        items_found: list[tuple[int, int, str]] = []
+        masked = clause
+        for name in GAME_ITEM_NAMES:
+            if name not in GAME_ITEM_STATS:
+                continue
+            start = 0
+            while True:
+                idx = masked.find(name, start)
+                if idx < 0:
+                    break
+                items_found.append((idx, idx + len(name), name))
+                masked = masked[:idx] + (" " * len(name)) + masked[idx + len(name):]
+                start = idx + len(name)
+        if not items_found:
+            continue
+
+        stats_found: list[tuple[int, int, str]] = []
+        stat_masked = clause
+        for alias, canonical in _STAT_ALIASES:
+            start = 0
+            while True:
+                idx = stat_masked.find(alias, start)
+                if idx < 0:
+                    break
+                stats_found.append((idx, idx + len(alias), canonical))
+                stat_masked = stat_masked[:idx] + (" " * len(alias)) + stat_masked[idx + len(alias):]
+                start = idx + len(alias)
+        if not stats_found:
+            continue
+
+        for istart, iend, item_name in items_found:
+            allowed_stats = GAME_ITEM_STATS[item_name]
+            for sstart, send, stat_name in stats_found:
+                if stat_name in allowed_stats:
+                    continue
+                if 0 <= sstart - iend <= 14:
+                    return f"item_stat: {item_name}({stat_name})"
+                if 0 <= istart - send <= 12 and re.search(r"위해|올리려|챙기려|확보|용", clause[send:istart]):
+                    return f"item_stat: {item_name}({stat_name})"
+    return None
+
+
 def validate_strategy_briefing(text: str, payload: dict) -> str | None:
-    """실시간 전략 브리핑 검증(H4): 2문장 이내(3문장 이상 거절), payload 밖 숫자 거절, 추천·payload 밖 아이템 거절."""
-    if not text or not text.strip():
+    """실시간 전략 브리핑 검증(H4·P0-4): 마크다운 제거 → 2문장 이내 → 단위별 숫자 대조 → 아이템 존재·능력치 대조."""
+    cleaned = strip_markdown(text)
+    if not cleaned:
         return "empty"
-    n = count_sentences(text)
+    n = count_sentences(cleaned)
     if n >= 3:
         return f"sentences: {n}"
-    allowed_nums = _allowed_numbers(payload)
-    for x in _numbers(text):
-        if round(x, 6) not in allowed_nums:
+    allowed_all = _allowed_numbers(payload)
+    allowed_by_unit = _allowed_numbers_by_unit(payload)
+    for x, unit in _unit_numbers(cleaned):
+        rx = round(x, 6)
+        if unit in allowed_by_unit:
+            if rx not in allowed_by_unit[unit]:
+                return f"number: {x:g}"
+        elif rx not in allowed_all:
             return f"number: {x:g}"
     names = [str(x) for x in payload.get("recommended_items") or []]
     joined = " ".join(_payload_strings(payload))
     for item_name in (*GAME_ITEM_NAMES, "제어 와드"):
         if item_name in joined and item_name not in names:
             names.append(item_name)
-    exact, like = _item_claims(text)
+    exact, like = _item_claims(cleaned)
     for name in exact:
         if name not in names:
             return f"item: {name}"
     for cand in like:
         if not any(cand == nm or nm in cand for nm in names) and cand not in joined:
             return f"item: {cand}"
+    stat_err = _validate_item_stats(cleaned)
+    if stat_err:
+        return stat_err
     return None
 
 
@@ -474,11 +634,12 @@ def generate_strategy_briefing(strategy_result: dict) -> dict:
         _strategy_cache_put(key, outcome)
     if outcome["error"]:
         return fallback(outcome["error"], outcome["model"])
-    reason = validate_strategy_briefing(outcome["text"], payload)
+    cleaned = strip_markdown(outcome["text"])
+    reason = validate_strategy_briefing(cleaned, payload)
     if reason:
         return fallback(reason, outcome["model"])
     return {
-        "briefing": outcome["text"],
+        "briefing": cleaned,
         "source": "llm",
         "llm_model": outcome["model"],
         "fallback_reason": None,
