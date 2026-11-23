@@ -10,6 +10,8 @@ ENV PATH="/app/.venv/bin:$PATH"
 COPY api/ api/
 COPY client/bridge.py client/overlay_popup.swift client/overlay_electron.js client/
 COPY artifacts/model_sklearn.onnx artifacts/baseline.json artifacts/
+# 발표 8장 시연 영상 (GET /slides/demo.mp4). 컷 원본 demo_intro_cut.mp4 는 넣지 않는다
+COPY docs/demo_intro.mp4 docs/
 ARG MODEL_IMPL=onnx
 ENV MODEL_IMPL=${MODEL_IMPL}
 ARG APP_VERSION=dev

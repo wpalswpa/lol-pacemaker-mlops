@@ -11,7 +11,8 @@
 | **데스크톱 원클릭 다운로드** | **`https://jjm.eta.pyhub.kr/download`** (로컬: `http://127.0.0.1:8083/download`) | Windows(`.bat`) · macOS(`.zip`) 내려받아 더블클릭 실행 |
 | **웹 시뮬레이터 · 전적 DB** | **`https://jjm.eta.pyhub.kr/`** | 설치 없이 브라우저에서 코칭 체험 및 PostgreSQL 전적 저장 |
 | **인게임 HUD 미리보기** | **`https://jjm.eta.pyhub.kr/overlay`** | 프레임 없는 반투명 HUD · 전 라인·실시간 전략·아이템·스킬·AI 브리핑 |
-| **5분 발표 웹 슬라이드** | **`https://jjm.eta.pyhub.kr/slides`** | 7장 웹 프레젠테이션 (`→`·스페이스로 이동) |
+| **5분 발표 웹 슬라이드** | **`https://jjm.eta.pyhub.kr/slides`** | 8장 웹 프레젠테이션 (`→`·스페이스로 이동, 8장은 실게임 시연 영상) |
+| **실게임 시연 영상 (56초)** | **`https://jjm.eta.pyhub.kr/slides#8`** · 파일 [`docs/demo_intro.mp4`](docs/demo_intro.mp4) | 자막·내레이션 완성본. 컷 편집본 [`docs/demo_intro_cut.mp4`](docs/demo_intro_cut.mp4), 장면·근거 [`docs/demo_intro.md`](docs/demo_intro.md) |
 | **서버·모델 상태 확인** | **`https://jjm.eta.pyhub.kr/health`** | 코드 판(`app_version`) · 모델 판(`model_version`) 조회 |
 
 ### PC 인게임 오버레이 10초 실행 (터미널 창 없음)

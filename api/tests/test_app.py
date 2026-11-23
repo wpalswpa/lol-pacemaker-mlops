@@ -436,11 +436,28 @@ def test_index_page(client):
 def test_slides_page(client, app_module):
     res = client.get("/slides")
     assert res.status_code == 200 and "text/html" in res.headers["content-type"]
-    assert res.text.count('<section class="slide"') == 7  # 7장 (AGENTS.md 4절)
+    assert res.text.count('<section class="slide"') == 8  # 8장 (AGENTS.md 4절)
+    assert 'id="count" aria-live="polite">1 / 8<' in res.text
+    # 8장 시연 영상: 같은 서버 경로에서만 읽고, 자동 재생하지 않으며, 누를 때 장이 넘어가지 않는다
+    assert 'src="/slides/demo.mp4"' in res.text and "autoplay" not in res.text
+    assert 'closest("a, button, pre, code, video")' in res.text
+    assert 'id="demoFail"' in res.text  # 영상을 못 읽으면 안내 문구
     assert 'href="/"' in res.text  # 시뮬레이터로 가는 링크
     for ext in ('src="http', "src='http", 'href="http', "href='http", "url(http", "@import"):
         assert ext not in res.text  # 외부 글꼴·CDN·그림을 불러오지 않는다
     assert "/slides" not in app_module.app.openapi()["paths"]  # 에이전트 도구에는 안 보인다
+
+
+def test_slides_demo_video(client, app_module, tmp_path, monkeypatch):
+    fake = tmp_path / "demo_intro.mp4"
+    fake.write_bytes(b"ftypmp42-fake-video")
+    monkeypatch.setattr(app_module, "_DEMO_VIDEO", str(fake))
+    res = client.get("/slides/demo.mp4")
+    assert res.status_code == 200 and res.headers["content-type"] == "video/mp4"
+    assert res.content == fake.read_bytes()
+    assert "/slides/demo.mp4" not in app_module.app.openapi()["paths"]
+    monkeypatch.setattr(app_module, "_DEMO_VIDEO", str(tmp_path / "missing.mp4"))
+    assert client.get("/slides/demo.mp4").status_code == 404
 
 
 def test_overlay_page(client, app_module):

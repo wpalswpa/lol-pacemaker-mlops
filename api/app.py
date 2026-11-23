@@ -47,6 +47,7 @@ _SLIDES = os.path.join(os.path.dirname(__file__), "static", "slides.html")
 _OVERLAY = os.path.join(os.path.dirname(__file__), "static", "overlay.html")
 _DOWNLOAD = os.path.join(os.path.dirname(__file__), "static", "download.html")
 _ROOT_DIR = os.path.dirname(os.path.dirname(__file__))
+_DEMO_VIDEO = os.path.join(_ROOT_DIR, "docs", "demo_intro.mp4")
 _BRIDGE_PY = os.path.join(_ROOT_DIR, "client", "bridge.py")
 _POPUP_SWIFT = os.path.join(_ROOT_DIR, "client", "overlay_popup.swift")
 _POPUP_ELECTRON = os.path.join(_ROOT_DIR, "client", "overlay_electron.js")
@@ -201,6 +202,14 @@ def overlay() -> FileResponse:
 def slides() -> FileResponse:
     """5분 발표 슬라이드(AGENTS.md 4절). 외부 자원 없이 한 파일로 완결."""
     return FileResponse(_SLIDES, media_type="text/html; charset=utf-8")
+
+
+@app.get("/slides/demo.mp4", include_in_schema=False)
+def slides_demo_video() -> FileResponse:
+    """발표 8장의 실게임 시연 영상(AGENTS.md 4절). 없으면 404."""
+    if not os.path.isfile(_DEMO_VIDEO):
+        raise HTTPException(status_code=404, detail="시연 영상이 없다")
+    return FileResponse(_DEMO_VIDEO, media_type="video/mp4")
 
 
 @app.get("/download", include_in_schema=False)

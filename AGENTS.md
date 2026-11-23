@@ -546,7 +546,11 @@ Windows 10/11 전체 화면 최적화(FSO) 환경에서는 전체 화면(`Window
 
 ### `GET /slides` (발표 슬라이드, `include_in_schema=False`)
 
-`api/static/slides.html`을 그대로 돌려준다(`text/html`). 5분 발표용 7장 슬라이드이고 `발표대본.md`의 다섯 구간과 같은 순서다. 키보드 좌우 화살표·스페이스·클릭으로 넘기고, 위쪽 진행 막대와 `n / 7` 표시, 주소 `#n`으로 바로 가기를 지원한다. 외부 글꼴·CDN·그림 없이 한 파일로 완결한다(발표장 네트워크가 막혀도 뜬다). 시뮬레이터(`GET /`)와 서로 가는 링크를 둔다. 수치는 README 12절의 실측값만 쓴다. 7장 안에 원클릭 실행기(`/download`, Windows `.bat`·macOS `.app`), 초컴팩트 HUD(`/overlay`: 아이콘 한 줄 구매 순서, 인라인 스킬 이펙트, 최소화·투명도, 상대 공개 아이템 운영 팁), PostgreSQL 16 전적 DB 재학습 루프(`POST /matches` → `GET /matches/export` → `model.yml`)를 담는다. 1280×800·1366×768·1920×1080에서 어느 장도 세로로 스크롤하지 않는다.
+`api/static/slides.html`을 그대로 돌려준다(`text/html`). 5분 발표용 8장 슬라이드이고 `발표대본.md`의 다섯 구간과 같은 순서다(8장은 ⑤ 구간 끝의 실게임 시연 영상). 키보드 좌우 화살표·스페이스·클릭으로 넘기고, 위쪽 진행 막대와 `n / 8` 표시, 주소 `#n`으로 바로 가기를 지원한다. 외부 글꼴·CDN·그림 없이 한 파일로 완결한다(발표장 네트워크가 막혀도 뜬다). 예외는 8장의 시연 영상 하나이고, 같은 서버의 `GET /slides/demo.mp4`에서 읽는다(외부 주소를 쓰지 않는다). 영상은 자동 재생하지 않고 발표자가 누를 때만 재생하며, 영상을 누를 때는 장이 넘어가지 않고, 다른 장으로 가면 멈춘다. 영상을 읽지 못하면 그 자리에 안내 문구를 띄운다. 시뮬레이터(`GET /`)와 서로 가는 링크를 둔다. 수치는 README 12절의 실측값만 쓴다. 7장 안에 원클릭 실행기(`/download`, Windows `.bat`·macOS `.app`), 초컴팩트 HUD(`/overlay`: 아이콘 한 줄 구매 순서, 인라인 스킬 이펙트, 최소화·투명도, 상대 공개 아이템 운영 팁), PostgreSQL 16 전적 DB 재학습 루프(`POST /matches` → `GET /matches/export` → `model.yml`)를 담는다. 1280×800·1366×768·1920×1080에서 어느 장도 세로로 스크롤하지 않는다.
+
+### `GET /slides/demo.mp4` (발표 시연 영상, `include_in_schema=False`)
+
+`docs/demo_intro.mp4`(자막·내레이션을 입힌 완성본, H.264+AAC 1280×720)를 `video/mp4`로 돌려준다. 파일이 없으면 404. 같은 폴더의 `docs/demo_intro_cut.mp4`는 자막·내레이션 없이 컷만 편집한 원본(게임 소리)이고 서버가 내주지 않는다. 두 영상 모두 AI 대전(봇전) 녹화이고, 화면 속 플레이어 이름이 나올 수 있는 채팅창·상단 알림 영역은 가림 처리한다(1절·12절). 장면 구성과 사실 확인 근거는 `docs/demo_intro.md`.
 
 **상단 메뉴(`/`, `/download`, `/slides` 공통)**: 세 링크(`/`, `/slides`, `/download`)와 지금 페이지 `active` 표시. `/overlay`는 메뉴에 두지 않고, `/`의 `인게임 HUD 미리보기` 버튼이 실제 팝업 크기(400×580, 창 이름 `lolHud`라 여러 번 눌러도 한 창)로 연다. 640px 이하에서는 중복 CTA와 브랜드 글자(`Desktop`)를 숨기고 긴 이름을 줄여(`웹 시뮬레이터`, `슬라이드`) 링크를 한 줄에 둔다. 넘치면 메뉴 안에서만 가로로 스크롤하고 페이지 가로 넘침은 0이다. 메뉴를 숨기지 않는다(모바일에서도 세 페이지로 갈 수 있어야 한다). `/overlay`는 게임 위 HUD라 상단 메뉴를 두지 않는다.
 
@@ -629,7 +633,7 @@ p_blue   = 1 / (1 + exp(−gold_est / 2500))
 
 **자동 테스트 기준선**: 2026-11-23 `uv run pytest api client tests -q -rs` **428 passed**(`uv sync --all-groups` 환경에서 skipped 0; `dev` 그룹만 설치된 환경에서는 `pandas`·`sklearn`이 필요한 재학습 로더 검사 2건이 건너뛰어지며 이는 `pyproject.toml`의 `train` 그룹 분리 정책 때문이다). 이보다 줄면 커밋 메시지와 `인수인계.md`에 이유를 적는다.
 
-**UI 점검(헤드리스 Chromium, Playwright)**: `/`, `/download`, `/slides`(일곱 장 모두), `/overlay`를 PC 1280×800·모바일 390×844(·태블릿 700×900)에서 열어 `documentElement.scrollWidth <= clientWidth`, 화면 밖으로 나간 요소 0개. 세 페이지 상단 메뉴에 `/overlay` 링크가 없고, 상단 메뉴로 `/` → `/download` → `/` → `/download` → `/slides` → `/` 클릭 이동이 모두 그 주소로 간다. `/`의 `인게임 HUD 미리보기`를 누르면 `/overlay` 팝업(400×580, `window.name` `lolHud`)이 뜨고 가로 넘침 0, 승률 숫자가 채워지며, 한 번 더 눌러도 창이 늘지 않는다. console error·pageerror 0건(팝업 포함). `/overlay`는 브리지가 없으면 `127.0.0.1:8765` 연결 거부가 console error로 찍히므로 브리지를 저장 응답(`--file ... --overlay`)으로 띄워 둔 상태에서 잰다.
+**UI 점검(헤드리스 Chromium, Playwright)**: `/`, `/download`, `/slides`(여덟 장 모두), `/overlay`를 PC 1280×800·모바일 390×844(·태블릿 700×900)에서 열어 `documentElement.scrollWidth <= clientWidth`, 화면 밖으로 나간 요소 0개. 세 페이지 상단 메뉴에 `/overlay` 링크가 없고, 상단 메뉴로 `/` → `/download` → `/` → `/download` → `/slides` → `/` 클릭 이동이 모두 그 주소로 간다. `/`의 `인게임 HUD 미리보기`를 누르면 `/overlay` 팝업(400×580, `window.name` `lolHud`)이 뜨고 가로 넘침 0, 승률 숫자가 채워지며, 한 번 더 눌러도 창이 늘지 않는다. console error·pageerror 0건(팝업 포함). `/overlay`는 브리지가 없으면 `127.0.0.1:8765` 연결 거부가 console error로 찍히므로 브리지를 저장 응답(`--file ... --overlay`)으로 띄워 둔 상태에서 잰다.
 
 **서빙 부하 실측 `scripts/benchmark_serving.py`**
 
