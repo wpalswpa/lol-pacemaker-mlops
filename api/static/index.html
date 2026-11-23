@@ -139,6 +139,25 @@
   .pick input[type=text] { width: 100%; min-width: 0; background: #0f141b; color: var(--text); border: 1px solid var(--line);
                            border-radius: 8px; padding: 8px 10px; font: inherit; }
   .pick input[aria-invalid=true] { border-color: var(--warn); }
+  .demo-card, #history { scroll-margin-top: 68px; }
+  .demo-card video { width: 100%; max-height: 540px; border-radius: 12px; border: 1px solid #c89b3c55; background: #000; display: block; margin-top: 12px; }
+  .tab-panel[hidden] { display: none !important; }
+  body.intro-mode .edge { display: none !important; }
+  .hero-intro { padding: 34px 28px; border-radius: 16px; border: 1px solid #c89b3c44; background: radial-gradient(circle at 85% 20%, rgba(200,155,60,.14), transparent 55%), linear-gradient(145deg, #121926, #0d131d); margin-bottom: 16px; }
+  .hero-badge { display: inline-block; padding: 4px 12px; border-radius: 999px; border: 1px solid #c89b3c88; background: rgba(200,155,60,.12); color: #f0e6d2; font-size: 12px; font-weight: 700; letter-spacing: .04em; margin-bottom: 14px; }
+  .hero-intro h2 { font-size: clamp(24px, 3.6vw, 34px); color: #f0e6d2; margin: 0 0 10px; letter-spacing: -.02em; line-height: 1.25; }
+  .hero-intro p.sub { color: #b9c2d3; font-size: 15px; line-height: 1.6; margin: 0 0 20px; max-width: 680px; }
+  .hero-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+  .btn-primary { display: inline-flex; align-items: center; padding: 11px 20px; border-radius: 10px; background: #ff5a1f; color: #fff; font-size: 14px; font-weight: 700; text-decoration: none; border: none; cursor: pointer; }
+  .btn-primary:hover { background: #ff7340; }
+  .btn-ghost { display: inline-flex; align-items: center; padding: 11px 18px; border-radius: 10px; background: rgba(255,255,255,.05); color: #f0e6d2; font-size: 14px; font-weight: 600; text-decoration: none; border: 1px solid #2b3548; cursor: pointer; }
+  .btn-ghost:hover { border-color: #c89b3c88; }
+  .feat-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .feat-card { padding: 18px; border-radius: 14px; background: var(--card); border: 1px solid var(--line); }
+  .feat-card .num-tag { font-size: 11px; font-weight: 800; color: #c8aa6e; letter-spacing: .06em; margin-bottom: 6px; }
+  .feat-card h3 { font-size: 15px; color: #f4f6fb; margin: 0 0 6px; }
+  .feat-card p { font-size: 13px; color: var(--sub); margin: 0; line-height: 1.5; }
+  @media (max-width: 720px) { .feat-grid { grid-template-columns: 1fr; } }
   .quick { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
   .quick button { padding: 3px 10px; font-size: 12px; }
   .sim-top { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
@@ -223,13 +242,54 @@
   <div class="sitenav-in">
     <a class="brand" href="/"><span class="brand-badge">FAKER</span><span>Desktop</span></a>
     <nav class="nav-links" aria-label="주 메뉴">
-      <a href="/" class="active">웹 시뮬레이터<span class="nl-x"> · 전적</span></a>
+      <a href="#intro" data-tab="intro" class="active">서비스 소개</a>
+      <a href="#live" data-tab="live">실시간 인게임</a>
+      <a href="#history" data-tab="history">전적 보기</a>
       <a href="/download">다운로드</a>
     </nav>
     <a class="nav-cta" href="/download">다운로드</a>
   </div>
 </header>
 <main>
+  <div id="panel-intro" class="tab-panel">
+    <section class="hero-intro">
+      <span class="hero-badge">LoL 페이스메이커 · 실시간 인게임 AI 코치</span>
+      <h2>게임 중 판단을 바꾸는 실시간 AI 코치</h2>
+      <p class="sub">연습모드·AI 대전·리플레이에서 공개 점수판(Tab)만 2초마다 읽어, 실시간 승률·5라인 골드 비교·우선순위 전략·귀환 구매 각·궁극기 타이밍을 게임 위 투명 HUD로 안내합니다.</p>
+      <div class="hero-actions">
+        <a class="btn-primary" href="/download">데스크톱 앱 다운로드</a>
+        <a class="btn-ghost" href="#live">실시간 인게임 미리보기</a>
+      </div>
+    </section>
+
+    <section class="card demo-card" id="demo" aria-label="실게임 시연 영상">
+      <h2>실게임 시연 영상 <span class="src">AI 대전 · 56초</span></h2>
+      <p class="note">Riot 공식 로컬 API 공개 정보만으로 실제 5대5 AI 대전 위에서 HUD가 동작하는 시연 영상입니다.</p>
+      <video controls preload="metadata" playsinline src="/slides/demo.mp4">
+        브라우저가 영상을 재생하지 못하면 <a href="/slides/demo.mp4">영상 파일</a>을 직접 열어 주세요.
+      </video>
+    </section>
+
+    <div class="feat-grid">
+      <div class="feat-card">
+        <div class="num-tag">01 · REALTIME PACE</div>
+        <h3>실시간 승률 &amp; 5라인 골드</h3>
+        <p>2초마다 10명 공개 아이템·KDA를 비교해 승률 변화와 수적 우위(5v3) 우선순위 전략을 제시합니다.</p>
+      </div>
+      <div class="feat-card">
+        <div class="num-tag">02 · SMART BUILD</div>
+        <h3>보유 골드 귀환 &amp; 자동 구매</h3>
+        <p>현재 보유 골드로 귀환 즉시 구매 각을 계산하고, 상점에서 구매하면 자동으로 보유 완료로 전환합니다.</p>
+      </div>
+      <div class="feat-card">
+        <div class="num-tag">03 · SKILL &amp; BRIEFING</div>
+        <h3>궁극기(R) 강조 &amp; AI 브리핑</h3>
+        <p>교전 중 레벨업 직전 다음 R → 지금 R을 실시간 강조하고, 서버 계산 수치와 맞는 브리핑만 표시합니다.</p>
+      </div>
+    </div>
+  </div>
+
+  <div id="panel-live" class="tab-panel" hidden>
   <div class="topbar">
     <h1>LoL 페이스메이커 <span class="nick">(페이커)</span> <span class="tag">게임 중 실시간 코치</span></h1>
     <div class="right">
@@ -323,7 +383,9 @@
     </div>
     <p class="note">점수판(Tab)에 보이는 값만 씁니다. 목표 승률은 과거 경기에서 그 수치를 더 가졌던 경우의 승률이에요. 그렇게 하면 반드시 이긴다는 뜻은 아니에요. 아이템·스킬·행동 카드는 사람이 정한 규칙표와 상태별 원칙이고, 모델은 우세·접전·열세만 정합니다.</p>
   </section>
+  </div>
 
+  <div id="panel-history" class="tab-panel" hidden>
   <section class="card" id="history" aria-labelledby="histTitle">
     <div class="hist-head">
       <h2 id="histTitle">최근 코칭 전적 기록 (DB)</h2>
@@ -345,7 +407,33 @@
     </div>
     <p class="note">지금 위에 넣은 10분 점수판을 그대로 저장합니다. 소환사명 같은 개인 정보는 받지 않고, 승률과 전술 상태는 서버가 같은 입력으로 다시 계산해요. 승패를 고른 기록만 <a href="/matches/export?format=csv">재학습용 CSV</a>에 들어갑니다.</p>
   </section>
+  </div>
 </main>
+<script>
+(function setupTabs() {
+  const panels = {
+    intro: document.getElementById("panel-intro"),
+    live: document.getElementById("panel-live"),
+    history: document.getElementById("panel-history"),
+  };
+  const links = document.querySelectorAll(".nav-links a[data-tab]");
+  function showTab(hash) {
+    const raw = (hash || "#intro").replace(/^#/, "");
+    const key = raw === "live" ? "live" : raw === "history" ? "history" : "intro";
+    Object.entries(panels).forEach(([k, el]) => { if (el) el.hidden = k !== key; });
+    links.forEach((a) => a.classList.toggle("active", a.dataset.tab === key));
+    document.body.classList.toggle("intro-mode", key !== "live");
+    if (raw === "demo") {
+      const target = document.getElementById("demo");
+      if (target) setTimeout(() => target.scrollIntoView({ behavior: "smooth" }), 50);
+    } else {
+      window.scrollTo({ top: 0 });
+    }
+  }
+  window.addEventListener("hashchange", () => showTab(location.hash));
+  showTab(location.hash);
+})();
+</script>
 <script>
 const STATS = [
   ["kills", "킬", 0, 30, 1], ["assists", "어시스트", 0, 40, 1], ["cs", "CS", 100, 400, 1],

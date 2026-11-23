@@ -647,10 +647,10 @@ def test_download_page_and_launcher_scripts(client):
     assert swift.status_code == 200
     assert "NSPanel" in swift.text
 
-    win = client.get("/download/launcher?os=windows", headers={"host": "<서버 IP>"})
+    win = client.get("/download/launcher?os=windows", headers={"host": "203.0.113.10"})
     assert win.status_code == 200
     assert "lol-pacemaker-overlay.bat" in win.headers.get("content-disposition", "")
-    assert "http://<서버 IP>/download/bridge.py" in win.text
+    assert "http://203.0.113.10/download/bridge.py" in win.text
     assert "--launch-popup" in win.text
 
     mac = client.get(
@@ -760,7 +760,7 @@ def test_coach_briefing_fallback_and_llm_mock(client, monkeypatch):
 
 def test_windows_launcher_is_ascii_and_checks_python_version(client):
     """AGENTS.md 3-6 "Windows .bat 규칙": ASCII 문구, CRLF, 3.9 이상 확인, Borderless 안내, 공백 경로 따옴표."""
-    raw = client.get("/download/launcher?os=windows", headers={"host": "<서버 IP>"}).content
+    raw = client.get("/download/launcher?os=windows", headers={"host": "203.0.113.10"}).content
     assert all(b < 128 for b in raw)
     assert b"\n" not in raw.replace(b"\r\n", b"")
     text = raw.decode()
